@@ -5,6 +5,10 @@
 #
 # Вывод дублируется в /home/altlinux/q6load.log.
 
+# У su -c каталога /sbin в PATH нет, а rmmod, insmod и modprobe лежат именно там
+PATH=/sbin:/usr/sbin:$PATH
+export PATH
+
 D=/home/altlinux/q6build
 DRV=/sys/bus/platform/drivers/q6voice-dai
 DEV=remoteproc-adsp:glink-edge:apr:apr-service@9:dais
@@ -69,6 +73,11 @@ fi
 echo
 echo "== стало"
 lsmod | grep -E '^q6(voice|cvp|mvm|cvs)'
+
+echo
+echo "== топологии в микшере"
+amixer -c 0 cget name='VoiceMMode1 TX Topology' 2>&1 | tail -1
+amixer -c 0 cget name='VoiceMMode1 RX Topology' 2>&1 | tail -1
 
 echo
 echo "== звуковая карта"
