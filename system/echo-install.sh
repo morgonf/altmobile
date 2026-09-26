@@ -25,13 +25,21 @@ install -m 755 $H/hexrpc/hexagonrpcd-ftell /usr/local/sbin/hexagonrpcd-ftell
 install -m 644 $H/echo/hexagonrpcd-adsp-audio.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable hexagonrpcd-adsp-audio.service
-# Перезапуск подавителя в начале разговора делает драйвер (cal_poll_ms).
-# Служба q6echo-activate из этого каталога была временным решением.
-systemctl disable --now q6echo-activate.service 2>/dev/null || true
+# Перезапуск подавителя после ответа на звонок. Ядро момент ответа не
+# видит, его сообщает ModemManager. Порядок как в удачном ручном опыте:
+# выключить модуль, через секунду включить, затем слово режима и усиление.
+install -D -m 644 $H/echo/ecns-10e61.hex /usr/local/share/q6voice/ecns-10e61.hex
+install -m 755 $H/echo/q6echo-activate.sh /usr/local/sbin/q6echo-activate.sh
+install -m 644 $H/echo/q6echo-activate.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now q6echo-activate.service
+echo "служба q6echo-activate включена"
 echo "служба hexagonrpcd-adsp-audio включена"
-echo "Теперь перезагрузка."
 
 # Без «пи-пи-пи» при завершении разговора: тема feedbackd, где событие
 # phone-hangup заменено пустым. Ставится пользователю altlinux.
-# install -D -m 644 $H/echo/feedbackd-no-hangup.json $H/.config/feedbackd/themes/no-hangup.json
-# затем от пользователя: gsettings set org.sigxcpu.feedbackd theme no-hangup
+install -D -m 644 -o altlinux -g altlinux $H/echo/feedbackd-no-hangup.json \
+	$H/.config/feedbackd/themes/no-hangup.json
+echo "тема feedbackd no-hangup на месте, включить от пользователя:"
+echo "  gsettings set org.sigxcpu.feedbackd theme no-hangup"
+echo "Теперь перезагрузка."

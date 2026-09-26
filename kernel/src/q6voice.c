@@ -12,6 +12,7 @@
 #include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/workqueue.h>
+#include <linux/unaligned.h>
 #include "q6afe.h"
 #include "q6cvp.h"
 #include "q6cvs.h"
@@ -77,16 +78,45 @@ MODULE_PARM_DESC(cal_after_start,
  * принята, а не что модуль работает с этими значениями.
  */
 /*
- * Через столько миллисекунд после запуска сессии выключить модули, которые
- * включает калибровка, и отправить калибровку заново. Модуль ECNS v2
- * (0x10f1f) принимает включение до получения формата звука, откладывает его
- * и остаётся в обходе; по-настоящему он включается только повторным
- * выключением и включением в идущем разговоре. 0 выключает этот шаг.
+ * Перезапуск калибровки, когда модуль готов. Голосовой тракт стартует ещё при
+ * наборе номера, а формат звука модуль ECNS v2 (0x10f1f) получает, только
+ * когда модем начинает передавать звук (гудки или ответ). В этот момент он
+ * инициализируется своими значениями по умолчанию и затирает присланные
+ * раньше, а включение остаётся в обходе. Признак готовности: процессор сам
+ * поднимает бит 0 во втором слове параметра ready_param модуля ready_module.
+ * Драйвер опрашивает его каждые cal_poll_ms и, дождавшись, выключает
+ * модули калибровки и отправляет её целиком заново. 0 выключает опрос.
  */
-static unsigned int cal_restart_delay_ms = 1000;
-module_param(cal_restart_delay_ms, uint, 0644);
-MODULE_PARM_DESC(cal_restart_delay_ms,
-		 "Delay after start to disable calibrated modules and resend the calibration, 0 to skip");
+static unsigned int cal_poll_ms = 200;
+module_param(cal_poll_ms, uint, 0644);
+MODULE_PARM_DESC(cal_poll_ms,
+		 "Poll period for module readiness before resending the calibration, 0 to skip");
+
+static unsigned int ready_module = 0x00010F1F;
+module_param(ready_module, uint, 0644);
+MODULE_PARM_DESC(ready_module, "Module whose parameter signals readiness");
+
+static unsigned int ready_param = 0x00010E61;
+module_param(ready_param, uint, 0644);
+MODULE_PARM_DESC(ready_param, "Parameter with the readiness bit 0 in its second word");
+
+static unsigned int ready_size = 168;
+module_param(ready_size, uint, 0644);
+MODULE_PARM_DESC(ready_size, "Size of the readiness parameter in bytes");
+
+/*
+ * Второе слово параметра готовности в том виде, в каком его прислала
+ * калибровка. Процессор сам ставит в нём служебные биты 0 и 26, поэтому
+ * сравнение идёт без них. Если слово в процессоре снова отличается от
+ * присланного, модуль переинициализирован (при ответе на звонок модем
+ * перестраивает кодек) и калибровку надо отправить заново.
+ */
+static u32 ready_expected;
+static bool ready_expected_valid;
+#define Q6VOICE_READY_STATUS_BITS	(BIT(0) | BIT(26))
+
+/* Опрашивать не дольше, чем ждут ответа на звонок */
+#define Q6VOICE_READY_TIMEOUT_MS	(180 * 1000)
 
 /* Топология передачи по умолчанию, пока её не сменят элементом микшера */
 static unsigned int tx_topology = 0x00010F71;
@@ -251,6 +281,11 @@ static int q6voice_send_cal_mode(struct q6voice_session *cvp,
 			}
 			kfree(buf);
 		} else {
+			if (module_id == ready_module && param_id == ready_param &&
+			    size >= 8) {
+				ready_expected = get_unaligned_le32(p->data + 4);
+				ready_expected_valid = true;
+			}
 			ret = q6cvp_send_param(cvp, module_id, param_id,
 					       p->data, size);
 			if (ret)
@@ -298,6 +333,11 @@ struct q6voice_path {
 	struct mutex lock;
 	struct q6voice_path_runtime *runtime;
 	struct delayed_work cal_restart;
+	unsigned long cal_poll_deadline;
+	/* Последнее прочитанное слово готовности, для журнала изменений */
+	u32 ready_last;
+	/* Калибровка уже отправлена после готовности модуля */
+	bool ready_seen;
 };
 
 struct q6voice {
@@ -480,9 +520,14 @@ static int q6voice_path_start(struct q6voice_path *p)
 	if (cal_readback)
 		q6voice_send_cal_mode(cvp, Q6VOICE_CAL_CHECK);
 
-	if (cal_restart_delay_ms)
+	if (cal_poll_ms && cal_firmware && *cal_firmware) {
+		p->cal_poll_deadline = jiffies +
+				       msecs_to_jiffies(Q6VOICE_READY_TIMEOUT_MS);
+		p->ready_last = 0;
+		p->ready_seen = false;
 		schedule_delayed_work(&p->cal_restart,
-				      msecs_to_jiffies(cal_restart_delay_ms));
+				      msecs_to_jiffies(cal_poll_ms));
+	}
 
 	return ret;
 
@@ -604,9 +649,52 @@ static void q6voice_cal_restart_work(struct work_struct *work)
 		goto out;
 
 	cvp = p->runtime->sessions[Q6VOICE_SERVICE_CVP];
-	dev_info(p->v->dev, "restarting calibrated modules\n");
+
+	if (ready_size >= 8 && ready_size <= 1024) {
+		u8 *buf = kzalloc(ready_size, GFP_KERNEL);
+		int ret = -ENOMEM;
+		u32 word = 0;
+
+		if (buf) {
+			ret = q6cvp_get_param(cvp, ready_module, ready_param,
+					      buf, ready_size);
+			word = get_unaligned_le32(buf + 4);
+			kfree(buf);
+		}
+
+		if (ret >= 0 && word != p->ready_last) {
+			dev_info(p->v->dev, "module %#x word %#x -> %#x\n",
+				 ready_module, p->ready_last, word);
+			p->ready_last = word;
+		}
+
+		if (ret < 0 || !(word & BIT(0))) {
+			/* Ещё не готов: ждём, пока не выйдет срок */
+			if (!p->ready_seen &&
+			    time_after(jiffies, p->cal_poll_deadline)) {
+				dev_warn(p->v->dev, "module %#x not ready, calibration not restarted (%d, %#x)\n",
+					 ready_module, ret, word);
+				goto out;
+			}
+			goto again;
+		}
+
+		if (p->ready_seen && ready_expected_valid &&
+		    (word & ~Q6VOICE_READY_STATUS_BITS) ==
+		    (ready_expected & ~Q6VOICE_READY_STATUS_BITS))
+			goto again;	/* наши значения на месте */
+
+		dev_info(p->v->dev, "module %#x %s (%#x), restarting calibration\n",
+			 ready_module, p->ready_seen ? "reinitialized" : "ready",
+			 word);
+		p->ready_seen = true;
+	}
+
 	q6voice_send_cal_mode(cvp, Q6VOICE_CAL_DISABLE);
 	q6voice_send_cal(cvp);
+again:
+	/* Следим весь разговор: при ответе модуль инициализируется ещё раз */
+	schedule_delayed_work(&p->cal_restart, msecs_to_jiffies(cal_poll_ms));
 out:
 	mutex_unlock(&p->lock);
 }
