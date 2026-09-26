@@ -1,98 +1,131 @@
-# q6cvp: default TX vocproc topology is absent from OEM ACDB calibration (OnePlus 6T, sdm845)
+# q6voice: echo cancellation on sdm845 is fixed by one missing device tree property
 
 ## Environment
 
 - Device: OnePlus 6T (fajita), unlocked bootloader
-- Distro: ALT Mobile (Sisyphus), image `alt-mobile-phosh-sdm845-latest-aarch64.tar.xz`
-- Kernel: `7.1.0-qualcomm-sdm845-alt0.rc1`, fork at https://altlinux.space/alt-mobile/linux branch `alt/sdm845`
+- Distro: ALT Mobile (Sisyphus), kernel `7.1.0-qualcomm-sdm845-alt0.rc1`
+- Kernel fork: https://altlinux.space/alt-mobile/linux branch `alt/sdm845`
 - ALSA card: `O6T`
 
 ## Symptom
 
-During a voice call the remote party hears a clear echo of their own voice. Local audio is fine. This is a known open issue on sdm845 mainline.
+The remote party hears a clear echo of their own voice and noise suppression does
+not work. Local audio is fine. This is a known open issue on sdm845 mainline.
 
-## Practical fix found, verified on device
+## Root cause and fix
 
-**The echo goes away with two lines in the UCM profile, no kernel patch and no calibration needed.** The cause is acoustic, not algorithmic.
+**The driver never sends the topology commit command to the DSP.**
 
-The profile distributes gain badly. The earpiece output stage `EAR PA Volume` sits at maximum (4 of 4, +6 dB) while the bottom mic digital gain `DEC7 Volume` is only 75 of 124. The remote party hears the user quietly, the user raises the volume with the volume keys, `RX0 Digital Volume` climbs to 101-110 of 124, the earpiece bleeds into the microphone and the acoustic loop closes. The user hears no echo, the remote party does.
+`sound/soc/qcom/qdsp6/q6voice.c` has two setup paths:
 
-Change in the `BootSequence` of `/usr/share/alsa/ucm2/OnePlus/fajita/fajita.conf`:
-
-```
-cset "name='DEC7 Volume' 85"        # was 75
-cset "name='EAR PA Volume' 0"       # was 4, minus 6 dB
-```
-
-Why this stage. `EAR PA Volume` is referenced neither in `fajita.conf` nor in `VoiceCall.conf`, so neither PipeWire nor the volume keys touch it. Attenuating there shifts the whole volume range down, so running into feedback becomes impossible even at full scale. Lowering the microphone instead does not help, it attenuates speech and echo equally and leaves the ratio unchanged.
-
-After the change, with `RX0` at 110, which is above the level where feedback used to start, there is no echo, the remote party hears the user well and local audio is fine.
-
-Still unsolved: the microphone picks up ambient noise and the remote party hears everything around the user. That is the same non functional `ECNS` chain and it cannot be worked around acoustically. `TX7 HPF cut off` is already at its most aggressive setting `CF_NEG_3DB_150HZ` and no other control remains in the mixer.
-
-## What was established about topologies and calibration
-
-**1. Call audio bypasses userspace.** `/usr/share/alsa/ucm2/OnePlus/fajita/VoiceCall.conf` routes through `SLIMBUS_0_RX Voice Mixer VoiceMMode1` and `VoiceMMode1 Capture Mixer SLIMBUS_0_TX`, so the voice path runs inside the DSP. A PipeWire `module-echo-cancel` cannot be inserted into it.
-
-**2. ECNS is requested but never calibrated.** In `sound/soc/qcom/qdsp6/q6cvp.c`, `q6cvp_session_create()` carries `/* TODO: Implement calibration */` and hardcodes `vocproc_mode = VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING` with `ec_ref_port_id = VSS_IVOCPROC_PORT_ID_NONE`. With internal mixing that `PORT_ID_NONE` is correct, the DSP takes the echo reference from its own RX path, so a missing EC reference port is not the bug.
-
-**3. Global ACDB loading exists in this kernel but is never enabled on these devices.** `q6core` contains `q6core_load_and_register_topologies()`, which reads the `qcom,acdb-name` device tree property and silently returns 0 when the property is absent, then calls `request_firmware()` with that exact name. `arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi` does not define the property, so on OnePlus 6 and 6T no ACDB is ever loaded.
-
-Adding the property manually with `fdtput` and placing the device's own `MTP_Global_cal.acdb` under `/lib/firmware` makes the property visible in `/sys/firmware/devicetree/base/remoteproc-adsp/glink-edge/apr/service@3/qcom,acdb-name`, and neither `failed to load Global_cal.acdb` nor `ACDB parse error` appears in dmesg.
-
-**4. The global ACDB topologies blob contains no vocproc topologies.** Property `0x000131a7` (`ACDB_TOPOLOGIES_BLOB`) sits in `GPROPLUT` at `DATAPOOL` offset 12772, size 864 bytes. A byte level search inside that blob for `0x00010F70`, `0x00010F71`, `0x00010F72`, `0x00010F77` and `0x00010F89` yields no matches. Registering topologies from the global file therefore does not touch the voice path.
-
-**5. Main finding. The driver's default TX topology does not exist in this device's OEM calibration.**
-
-Byte level census over all nine ACDB files from the `vendor_a` partition (`/etc/acdbdata/`):
-
-| Topology | Value | Occurrences |
-|---|---|---|
-| `VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS` | `0x00010F71` | **0** |
-| `VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS_V2` | `0x00010F89` | 9, of which 4 in `MTP_Handset_cal.acdb` |
-| `VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE` | `0x00010F72` | 14, of which 7 in `MTP_Handset_cal.acdb` |
-| `VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT` | `0x00010F77` | **0** |
-| `VSS_IVOCPROC_TOPOLOGY_ID_NONE` | `0x00010F70` | 4 |
-
-Full census of the vocproc topology range in `MTP_Handset_cal.acdb`, the handset (earpiece) calibration, which is the voice call path:
-
-```
-0x00010f70  x1     VSS_IVOCPROC_TOPOLOGY_ID_NONE
-0x00010f72  x7     VSS_IVOCPROC_TOPOLOGY_ID_TX_DM_FLUENCE
-0x00010f73  x12
-0x00010f74  x14
-0x00010f86  x7
-0x00010f87  x7
-0x00010f88  x7
-0x00010f89  x4     VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS_V2
-0x00010f8b  x1
+```c
+if (p->v->cvd_v2_3)
+	cvp = session_create_v3(...);   /* full */
+else
+	cvp = session_create(...);      /* stripped down */
 ```
 
-The OEM calibrated `TX_SM_ECNS_V2` and `TX_DM_FLUENCE` for this path. `TX_SM_ECNS` v1, which the driver hardcodes as the default, appears in none of the nine files. `RX_DEFAULT` also appears nowhere, although the RX path clearly was calibrated, so the RX topology actually used is probably one of the undeclared values above.
+The full path sends channel info, port media format and, crucially,
+`VSS_IVOCPROC_CMD_TOPOLOGY_COMMIT` (`0x00013198`), which activates the selected
+processing chain. The stripped path sends none of these, so the vocproc session is
+created with a topology id that is never committed. `ECNS` is nominally present
+and cancels neither echo nor noise.
 
-**6. Any other topology breaks the call.** The controls `VoiceMMode1 TX Topology` (numid 99) and `VoiceMMode1 RX Topology` (numid 100) are writable. Defaults are `69489` = `0x00010F71` and `69495` = `0x00010F77`.
+The path is selected by a device tree property:
 
-Setting TX to `69513` (`SM_ECNS_V2`) or to `69490` (`DM_FLUENCE`) lets the call connect but leaves **no audio in either direction**, so the vocproc session is not created. Restoring `69489` brings audio back without a reboot. This holds both before and after the global ACDB is loaded.
+```c
+cvd_v2_3 = of_property_read_bool(np, "qcom,cvd-v2.3");   /* q6voice-dai.c */
+```
+
+`arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi` does not define it, so
+OnePlus 6 and 6T always take the stripped path. The sc7280 device tree does define
+it.
+
+**Fix**, verified on device:
+
+```
+fdtput <dtb> /remoteproc-adsp/glink-edge/apr/apr-service@9/dais qcom,cvd-v2.3
+```
+
+After a reboot the full sequence appears and every command is accepted:
+
+```
+0x13169  create session v3      status 0x0
+0x1133d  channel info / media format, x4   status 0x0
+0x13198  topology commit        status 0x0
+0x100c6  enable                 status 0x0
+```
+
+Echo disappears **even at factory gain settings**, including the earpiece level at
+which echo was previously guaranteed. Noise suppression starts working: the user's
+speech comes through over steady background noise. Verified over several live calls.
+
+## Second defect: the range of the in-call volume control
+
+`/usr/share/alsa/ucm2/OnePlus/fajita/VoiceCall.conf` assigns
+
+```
+PlaybackVolume "RX0 Digital Volume"
+```
+
+whose scale is `dBscale-min=-84.00dB, step=1.00dB, max=124`, so value 84 is 0 dB
+and 124 is **+40 dB**. PipeWire maps its percentage range onto the whole control
+range, so the upper third of the slider applies positive digital gain and clips.
+
+The consequence is not obvious. Clipping is a nonlinear distortion while the echo
+canceller models the echo path linearly, so the residual cannot be cancelled and
+**echo comes back**. A user sees "I raised the volume and echo appeared" with no
+way to explain it. Reproduced repeatedly.
+
+`SHIFT/axolotl` uses the same control, so this is not OnePlus specific.
+
+Suggestion: assign a control with a sane range, or limit the range in the codec
+driver. UCM has no mechanism to cap a volume range.
+
+## Third defect: microphone gain set too low
+
+`BootSequence` in `fajita.conf` sets `DEC7 Volume 75`, which is −9 dB on the
+handset microphone, and the remote party hears the user quietly. About 80 (−4 dB)
+was comfortable in live testing.
+
+## What remains unsolved
+
+`TX_SM_ECNS_V2` and `TX_DM_FLUENCE` cannot be instantiated: the DSP answers
+`ADSP_EFAILED` to `TOPOLOGY_COMMIT`. The reason is that device calibration is never
+sent: `q6cvp` has neither shared memory support (`mem_handle = 0` everywhere) nor
+any calibration registration command. This is the upstream
+`TODO: Implement calibration`.
+
+One finding from parsing the device's own factory calibration
+(`/vendor/etc/acdbdata/MTP/MTP_Handset_cal.acdb`) is worth reporting. Its device
+property table `DPROPLUT` carries property `0x000113af`, the topology id, per
+device:
+
+```
+device 4  'HANDSET_MIC'          topology 0x00010f89  TX_SM_ECNS_V2
+device 5  'HANDSET_MIC_...'      topology 0x00010f88
+device 6  'HANDSET_MIC_ENDFIRE'  topology 0x00010f72  TX_DM_FLUENCE
+```
+
+The vendor assigned **ECNS v2** to the handset microphone. `TX_SM_ECNS` v1, which
+the driver hardcodes as the default, does not appear in any of the nine calibration
+files of this device. So the driver default contradicts the calibration, and the
+correct approach is to read the topology from the ACDB the way Android does.
+
+Related: the microphone channel count in `q6cvp` is hardcoded to 1. We turned it
+into a module parameter and confirmed the DSP accepts two channels, but
+`DM_FLUENCE` still needs calibration.
 
 ## Reproduction
 
 ```
-amixer -c O6T cget "name=VoiceMMode1 TX Topology"    # 69489
-amixer -c O6T cset "name=VoiceMMode1 TX Topology" 69513
-# place a call: connects, silence both ways
-amixer -c O6T cset "name=VoiceMMode1 TX Topology" 69489
-# place a call: audio works, remote party hears echo
+# before: topology commit is never sent
+dmesg | grep -c "opcode 0x13198"        # 0
+
+fdtput <dtb> /remoteproc-adsp/glink-edge/apr/apr-service@9/dais qcom,cvd-v2.3
+# reboot, place a call
+dmesg | grep "opcode 0x13198"           # status: 0x0, echo gone
 ```
 
-## Interpretation and suggestions
-
-The echo is not simply uncalibrated ECNS. The driver selects a processing chain for which no parameters exist on this hardware, while the chains the OEM did calibrate cannot be instantiated because voice calibration from the device ACDB files is never sent to the DSP, which is exactly what the `TODO` in `q6cvp_session_create()` refers to.
-
-Suggestions:
-
-1. Implement voice calibration delivery from the device ACDB files through the CVP calibration commands, resolving the `TODO`.
-2. Add `qcom,acdb-name` to the OnePlus 6 and 6T device trees. Today global ACDB loading is silently disabled there.
-3. Revisit the default TX topology. `SM_ECNS` v1 appears unused by OEM calibration on this device, while `SM_ECNS_V2` and `DM_FLUENCE` are calibrated.
-4. Note that `DM_FLUENCE` needs two microphones, while fajita's `VoiceCall.conf` enables only the bottom mic (`AMIC4`, `MultiMedia2` via `SLIMBUS_0_TX`). Dual mic processing would also require a UCM change.
-
-Extracted ACDB files and the reproduction scripts can be provided on request.
+Extracted calibration, reproduction scripts and an ACDB format parser are available
+on request.

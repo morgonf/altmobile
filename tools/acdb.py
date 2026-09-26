@@ -9,6 +9,7 @@
     acdb.py <файл> lut <ИМЯ>             разбор таблицы вида *LUT
     acdb.py <файл> vpst                  статическая калибровка голоса, расшифровка
     acdb.py <файл> vpdy                  динамическая калибровка голоса
+    acdb.py <файл> devprops [устр...]    свойства устройств и их топологии
     acdb.py <файл> hex <смещение> <длина>  шестнадцатеричный дамп
     acdb.py <файл> words <смещение> <сколько>  дамп как u32
     acdb.py <файл> find <0xЗНАЧЕНИЕ>     поиск u32 по всему файлу
@@ -41,12 +42,33 @@ SAMPLE_RATES = {8000: "8 кГц", 16000: "16 кГц", 32000: "32 кГц",
                 44100: "44,1 кГц", 48000: "48 кГц", 96000: "96 кГц",
                 192000: "192 кГц"}
 
+# Свойства устройств из DPROPLUT. Значения лежат в DATAPOOL как
+# u32 размер, затем данные. Расшифровано не всё.
+DEVICE_PROPS = {
+    0x000113af: "идентификатор топологии",
+    0x000113b3: "идентификатор устройства AFE",
+    0x000113b6: "?113b6",
+    0x000113b7: "?113b7",
+    0x000113b8: "имя устройства (UTF-16)",
+    0x000113ad: "?113ad",
+    0x000113a9: "?113a9",
+    0x00013150: "?13150",
+    0x00012a4b: "?12a4b",
+    0x00012ecd: "?12ecd",
+    0x00012eed: "?12eed",
+    0x0001323e: "?1323e",
+}
+
 VOICE_TOPOLOGIES = {
     0x00010F70: "TOPOLOGY_ID_NONE",
     0x00010F71: "TX_SM_ECNS (v1)",
     0x00010F72: "TX_DM_FLUENCE",
     0x00010F77: "RX_DEFAULT",
+    0x00010F86: "?f86, встречается в калибровке",
+    0x00010F87: "?f87, встречается в калибровке",
+    0x00010F88: "?f88, встречается в калибровке",
     0x00010F89: "TX_SM_ECNS_V2",
+    0x00010F8B: "?f8b, встречается в калибровке",
 }
 
 
@@ -197,9 +219,39 @@ def cmd_find(d, args):
         print(f"  смещение {i}{'  (выровнено)' if i % 4 == 0 else ''}")
 
 
+def cmd_devprops(d, args):
+    """Свойства устройств: DPROPLUT плюс значения из DATAPOOL."""
+    o = d.find(b"DPROPLUT")
+    if o == -1:
+        sys.exit("DPROPLUT не найден, это не файл устройства")
+    length, count = struct.unpack_from("<II", d, o + 8)
+    base = o + 16
+    rows = [struct.unpack_from("<III", d, base + i * 12) for i in range(count)]
+    dp = d.find(b"DATAPOOL") + 12          # данные идут сразу после длины
+    only = {int(a) for a in args} if args else None
+    devs = sorted({r[0] for r in rows})
+    for dev in devs:
+        if only and dev not in only:
+            continue
+        print(f"--- устройство {dev}")
+        for dv, prop, off in rows:
+            if dv != dev:
+                continue
+            size, = struct.unpack_from("<I", d, dp + off)
+            val, = struct.unpack_from("<I", d, dp + off + 4)
+            name = DEVICE_PROPS.get(prop, f"0x{prop:08x}")
+            note = ""
+            if prop == 0x000113b8:                      # имя в UTF-16
+                raw = d[dp + off + 4: dp + off + 4 + size]
+                note = repr(raw.decode("utf-16-le", errors="ignore").rstrip("\0"))
+            elif val in VOICE_TOPOLOGIES:
+                note = f"<<< {VOICE_TOPOLOGIES[val]}"
+            print(f"    {name:28} размер {size:3}  значение 0x{val:08x}  {note}")
+
+
 COMMANDS = {
     "sections": cmd_sections, "lut": cmd_lut, "vpst": cmd_vpst,
-    "vpdy": cmd_vpdy, "hex": cmd_hex, "words": cmd_words, "find": cmd_find,
+    "vpdy": cmd_vpdy, "devprops": cmd_devprops, "hex": cmd_hex, "words": cmd_words, "find": cmd_find,
 }
 
 
