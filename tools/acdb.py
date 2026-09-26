@@ -11,7 +11,7 @@
     acdb.py <файл> vpst                  статическая калибровка голоса, расшифровка
     acdb.py <файл> vpdy                  динамическая калибровка голоса
     acdb.py <файл> cal <TX> <RX> [--dyn] [--list] [--entry N]   цепочка калибровки
-    acdb.py <файл> export <TX> <RX> <вариант> <файл> [--dyn]   выгрузка калибровки
+    acdb.py <файл> export <TX> <RX> <вариант> <файл> [--dyn] [--modules список]  выгрузка
     acdb.py <файл> devprops [устр...]    свойства устройств и их топологии
     acdb.py <файл> hex <смещение> <длина>  шестнадцатеричный дамп
     acdb.py <файл> words <смещение> <сколько>  дамп как u32
@@ -369,10 +369,15 @@ def cmd_export(d, args):
             u32 модуль   u32 параметр   u32 размер   данные, добитые до 4 байт
     """
     dyn = "--dyn" in args
+    only = None
+    if "--modules" in args:
+        only = {int(x, 0) for x in args[args.index("--modules") + 1].split(",")}
+        args = [a for i, a in enumerate(args)
+                if i not in (args.index("--modules"), args.index("--modules") + 1)]
     nums = [int(a) for a in args if a.isdigit()]
     out = [a for a in args if not a.startswith("--") and not a.isdigit()]
     if len(nums) < 3 or not out:
-        sys.exit("нужно: export <TX> <RX> <вариант> <файл> [--dyn]")
+        sys.exit("нужно: export <TX> <RX> <вариант> <файл> [--dyn] [--modules 0x..,0x..]")
     tx, rx, entry = nums[0], nums[1], nums[2]
     path = out[0]
 
@@ -389,6 +394,10 @@ def cmd_export(d, args):
         sys.exit(f"вариантов всего {len(pairs)}")
     a, b = pairs[entry]
     params = _cal_param_rows(d, cdft[a], cdot[b])
+    if only is not None:
+        params = [p for p in params if p[0] in only]
+        if not params:
+            sys.exit("ни один параметр варианта не принадлежит указанным модулям")
     bad = [p for p in params if not p[5]]
     if bad:
         sys.exit("данные параметра выходят за границу DATAPOOL, выгрузка отменена")
