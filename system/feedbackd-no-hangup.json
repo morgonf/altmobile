@@ -1,0 +1,16 @@
+{
+  "name" : "no-hangup",
+  "parent-name" : "$device",
+  "profiles" : [
+    {
+      "name" : "full",
+      "feedbacks" : [
+        {
+          "event-name" : "phone-hangup",
+          "type"       : "Dummy",
+          "duration"   : 0
+        }
+      ]
+    }
+  ]
+}
