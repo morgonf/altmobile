@@ -1,0 +1,223 @@
+Перебор топологий и идентификаторов сети за один звонок
+
+На каждую догадку уходил отдельный звонок пользователя, и это слишком дорого.
+Теперь драйвер по параметру probe_topologies сам создаёт сессию vocproc на
+каждое сочетание топологии передачи и идентификатора сети, пробует
+TOPOLOGY_COMMIT, пишет результат в журнал и уничтожает сессию. Пятнадцать
+сочетаний занимают около ста миллисекунд, разговор дальше идёт обычным путём.
+
+Заодно поля profile_id и vocproc_mode команды создания сессии стали
+параметрами модуля q6cvp, потому что profile_id был жёстко равен
+VSS_ICOMMON_CAL_NETWORK_ID_NONE, а калибровка в ACDB существует только для
+настоящих идентификаторов сети.
+
+Результат перебора на живом звонке 26 сентября 2026 приведён в
+docs/driver-plan.md. Коротко: идентификатор сети ни на что не влияет, а
+проходят только топологии 0x10f70 и 0x10f71.
+
+--- a/q6cvp.h	2026-09-26 12:04:56.724735939 -0400
++++ b/q6cvp.h	2026-09-26 13:20:26.896654587 -0400
+@@ -14,6 +14,7 @@
+ 						u32 tx_topo, u32 rx_topo);
+ int q6cvp_send_channel_info(struct q6voice_session *cvp, bool is_tx);
+ int q6cvp_send_media_format(struct q6voice_session *cvp, int port_id, bool is_tx);
++void q6cvp_set_profile_id(u32 id);
+ int q6cvp_send_param(struct q6voice_session *cvp, u32 module_id, u32 param_id,
+ 		     const void *data, u16 size);
+ int q6cvp_topology_commit(struct q6voice_session *cvp);
+--- a/q6cvp.c	2026-09-26 12:04:56.724735939 -0400
++++ b/q6cvp.c	2026-09-26 13:20:26.896654587 -0400
+@@ -13,6 +13,21 @@
+ module_param(tx_channels, uint, 0644);
+ MODULE_PARM_DESC(tx_channels, "Number of TX (microphone) channels for voice processing (1 or 2)");
+ 
++/*
++ * The voice calibration in the ACDB files of this device exists for network
++ * ids 0x1135F to 0x11363 only, never for VSS_ICOMMON_CAL_NETWORK_ID_NONE,
++ * which is what gets sent here. Topologies that need calibration may well be
++ * refused because of that, so make the field adjustable.
++ */
++static unsigned int profile_id = 0x0001135E;
++module_param(profile_id, uint, 0644);
++MODULE_PARM_DESC(profile_id, "Calibration network id sent in the create session command");
++
++/* EC_INT_MIXING by default, EC_EXT_MIXING is 0x00010F7D */
++static unsigned int vocproc_mode = 0x00010F7C;
++module_param(vocproc_mode, uint, 0644);
++MODULE_PARM_DESC(vocproc_mode, "Vocproc mode sent in the create session command");
++
+ #define VSS_IVOCPROC_DIRECTION_RX	0
+ #define VSS_IVOCPROC_DIRECTION_TX	1
+ #define VSS_IVOCPROC_DIRECTION_RX_TX	2
+@@ -191,6 +206,13 @@
+ 	struct vss_icommon_param_data param_data;
+ } __packed;
+ 
++/* Чтобы перебирать значения из q6voice.c, не меняя устоявшийся вид вызовов */
++void q6cvp_set_profile_id(u32 id)
++{
++	profile_id = id;
++}
++EXPORT_SYMBOL_GPL(q6cvp_set_profile_id);
++
+ struct q6voice_session *q6cvp_session_create(enum q6voice_path_type path,
+ 					     u16 tx_port, u16 rx_port,
+ 					     u32 tx_topo, u32 rx_topo)
+@@ -206,8 +228,8 @@
+ 	cmd.direction = VSS_IVOCPROC_DIRECTION_RX_TX;
+ 	cmd.tx_port_id = tx_port;
+ 	cmd.rx_port_id = rx_port;
+-	cmd.profile_id = VSS_ICOMMON_CAL_NETWORK_ID_NONE;
+-	cmd.vocproc_mode = VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING;
++	cmd.profile_id = profile_id;
++	cmd.vocproc_mode = vocproc_mode;
+ 	cmd.ec_ref_port_id = VSS_IVOCPROC_PORT_ID_NONE;
+ 
+ 	return q6voice_session_create(Q6VOICE_SERVICE_CVP, path, &cmd.hdr);
+@@ -233,8 +255,8 @@
+ 	cmd.direction = VSS_IVOCPROC_DIRECTION_RX_TX;
+ 	cmd.tx_port_id = tx_port;
+ 	cmd.rx_port_id = rx_port;
+-	cmd.profile_id = VSS_ICOMMON_CAL_NETWORK_ID_NONE;
+-	cmd.vocproc_mode = VSS_IVOCPROC_VOCPROC_MODE_EC_INT_MIXING;
++	cmd.profile_id = profile_id;
++	cmd.vocproc_mode = vocproc_mode;
+ 	cmd.ec_ref_port_id = VSS_IVOCPROC_PORT_ID_NONE;
+ 
+ 	return q6voice_session_create(Q6VOICE_SERVICE_CVP, path, &cmd.hdr);
+--- a/q6voice.c	2026-09-26 12:04:56.724735939 -0400
++++ b/q6voice.c	2026-09-26 13:20:26.896654587 -0400
+@@ -37,6 +37,44 @@
+ MODULE_PARM_DESC(cal_firmware,
+ 		 "File with voice processing parameters to send after topology commit");
+ 
++/*
++ * Map a page of memory to the DSP when a call starts, log the handle and
++ * unmap it again. Checks the VSS_IMEMORY path on its own, since there is
++ * nothing to carry in that memory yet: the layout of the calibration table
++ * the DSP expects there is produced by a closed userspace library and is not
++ * known.
++ */
++static bool mem_map_test;
++module_param(mem_map_test, bool, 0644);
++MODULE_PARM_DESC(mem_map_test,
++		 "Map and unmap DSP shared memory when a call starts, to test the IMEMORY path");
++
++/*
++ * Пройти набор сочетаний топологии передачи и идентификатора сети за один
++ * звонок и записать в журнал, какие из них процессор принимает. Каждое
++ * сочетание это отдельная сессия vocproc, которая создаётся, получает формат,
++ * пробует TOPOLOGY_COMMIT и уничтожается. Иначе на каждую догадку уходит
++ * отдельный звонок.
++ */
++static bool probe_topologies;
++module_param(probe_topologies, bool, 0644);
++MODULE_PARM_DESC(probe_topologies,
++		 "Try a set of TX topology and network id combinations at call start and log which ones commit");
++
++static const u32 probe_topo_list[] = {
++	0x00010F71,	/* TX_SM_ECNS, это работает, нужен для сверки */
++	0x00010F89,	/* TX_SM_ECNS_V2, под него калибровано устройство 4 */
++	0x00010F88,	/* топология устройства 5 */
++	0x00010F72,	/* TX_DM_FLUENCE, устройство 6 */
++	0x00010F70,	/* TOPOLOGY_ID_NONE */
++};
++
++static const u32 probe_profile_list[] = {
++	0x0001135E,	/* VSS_ICOMMON_CAL_NETWORK_ID_NONE */
++	0x0001135F,
++	0x00011363,
++};
++
+ #define Q6VOICE_CAL_MAGIC	"Q6VCAL01"
+ #define Q6VOICE_CAL_VERSION	1
+ 
+@@ -191,13 +229,63 @@
+ 	return cvp;
+ }
+ 
++static void q6voice_probe_topologies(struct q6voice_path *p, int tx_port,
++				     int rx_port)
++{
++	struct device *dev = p->v->dev;
++	unsigned int i, j;
++	unsigned int good = 0;
++
++	dev_info(dev, "probe: trying %zu topologies against %zu network ids\n",
++		 ARRAY_SIZE(probe_topo_list), ARRAY_SIZE(probe_profile_list));
++
++	for (i = 0; i < ARRAY_SIZE(probe_topo_list); i++) {
++		for (j = 0; j < ARRAY_SIZE(probe_profile_list); j++) {
++			struct q6voice_session *cvp;
++			u32 topo = probe_topo_list[i];
++			u32 prof = probe_profile_list[j];
++			int ret;
++
++			q6cvp_set_profile_id(prof);
++
++			cvp = q6cvp_session_create_v3(p->type, tx_port, rx_port,
++						      topo, p->rx_topo);
++			if (IS_ERR(cvp)) {
++				dev_info(dev, "probe: topology %#x network %#x: session not created, %ld\n",
++					 topo, prof, PTR_ERR(cvp));
++				continue;
++			}
++
++			q6cvp_send_channel_info(cvp, false);
++			q6cvp_send_channel_info(cvp, true);
++			q6cvp_send_media_format(cvp, rx_port, false);
++			q6cvp_send_media_format(cvp, tx_port, true);
++
++			ret = q6cvp_topology_commit(cvp);
++			if (ret) {
++				dev_info(dev, "probe: topology %#x network %#x: commit failed, %d\n",
++					 topo, prof, ret);
++			} else {
++				dev_info(dev, "probe: topology %#x network %#x: COMMIT OK\n",
++					 topo, prof);
++				good++;
++			}
++
++			q6voice_session_release(cvp);
++		}
++	}
++
++	dev_info(dev, "probe: %u combinations committed\n", good);
++}
++
+ static int q6voice_path_start(struct q6voice_path *p)
+ {
+ 	struct device *dev = p->v->dev;
+ 	struct q6voice_session *mvm, *cvp;
+ 	int ret;
+ 
+-	dev_dbg(dev, "start path %d\n", p->type);
++	dev_info(dev, "start path %d: tx topology %#x on port %d, rx topology %#x on port %d\n",
++		 p->type, p->tx_topo, p->tx_port, p->rx_topo, p->rx_port);
+ 
+ 	mvm = p->runtime->sessions[Q6VOICE_SERVICE_MVM];
+ 	if (!mvm) {
+@@ -207,6 +295,23 @@
+ 		p->runtime->sessions[Q6VOICE_SERVICE_MVM] = mvm;
+ 	}
+ 
++	if (mem_map_test) {
++		struct q6voice_mem mem = {0};
++
++		if (q6mvm_mem_map(mvm, &mem, PAGE_SIZE) == 0) {
++			dev_info(dev, "memory map test: handle %#x for %zu bytes at %pad\n",
++				 mem.handle, mem.size, &mem.data_phys);
++			q6mvm_mem_unmap(mvm, &mem);
++		}
++	}
++
++	if (probe_topologies) {
++		q6voice_probe_topologies(p, q6afe_get_port_id(p->tx_port),
++					 q6afe_get_port_id(p->rx_port));
++		/* вернуть настройку, которую выставил пользователь */
++		q6cvp_set_profile_id(0x0001135E);
++	}
++
+ 	cvp = p->runtime->sessions[Q6VOICE_SERVICE_CVP];
+ 	if (!cvp) {
+ 		if (p->v->cvd_v2_3)
