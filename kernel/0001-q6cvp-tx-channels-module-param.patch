@@ -1,5 +1,5 @@
---- /tmp/.private/user/build-1000/-home-user-work-tmp/356c50ba-3cfe-4948-a01b-a57ee96de55e/scratchpad/q6src/q6cvp.c.orig	2026-09-26 10:27:26.718272344 -0400
-+++ /tmp/.private/user/build-1000/-home-user-work-tmp/356c50ba-3cfe-4948-a01b-a57ee96de55e/scratchpad/q6src/q6cvp.c	2026-09-26 10:27:26.737272106 -0400
+--- a/q6cvp.c
++++ b/q6cvp.c
 @@ -8,6 +8,10 @@
  #include "q6cvp.h"
  #include "q6voice-common.h"

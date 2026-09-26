@@ -22,8 +22,8 @@ VSS_ICOMMON_CMD_SET_PARAM_V2, которой драйвер уже пользу�
 Параметры добываются из ACDB заранее, командой tools/acdb.py export.
 Без указанного имени файла прошивки всё поведение прежнее.
 
---- q6base/q6cvp.c	2026-09-26 11:39:21.548033614 -0400
-+++ q6work/q6cvp.c	2026-09-26 11:44:17.470313764 -0400
+--- a/q6cvp.c	2026-09-26 11:39:21.548033614 -0400
++++ b/q6cvp.c	2026-09-26 11:44:17.470313764 -0400
 @@ -4,6 +4,7 @@
  
  #include <linux/module.h>
@@ -121,8 +121,8 @@ VSS_ICOMMON_CMD_SET_PARAM_V2, которой драйвер уже пользу�
  int q6cvp_topology_commit(struct q6voice_session *cvp)
  {
  	struct apr_pkt cmd;
---- q6base/q6cvp.h	2026-09-26 11:39:21.550033588 -0400
-+++ q6work/q6cvp.h	2026-09-26 11:43:54.407603664 -0400
+--- a/q6cvp.h	2026-09-26 11:39:21.550033588 -0400
++++ b/q6cvp.h	2026-09-26 11:43:54.407603664 -0400
 @@ -14,6 +14,8 @@
  						u32 tx_topo, u32 rx_topo);
  int q6cvp_send_channel_info(struct q6voice_session *cvp, bool is_tx);
@@ -132,8 +132,8 @@ VSS_ICOMMON_CMD_SET_PARAM_V2, которой драйвер уже пользу�
  int q6cvp_topology_commit(struct q6voice_session *cvp);
  int q6cvp_enable(struct q6voice_session *cvp, bool enable);
  
---- q6base/q6voice.c	2026-09-26 11:39:21.540033714 -0400
-+++ q6work/q6voice.c	2026-09-26 11:45:08.825668201 -0400
+--- a/q6voice.c	2026-09-26 11:39:21.540033714 -0400
++++ b/q6voice.c	2026-09-26 11:45:08.825668201 -0400
 @@ -3,6 +3,8 @@
  // Copyright (c) 2020, Stephan Gerhold
  
