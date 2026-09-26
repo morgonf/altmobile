@@ -1,0 +1,51 @@
+--- /tmp/.private/user/build-1000/-home-user-work-tmp/356c50ba-3cfe-4948-a01b-a57ee96de55e/scratchpad/q6src/q6cvp.c.orig	2026-09-26 10:27:26.718272344 -0400
++++ /tmp/.private/user/build-1000/-home-user-work-tmp/356c50ba-3cfe-4948-a01b-a57ee96de55e/scratchpad/q6src/q6cvp.c	2026-09-26 10:27:26.737272106 -0400
+@@ -8,6 +8,10 @@
+ #include "q6cvp.h"
+ #include "q6voice-common.h"
+ 
++static unsigned int tx_channels = 1;
++module_param(tx_channels, uint, 0644);
++MODULE_PARM_DESC(tx_channels, "Number of TX (microphone) channels for voice processing (1 or 2)");
++
+ #define VSS_IVOCPROC_DIRECTION_RX	0
+ #define VSS_IVOCPROC_DIRECTION_TX	1
+ #define VSS_IVOCPROC_DIRECTION_RX_TX	2
+@@ -233,7 +237,7 @@
+ 	cmd.param_data.reserved = 0;
+ 
+ 	if (is_tx)
+-		cmd.param_data.channel_info.num_channels = 1;
++		cmd.param_data.channel_info.num_channels = tx_channels;
+ 	else
+ 		cmd.param_data.channel_info.num_channels = 2;
+ 
+@@ -241,7 +245,8 @@
+ 	cmd.param_data.channel_info.channel_mapping[0] = 1;
+ 
+ 	if (is_tx)
+-		cmd.param_data.channel_info.channel_mapping[1] = 0;
++		cmd.param_data.channel_info.channel_mapping[1] =
++			(tx_channels > 1) ? 2 : 0;
+ 	else
+ 		cmd.param_data.channel_info.channel_mapping[1] = 1;
+ 
+@@ -278,7 +283,7 @@
+ 	cmd.param_data.media_format_info.port_id = port_id;
+ 
+ 	if (is_tx)
+-		cmd.param_data.media_format_info.num_channels = 1;
++		cmd.param_data.media_format_info.num_channels = tx_channels;
+ 	else
+ 		cmd.param_data.media_format_info.num_channels = 2;
+ 
+@@ -287,7 +292,8 @@
+ 	cmd.param_data.media_format_info.channel_mapping[0] = 1;
+ 
+ 	if (is_tx)
+-		cmd.param_data.media_format_info.channel_mapping[1] = 0;
++		cmd.param_data.media_format_info.channel_mapping[1] =
++			(tx_channels > 1) ? 2 : 0;
+ 	else
+ 		cmd.param_data.media_format_info.channel_mapping[1] = 1;
+ 
