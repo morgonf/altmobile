@@ -1,0 +1,19 @@
+[Unit]
+Description=FastRPC file server for ADSP audio (dynamic ECNS/Fluence modules)
+Documentation=https://github.com/linux-msm/hexagonrpc
+# ADSP запрашивает adsp_avs_config.acdb и модули mmecns_module.so.1 и
+# fluence_voiceplus_module.so.1 сразу после подключения. Сборка с
+# реализованным apps_std_ftell: без неё служба выходит посреди чтения, а
+# ADSP остаётся в прежнем сеансе до перезагрузки.
+ConditionPathExists=/dev/fastrpc-adsp
+After=dev-fastrpc\x2dadsp.device
+Wants=dev-fastrpc\x2dadsp.device
+Conflicts=hexagonrpcd-adsp-rootpd.service
+
+[Service]
+ExecStart=/usr/bin/stdbuf -oL -eL /usr/local/sbin/hexagonrpcd-ftell -f /dev/fastrpc-adsp -d adsp -R /var/lib/droid-juicer/sensors/
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

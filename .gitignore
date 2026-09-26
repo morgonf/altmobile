@@ -17,3 +17,11 @@ acdb/
 modules.order
 __pycache__/
 *.pyc
+
+# Динамические модули ADSP и настройки звука с разделов dsp_a и vendor_a:
+# проприетарные файлы Qualcomm и OnePlus, на телефоне они уже есть
+dsp/
+vendor/
+
+# Черновая копия исходников модулей, итоговые лежат в kernel/src
+kernel/work/
