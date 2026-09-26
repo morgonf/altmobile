@@ -1,131 +1,121 @@
-# q6voice: echo cancellation on sdm845 is fixed by one missing device tree property
+# q6voice on sdm845 (OnePlus 6T): what it takes to get working echo cancellation
+
+Updated 2026-09-26. An earlier version of this report claimed that the missing
+`qcom,cvd-v2.3` device tree property alone fixes the echo. That was wrong. The
+property only makes the v1 echo canceller work, and the far end still hears
+itself. Everything below was verified on live calls.
 
 ## Environment
 
 - Device: OnePlus 6T (fajita), unlocked bootloader
 - Distro: ALT Mobile (Sisyphus), kernel `7.1.0-qualcomm-sdm845-alt0.rc1`
-- Kernel fork: https://altlinux.space/alt-mobile/linux branch `alt/sdm845`
-- ALSA card: `O6T`
+- Kernel fork: https://altlinux.space/alt-mobile/linux, branch `alt/sdm845`
+- ADSP firmware: vendor image, extracted by `droid-juicer`
 
-## Symptom
+## Summary
 
-The remote party hears a clear echo of their own voice and noise suppression does
-not work. Local audio is fine. This is a known open issue on sdm845 mainline.
+Echo is gone on this device. Four things were needed, each one on its own is
+not enough.
 
-## Root cause and fix
+1. `qcom,cvd-v2.3` in the device tree, otherwise `TOPOLOGY_COMMIT` is never sent.
+2. A FastRPC file server for the ADSP root PD. The echo canceller the vendor
+   assigned to the handset mic is not built into the ADSP image. The ADSP loads
+   it from the `dsp` partition over FastRPC, and nothing on the Linux side
+   answered.
+3. An explicit echo reference taken from the RX AFE port.
+4. Enabling the module after the call is established, until calibration is
+   registered through shared memory.
 
-**The driver never sends the topology commit command to the DSP.**
+## 1. `qcom,cvd-v2.3`
 
-`sound/soc/qcom/qdsp6/q6voice.c` has two setup paths:
+Without it `q6voice-dai` takes the stripped session setup that sends neither
+channel info, nor port media format, nor `VSS_IVOCPROC_CMD_TOPOLOGY_COMMIT`
+(`0x00013198`). `sdm845-oneplus-common.dtsi` does not set it.
 
-```c
-if (p->v->cvd_v2_3)
-	cvp = session_create_v3(...);   /* full */
-else
-	cvp = session_create(...);      /* stripped down */
-```
+With it the default `TX_SM_ECNS` (`0x10f71`) topology is committed. The v1 canceller
+reduces echo but does not remove it. A tone test on the earpiece shows 14 dB
+terminal coupling loss, where 3GPP TS 26.131 asks for at least 45 dB.
 
-The full path sends channel info, port media format and, crucially,
-`VSS_IVOCPROC_CMD_TOPOLOGY_COMMIT` (`0x00013198`), which activates the selected
-processing chain. The stripped path sends none of these, so the vocproc session is
-created with a topology id that is never committed. `ECNS` is nominally present
-and cancels neither echo nor noise.
+## 2. ECNS v2 and Fluence are dynamic ADSP modules
 
-The path is selected by a device tree property:
+The device calibration (`MTP_Handset_cal.acdb`, property `0x000113af` in
+`DPROPLUT`) assigns `TX_SM_ECNS_V2` (`0x10f89`) to the handset mic and
+`TX_DM_FLUENCE` (`0x10f72`) to the dual mic setup. The DSP rejected both with
+`ADSP_EFAILED` regardless of sample rate, channel count or channel map.
 
-```c
-cvd_v2_3 = of_property_read_bool(np, "qcom,cvd-v2.3");   /* q6voice-dai.c */
-```
-
-`arch/arm64/boot/dts/qcom/sdm845-oneplus-common.dtsi` does not define it, so
-OnePlus 6 and 6T always take the stripped path. The sc7280 device tree does define
-it.
-
-**Fix**, verified on device:
+The modules implementing them live on the `dsp_a` partition:
 
 ```
-fdtput <dtb> /remoteproc-adsp/glink-edge/apr/apr-service@9/dais qcom,cvd-v2.3
+dsp/adsp/mmecns_module.so.1          capi_v2_voice_sm_ecns_v2_init
+dsp/adsp/fluence_voiceplus_module.so.1
 ```
 
-After a reboot the full sequence appears and every command is accepted:
+The ADSP `dlopen`s them and fetches the files from Linux through the FastRPC
+`apps_std` interface (Android runs `adsprpcd` for this). hexagonrpcd can serve
+it, but its root PD service is disabled on SDM845 with a FIXME. The reason is
+that right after attaching, the ADSP reads `adsp_avs_config.acdb` and calls
+`apps_std_ftell` (method 8), which hexagonrpcd 0.4.0 does not implement:
 
 ```
-0x13169  create session v3      status 0x0
-0x1133d  channel info / media format, x4   status 0x0
-0x13198  topology commit        status 0x0
-0x100c6  enable                 status 0x0
+Unsupported method: 8 (08010100)
 ```
 
-Echo disappears **even at factory gain settings**, including the earpiece level at
-which echo was previously guaranteed. Noise suppression starts working: the user's
-speech comes through over steady background noise. Verified over several live calls.
+The daemon exits in the middle of the read and the ADSP stays in the old session
+until reboot. With `ftell` implemented (patch against hexagonrpc v0.4.0 in
+`tools/hexagonrpc`), the ADSP reads the module registry, loads both libraries,
+and `TOPOLOGY_COMMIT` succeeds for `0x10f89` and `0x10f72`.
 
-## Second defect: the range of the in-call volume control
+## 3. Echo reference
 
-`/usr/share/alsa/ucm2/OnePlus/fajita/VoiceCall.conf` assigns
+With ECNS v2 committed and calibrated, reading parameters back
+(`VSS_ICOMMON_CMD_GET_PARAM_V2` `0x1133e` with `mem_handle` 0, in-band reply
+`VSS_ICOMMON_RSP_GET_PARAM` `0x11008`) shows the module enabled with vendor
+coefficients, yet echo passes untouched. Once the module actually runs, it mutes
+the whole uplink. In `EC_INT_MIXING` mode with `ec_ref_port_id` =
+`VSS_IVOCPROC_PORT_ID_NONE`, as the driver does now, it gets no reference
+(the module has `capi_v2_quartet_gen_far_zeroes` for that case).
 
-```
-PlaybackVolume "RX0 Digital Volume"
-```
+External reference from the RX port works, the same way the vendor driver does
+with `ec_ref_ext`. The pieces are listed below.
 
-whose scale is `dBscale-min=-84.00dB, step=1.00dB, max=124`, so value 84 is 0 dB
-and 124 is **+40 dB**. PipeWire maps its percentage range onto the whole control
-range, so the upper third of the slider applies positive digital gain and clips.
+- `vocproc_mode` = `VSS_IVOCPROC_VOCPROC_MODE_EC_EXT_MIXING` (`0x00010f7d`)
+- `ec_ref_port_id` = the RX AFE port (`SLIMBUS_0_RX`)
+- `VSS_PARAM_VOCPROC_EC_REF_CHANNEL_INFO` (`0x00013290`), which the vendor
+  driver always sends
+- `VSS_PARAM_EC_REF_PORT_ENDPOINT_MEDIA_INFO` (`0x00013255`)
 
-The consequence is not obvious. Clipping is a nonlinear distortion while the echo
-canceller models the echo path linearly, so the residual cannot be cancelled and
-**echo comes back**. A user sees "I raised the volume and echo appeared" with no
-way to explain it. Reproduced repeatedly.
+## 4. Calibration sent in-band does not survive module re-initialisation
 
-`SHIFT/axolotl` uses the same control, so this is not OnePlus specific.
+The driver sends parameters one by one in-band (`SET_PARAM_V2`, `mem_handle` 0).
+The voice path starts when the number is dialled, but the module receives its
+media type only when the modem starts passing audio. At that point it
+re-initialises with its own defaults (mode word `0x0480002c` becomes
+`0x0480032d`) and the earlier enable stays bypassed. Disabling and re-enabling
+the module after the call is answered makes it work. Rewriting the calibration
+between the first audio and the answer does not help and even prevents later
+re-enables from working. The kernel cannot see the answer, since no APR packet
+arrives from the ADSP at that moment. Our current workaround is a small service
+triggered by the ModemManager `StateChanged` signal.
 
-Suggestion: assign a control with a sane range, or limit the range in the codec
-driver. UCM has no mechanism to cap a volume range.
+The proper fix is what the vendor driver does, which is registering calibration
+tables in shared memory (`VSS_IVOCPROC_CMD_REGISTER_STATIC_CALIBRATION_DATA`
+`0x0001307a` and related), so that the DSP reapplies them on every
+re-initialisation. This needs `VSS_IMEMORY` mapping and the table layout
+produced by the proprietary `libacdbloader`. That is our next step.
 
-## Third defect: microphone gain set too low
+## Codec findings (`wcd934x`)
 
-`BootSequence` in `fajita.conf` sets `DEC7 Volume 75`, which is −9 dB on the
-handset microphone, and the remote party hears the user quietly. About 80 (−4 dB)
-was comfortable in live testing.
+- `RX0 Digital Volume` goes up to +40 dB. When UCM uses it as the in-call
+  volume, the upper third of the slider clips, and clipped echo cannot be
+  cancelled by a linear canceller. A patch capping it at 0 dB is in `kernel/wcd`.
+- The `ADCn Volume` TLV says 0.25 dB per step. A 1 kHz tone measurement between
+  values 20 and 12 gave 14.4 dB, which is about 1.8 dB per step.
+- `slim_tx_mixer_get()` returns `tx_port_value[port]` regardless of the DAI, so
+  `AIF1_CAP Mixer SLIM TX6` reads `on` while the port is actually in `AIF2_CAP`.
 
-## What remains unsolved
+## Available on request
 
-`TX_SM_ECNS_V2` and `TX_DM_FLUENCE` cannot be instantiated: the DSP answers
-`ADSP_EFAILED` to `TOPOLOGY_COMMIT`. The reason is that device calibration is never
-sent: `q6cvp` has neither shared memory support (`mem_handle = 0` everywhere) nor
-any calibration registration command. This is the upstream
-`TODO: Implement calibration`.
-
-One finding from parsing the device's own factory calibration
-(`/vendor/etc/acdbdata/MTP/MTP_Handset_cal.acdb`) is worth reporting. Its device
-property table `DPROPLUT` carries property `0x000113af`, the topology id, per
-device:
-
-```
-device 4  'HANDSET_MIC'          topology 0x00010f89  TX_SM_ECNS_V2
-device 5  'HANDSET_MIC_...'      topology 0x00010f88
-device 6  'HANDSET_MIC_ENDFIRE'  topology 0x00010f72  TX_DM_FLUENCE
-```
-
-The vendor assigned **ECNS v2** to the handset microphone. `TX_SM_ECNS` v1, which
-the driver hardcodes as the default, does not appear in any of the nine calibration
-files of this device. So the driver default contradicts the calibration, and the
-correct approach is to read the topology from the ACDB the way Android does.
-
-Related: the microphone channel count in `q6cvp` is hardcoded to 1. We turned it
-into a module parameter and confirmed the DSP accepts two channels, but
-`DM_FLUENCE` still needs calibration.
-
-## Reproduction
-
-```
-# before: topology commit is never sent
-dmesg | grep -c "opcode 0x13198"        # 0
-
-fdtput <dtb> /remoteproc-adsp/glink-edge/apr/apr-service@9/dais qcom,cvd-v2.3
-# reboot, place a call
-dmesg | grep "opcode 0x13198"           # status: 0x0, echo gone
-```
-
-Extracted calibration, reproduction scripts and an ACDB format parser are available
-on request.
+Driver sources with all of the above as module parameters (`kernel/src`), a
+cumulative patch against the ALT sources, the hexagonrpc patch, an ACDB parser
+and exporter, and scripts for live parameter control during a call
+(`live_set`, `live_get`).
