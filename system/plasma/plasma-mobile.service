@@ -1,0 +1,42 @@
+# Запуск Plasma Mobile вместо Phosh, по образцу phosh.service из пакета phosh:
+# автовход пользователя 1000 на tty1 без дисплейного менеджера.
+[Unit]
+Description=Plasma Mobile session on tty1
+Conflicts=getty@tty1.service phosh.service
+After=getty@tty1.service
+After=rc-local.service plymouth-quit-wait.service systemd-user-sessions.service
+OnFailure=getty@tty1.service
+Wants=dbus.socket
+After=dbus.socket
+After=session-c1.scope
+Before=graphical.target
+ConditionPathExists=/dev/tty0
+
+[Service]
+Environment=XDG_CURRENT_DESKTOP=KDE
+Environment=XDG_SESSION_DESKTOP=plasma-mobile
+Environment=XDG_SESSION_TYPE=wayland
+# Общая шина пользователя, иначе plasma-dbus-run-session-if-needed поднимает
+# отдельную, и службы пользователя её не видят.
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ExecStart=/sbin/capsh --noamb -- -c "exec /usr/local/bin/plasma-mobile-session"
+ExecStartPost=+chvt 1
+TimeoutStartSec=30
+User=1000
+PAMName=login
+WorkingDirectory=~
+Restart=always
+RestartSec=5s
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+
+[Install]
+WantedBy=graphical.target
+Alias=display-manager.service

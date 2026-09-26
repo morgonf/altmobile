@@ -1,0 +1,10 @@
+#!/bin/sh
+# Запуск Plasma Mobile без дисплейного менеджера. KWin работает как служба
+# пользовательского systemd (plasma-kwin_wayland.service), то есть вне
+# сеанса входа, и находит свой сеанс logind по XDG_SESSION_ID. Обычно эти
+# переменные передаёт пользовательскому systemd SDDM, здесь его нет, и KWin
+# падал с SIGSEGV через 130 мс после старта.
+dbus-update-activation-environment --systemd \
+	XDG_SESSION_ID XDG_SEAT XDG_VTNR XDG_SESSION_TYPE XDG_SESSION_CLASS \
+	XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_RUNTIME_DIR
+exec /usr/bin/startplasmamobile
