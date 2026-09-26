@@ -83,3 +83,13 @@ ECNS v2 перезапускает служба `q6echo-activate`, потому 
   SDM845 работает, пометку FIXME можно снимать.
 - **Пакеты ALT.** Служба hexagonrpcd для ADSP на SDM845 (`hexagonrpcd`),
   уровни микрофона и `CaptureVolume` в UCM (`alsa-ucm-conf-sdm845`).
+  Пакет `plasma-mobile` не тянет `plasma6-integration` (без него KWin падает
+  в `QKdeTheme::createKdeTheme`) и Breeze, см. `system/plasma/README.md`.
+
+## 6. Plasma Mobile
+
+С 26 сентября телефон работает под Plasma Mobile. Не проверено: сон и
+пробуждение (под Phosh сон при простое пришлось выключать, иначе рвалась
+связь), экран блокировки, входящий звонок через `gnome-calls` под Plasma,
+поведение кнопки питания, громкость звонка из интерфейса Plasma. Звонилки
+`plasma-dialer` и приложения SMS `spacebar` в Sisyphus нет.
