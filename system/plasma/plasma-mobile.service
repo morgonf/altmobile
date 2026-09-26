@@ -21,6 +21,12 @@ Environment=XDG_SESSION_TYPE=wayland
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
 ExecStart=/sbin/capsh --noamb -- -c "exec /usr/local/bin/plasma-mobile-session"
 ExecStartPost=+chvt 1
+# KWin, plasmashell и остальное работают службами пользовательского systemd,
+# а не внутри этого сеанса, и при его остановке остаются жить. Старый KWin
+# держит экран от закрытого сеанса, новый ничего не видно. Гасим их при
+# остановке и на всякий случай перед стартом.
+ExecStartPre=-/usr/bin/env XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/systemctl --user stop graphical-session.target plasma-workspace.target plasma-kwin_wayland.service
+ExecStopPost=-/usr/bin/env XDG_RUNTIME_DIR=/run/user/1000 /usr/bin/systemctl --user stop graphical-session.target plasma-workspace.target plasma-kwin_wayland.service
 TimeoutStartSec=30
 User=1000
 PAMName=login
