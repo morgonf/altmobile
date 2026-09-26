@@ -11,6 +11,7 @@
     acdb.py <файл> vpst                  статическая калибровка голоса, расшифровка
     acdb.py <файл> vpdy                  динамическая калибровка голоса
     acdb.py <файл> cal <TX> <RX> [--dyn] [--entry N]   цепочка калибровки для пары устройств
+    acdb.py <файл> export <TX> <RX> <вариант> <файл> [--dyn]   выгрузка калибровки
     acdb.py <файл> devprops [устр...]    свойства устройств и их топологии
     acdb.py <файл> hex <смещение> <длина>  шестнадцатеричный дамп
     acdb.py <файл> words <смещение> <сколько>  дамп как u32
@@ -346,6 +347,63 @@ def cmd_cal(d, args):
                   f"смещение {off:6}  размер {size:5}{en}{note}")
 
 
+def cmd_export(d, args):
+    """Выгрузка калибровки варианта в файл для драйвера.
+
+    Формат файла свой, не заводской. Заводская раскладка на проводе решается
+    драйвером, здесь только перенос данных без потерь.
+
+        магия "Q6VCAL01"   8 байт
+        u32 версия = 1
+        u32 устройство_TX   u32 устройство_RX
+        u32 частота_TX      u32 частота_RX
+        u32 число_параметров
+        u32 размер_данных_всех_параметров без выравнивания
+        далее по числу параметров:
+            u32 модуль   u32 параметр   u32 размер   данные, добитые до 4 байт
+    """
+    dyn = "--dyn" in args
+    nums = [int(a) for a in args if a.isdigit()]
+    out = [a for a in args if not a.startswith("--") and not a.isdigit()]
+    if len(nums) < 3 or not out:
+        sys.exit("нужно: export <TX> <RX> <вариант> <файл> [--dyn]")
+    tx, rx, entry = nums[0], nums[1], nums[2]
+    path = out[0]
+
+    pre = "VPDY" if dyn else "VPST"
+    r = lut(d, pre + "LUT0")
+    ofst, cvd = sets(d, pre + "OFST"), sets(d, pre + "CVD0")
+    cdft, cdot = sets(d, pre + "CDFT"), sets(d, pre + "CDOT")
+    rows = [w for w in r[4] if w[0] == tx and w[1] == rx]
+    if not rows:
+        sys.exit(f"в {pre}LUT0 нет пары устройств {tx}/{rx}")
+    row = rows[0]
+    pairs = ofst[row[-2]]
+    if entry >= len(pairs):
+        sys.exit(f"вариантов всего {len(pairs)}")
+    a, b = pairs[entry]
+    params = _cal_param_rows(d, cdft[a], cdot[b])
+    bad = [p for p in params if not p[5]]
+    if bad:
+        sys.exit("данные параметра выходят за границу DATAPOOL, выгрузка отменена")
+
+    dp, _ = datapool(d)
+    body = b""
+    for mod, par, off, size, _first, _ok in params:
+        blob = d[dp + off + 4: dp + off + 4 + size]
+        body += struct.pack("<III", mod, par, size) + blob
+        body += b"\0" * (-size % 4)
+    rate_tx, rate_rx = (row[2], row[3]) if pre == "VPST" else (0, 0)
+    head = b"Q6VCAL01" + struct.pack("<IIIIIII", 1, tx, rx, rate_tx, rate_rx,
+                                     len(params), sum(p[3] for p in params))
+    with open(path, "wb") as f:
+        f.write(head + body)
+    print(f"{path}: {len(params)} параметров, {sum(p[3] for p in params)} байт "
+          f"данных, файл {len(head) + len(body)} байт")
+    print(f"ключ CVD варианта: "
+          + " ".join(f"0x{w:08x}" for w in cvd[row[-1]][entry]))
+
+
 def cmd_hex(d, args):
     off, ln = int(args[0], 0), int(args[1], 0)
     blob = d[off:off + ln]
@@ -411,7 +469,7 @@ def cmd_devprops(d, args):
 
 COMMANDS = {
     "sections": cmd_sections, "lut": cmd_lut, "sets": cmd_sets,
-    "vpst": cmd_vpst, "vpdy": cmd_vpdy, "cal": cmd_cal,
+    "vpst": cmd_vpst, "vpdy": cmd_vpdy, "cal": cmd_cal, "export": cmd_export,
     "devprops": cmd_devprops, "hex": cmd_hex, "words": cmd_words,
     "find": cmd_find,
 }
