@@ -1,0 +1,10 @@
+# Сон при простое выключен: под Phosh он рвал связь (Wi-Fi, ssh), см.
+# заметки проекта oneplus6t. Экран гаснет как обычно.
+[AC][SuspendAndShutdown]
+AutoSuspendAction=0
+
+[Battery][SuspendAndShutdown]
+AutoSuspendAction=0
+
+[LowBattery][SuspendAndShutdown]
+AutoSuspendAction=0
