@@ -9,6 +9,10 @@ set -e
 apt-get install -y plasma-mobile plasma6-integration plasma6-breeze \
 	qqc2-breeze-style icon-theme-breeze plasma-keyboard maliit-keyboard \
 	powerdevil plasma-nm plasma-pa kscreen bluedevil xdg-desktop-portal-kde
+# Мастер первого запуска Plasma Mobile не нужен: телефон уже настроен, а его
+# шаг мобильной связи без конца перезапускал подключение mts (2575 раз за
+# несколько минут), и окно запроса секрета мигало, не давая ничего ввести.
+su altlinux -c "kwriteconfig6 --file plasmamobilerc --group General --key wizardRun true"
 # без сна при простое, как было под Phosh
 install -D -m 644 -o altlinux -g altlinux /home/altlinux/echo/plasma/powerdevilrc \
 	/home/altlinux/.config/powerdevilrc
