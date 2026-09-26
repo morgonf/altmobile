@@ -1,0 +1,151 @@
+Ответы APR с полезной нагрузкой в общем слое q6voice
+
+Общий слой умел ждать только подтверждение APR_BASIC_RSP_RESULT, а всё
+остальное молча выбрасывал ранним return. Ответ на отображение памяти
+процессору несёт дескриптор в теле, то есть по такому пути его получить
+нельзя: ожидающий поток досиживал бы таймаут.
+
+Добавлено ожидание ответа с нагрузкой. Вызывающий говорит, какой опкод
+ответа он ждёт и куда положить нагрузку, остальное как раньше.
+
+--- q6base/q6voice-common.h	2026-09-26 11:39:21.546033639 -0400
++++ q6work/q6voice-common.h	2026-09-26 11:39:55.304609273 -0400
+@@ -24,10 +24,18 @@
+ 
+ 	wait_queue_head_t wait;
+ 
+-	/* Protect expected_opcode and result */
++	/* Protect expected_opcode, expected_rsp_opcode, result and rsp */
+ 	spinlock_t lock;
+ 	u32 expected_opcode;
++	/*
++	 * Some commands are answered by a service specific response carrying a
++	 * payload instead of the basic result. Set to the opcode of that
++	 * response while such a command is in flight, zero otherwise.
++	 */
++	u32 expected_rsp_opcode;
+ 	u32 result;
++	void *rsp;
++	size_t rsp_size;
+ };
+ 
+ int q6voice_common_probe(struct apr_device *adev, enum q6voice_service_type type);
+@@ -35,6 +43,8 @@
+ 
+ int q6voice_common_callback(struct apr_device *adev, const struct apr_resp_pkt *data);
+ int q6voice_common_send(struct q6voice_session *s, struct apr_hdr *hdr);
++int q6voice_common_send_rsp(struct q6voice_session *s, struct apr_hdr *hdr,
++			    u32 rsp_opcode, void *rsp, size_t rsp_size);
+ 
+ struct q6voice_session *q6voice_session_create(enum q6voice_service_type type,
+ 					       enum q6voice_path_type path,
+--- q6base/q6voice-common.c	2026-09-26 11:39:21.544033664 -0400
++++ q6work/q6voice-common.c	2026-09-26 11:39:55.305609261 -0400
+@@ -161,14 +161,52 @@
+ }
+ EXPORT_SYMBOL_GPL(q6voice_session_create);
+ 
++static void q6voice_session_payload_rsp(struct q6voice_session *s,
++					const struct apr_resp_pkt *data)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&s->lock, flags);
++	if (data->hdr.opcode != s->expected_rsp_opcode) {
++		spin_unlock_irqrestore(&s->lock, flags);
++		return; /* Not handled here */
++	}
++
++	if (s->handle != data->hdr.src_port) {
++		spin_unlock_irqrestore(&s->lock, flags);
++		dev_warn(s->dev, "unexpected reply for session %#x (!= %#x)\n",
++			 data->hdr.src_port, s->handle);
++		return;
++	}
++
++	if (data->payload_size < s->rsp_size) {
++		spin_unlock_irqrestore(&s->lock, flags);
++		dev_err(s->dev, "response %#x too short: %d < %zu\n",
++			data->hdr.opcode, data->payload_size, s->rsp_size);
++		return;
++	}
++
++	if (s->rsp_size)
++		memcpy(s->rsp, data->payload, s->rsp_size);
++
++	s->result = 0;
++	s->expected_opcode = 0;
++	s->expected_rsp_opcode = 0;
++	spin_unlock_irqrestore(&s->lock, flags);
++
++	wake_up(&s->wait);
++}
++
+ static void q6voice_session_callback(struct q6voice_session *s,
+ 				     const struct apr_resp_pkt *data)
+ {
+ 	struct aprv2_ibasic_rsp_result_t *result = data->payload;
+ 	unsigned long flags;
+ 
+-	if (data->hdr.opcode != APR_BASIC_RSP_RESULT)
+-		return; /* Not handled here */
++	if (data->hdr.opcode != APR_BASIC_RSP_RESULT) {
++		q6voice_session_payload_rsp(s, data);
++		return;
++	}
+ 
+ 	dev_dbg(s->dev, "basic result: opcode %#x, status: %#x\n",
+ 		result->opcode, result->status);
+@@ -192,6 +230,7 @@
+ 
+ 	s->result = result->status;
+ 	s->expected_opcode = 0;
++	s->expected_rsp_opcode = 0;
+ 	spin_unlock_irqrestore(&s->lock, flags);
+ 
+ 	wake_up(&s->wait);
+@@ -230,7 +269,8 @@
+ }
+ EXPORT_SYMBOL_GPL(q6voice_common_callback);
+ 
+-int q6voice_common_send(struct q6voice_session *s, struct apr_hdr *hdr)
++int q6voice_common_send_rsp(struct q6voice_session *s, struct apr_hdr *hdr,
++			    u32 rsp_opcode, void *rsp, size_t rsp_size)
+ {
+ 	unsigned long flags;
+ 	int ret;
+@@ -243,7 +283,10 @@
+ 
+ 	spin_lock_irqsave(&s->lock, flags);
+ 	s->expected_opcode = hdr->opcode;
++	s->expected_rsp_opcode = rsp_opcode;
+ 	s->result = 0;
++	s->rsp = rsp;
++	s->rsp_size = rsp_size;
+ 	spin_unlock_irqrestore(&s->lock, flags);
+ 
+ 	ret = apr_send_pkt(s->svc->adev, (struct apr_pkt *)hdr);
+@@ -253,7 +296,10 @@
+ 	ret = wait_event_timeout(s->wait, (s->expected_opcode == 0),
+ 				 msecs_to_jiffies(TIMEOUT_MS));
+ 	if (!ret) {
++		spin_lock_irqsave(&s->lock, flags);
+ 		s->expected_opcode = 0;
++		s->expected_rsp_opcode = 0;
++		spin_unlock_irqrestore(&s->lock, flags);
+ 		return -ETIMEDOUT;
+ 	}
+ 
+@@ -265,6 +311,12 @@
+ 
+ 	return 0;
+ }
++EXPORT_SYMBOL_GPL(q6voice_common_send_rsp);
++
++int q6voice_common_send(struct q6voice_session *s, struct apr_hdr *hdr)
++{
++	return q6voice_common_send_rsp(s, hdr, 0, NULL, 0);
++}
+ EXPORT_SYMBOL_GPL(q6voice_common_send);
+ 
+ MODULE_AUTHOR("Stephan Gerhold <stephan@gerhold.net>");

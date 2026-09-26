@@ -1,0 +1,282 @@
+Отправка калибровки обработки голоса по одному параметру
+
+Топологии, отличные от значений по умолчанию, требуют параметров, которых у
+процессора нет: они лежат только в проприетарных файлах ACDB устройства.
+Заводская система отдаёт процессору всю таблицу калибровки в разделяемой
+памяти, в формате, который собирает закрытая библиотека пользовательского
+пространства. Формат этой таблицы неизвестен, но он и не нужен: команда
+VSS_ICOMMON_CMD_SET_PARAM_V2, которой драйвер уже пользуется для числа
+каналов и формата порта, умеет нести параметр прямо в пакете, если
+дескриптор памяти равен нулю.
+
+Добавлено:
+
+  q6cvp_send_param()   отправка одного параметра модуля обработки in-band,
+                       пакет собирается по размеру параметра;
+
+  q6voice_send_cal()   чтение файла с параметрами через request_firmware и
+                       отправка их подряд сразу после TOPOLOGY_COMMIT, то
+                       есть там же, где заводской драйвер регистрирует
+                       калибровку, и до VSS_IVOCPROC_CMD_ENABLE.
+
+Параметры добываются из ACDB заранее, командой tools/acdb.py export.
+Без указанного имени файла прошивки всё поведение прежнее.
+
+--- q6base/q6cvp.c	2026-09-26 11:39:21.548033614 -0400
++++ q6work/q6cvp.c	2026-09-26 11:44:17.470313764 -0400
+@@ -4,6 +4,7 @@
+ 
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/slab.h>
+ #include <linux/soc/qcom/apr.h>
+ #include "q6cvp.h"
+ #include "q6voice-common.h"
+@@ -48,6 +49,12 @@
+ 
+ #define VOC_SET_MEDIA_FORMAT_PARAM_TOKEN		2
+ 
++/*
++ * Upper bound for a single command packet. The largest parameter seen in the
++ * factory calibration of this device is 392 bytes, so this is not tight.
++ */
++#define Q6CVP_MAX_PKT_SIZE				4096
++
+ #define VSS_NUM_CHANNELS_MAX 8
+ 
+ struct vss_ivocproc_cmd_create_full_control_session_v2_cmd {
+@@ -137,6 +144,23 @@
+ 	};
+ } __packed;
+ 
++/*
++ * Same command as below, but with a variable sized parameter payload following
++ * the header. Used to send calibration parameters of arbitrary size in-band.
++ */
++struct vss_icommon_cmd_set_param_v2_hdr {
++	struct apr_hdr hdr;
++
++	u32 mem_handle;
++	u64 mem_address;
++	u32 mem_size;
++
++	u32 module_id;
++	u32 param_id;
++	u16 param_size;
++	u16 reserved;
++} __packed;
++
+ struct vss_icommon_cmd_set_param_v2_cmd {
+ 	struct apr_hdr hdr;
+ 
+@@ -308,6 +332,51 @@
+ }
+ EXPORT_SYMBOL_GPL(q6cvp_send_media_format);
+ 
++/*
++ * Send a single processing parameter to the vocproc in-band. The factory
++ * software sends calibration as one table in shared memory, which requires
++ * both memory mapping and the table format used by the proprietary
++ * acdb-loader. Individual parameters, on the other hand, go through the same
++ * command that is already used for channel info and media format above.
++ */
++int q6cvp_send_param(struct q6voice_session *cvp, u32 module_id, u32 param_id,
++		     const void *data, u16 size)
++{
++	struct vss_icommon_cmd_set_param_v2_hdr *cmd;
++	u32 param_bytes = ALIGN(size, 4);
++	u32 pkt_size = sizeof(*cmd) + param_bytes;
++	int ret;
++
++	if (pkt_size > Q6CVP_MAX_PKT_SIZE)
++		return -EMSGSIZE;
++
++	cmd = kzalloc(pkt_size, GFP_KERNEL);
++	if (!cmd)
++		return -ENOMEM;
++
++	cmd->hdr.pkt_size = pkt_size;
++	cmd->hdr.opcode = VSS_ICOMMON_CMD_SET_PARAM_V2;
++
++	/* Zero memory handle means the parameter is in this very packet */
++	cmd->mem_handle = 0;
++	/* Size of the parameter block: its 12 byte header plus the payload */
++	cmd->mem_size = sizeof(*cmd)
++		      - offsetof(struct vss_icommon_cmd_set_param_v2_hdr,
++				 module_id)
++		      + param_bytes;
++
++	cmd->module_id = module_id;
++	cmd->param_id = param_id;
++	cmd->param_size = size;
++	cmd->reserved = 0;
++	memcpy((u8 *)cmd + sizeof(*cmd), data, size);
++
++	ret = q6voice_common_send(cvp, &cmd->hdr);
++	kfree(cmd);
++	return ret;
++}
++EXPORT_SYMBOL_GPL(q6cvp_send_param);
++
+ int q6cvp_topology_commit(struct q6voice_session *cvp)
+ {
+ 	struct apr_pkt cmd;
+--- q6base/q6cvp.h	2026-09-26 11:39:21.550033588 -0400
++++ q6work/q6cvp.h	2026-09-26 11:43:54.407603664 -0400
+@@ -14,6 +14,8 @@
+ 						u32 tx_topo, u32 rx_topo);
+ int q6cvp_send_channel_info(struct q6voice_session *cvp, bool is_tx);
+ int q6cvp_send_media_format(struct q6voice_session *cvp, int port_id, bool is_tx);
++int q6cvp_send_param(struct q6voice_session *cvp, u32 module_id, u32 param_id,
++		     const void *data, u16 size);
+ int q6cvp_topology_commit(struct q6voice_session *cvp);
+ int q6cvp_enable(struct q6voice_session *cvp, bool enable);
+ 
+--- q6base/q6voice.c	2026-09-26 11:39:21.540033714 -0400
++++ q6work/q6voice.c	2026-09-26 11:45:08.825668201 -0400
+@@ -3,6 +3,8 @@
+ // Copyright (c) 2020, Stephan Gerhold
+ 
+ #include <linux/device.h>
++#include <linux/firmware.h>
++#include <linux/limits.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/slab.h>
+@@ -16,6 +18,127 @@
+ #define VSS_IVOCPROC_TOPOLOGY_ID_TX_SM_ECNS		0x00010F71
+ #define VSS_IVOCPROC_TOPOLOGY_ID_RX_DEFAULT		0x00010F77
+ 
++/*
++ * Voice processing calibration, experimental.
++ *
++ * Topologies other than the defaults need calibration parameters that only
++ * exist in the proprietary ACDB files of the device. The factory software
++ * hands the whole calibration table to the DSP in shared memory, in a format
++ * produced by a closed userspace library. Here the parameters are extracted
++ * from the ACDB files beforehand (see tools/acdb.py in the research repo) and
++ * sent one by one in-band, which needs neither shared memory nor knowledge of
++ * that table format.
++ *
++ * Off unless a firmware file name is given, since the parameters are specific
++ * to one device pair and one set of sample rates.
++ */
++static char *cal_firmware;
++module_param(cal_firmware, charp, 0644);
++MODULE_PARM_DESC(cal_firmware,
++		 "File with voice processing parameters to send after topology commit");
++
++#define Q6VOICE_CAL_MAGIC	"Q6VCAL01"
++#define Q6VOICE_CAL_VERSION	1
++
++struct q6voice_cal_header {
++	u8 magic[8];
++	__le32 version;
++	__le32 tx_device;
++	__le32 rx_device;
++	__le32 tx_rate;
++	__le32 rx_rate;
++	__le32 count;
++	__le32 data_size;
++} __packed;
++
++struct q6voice_cal_param {
++	__le32 module_id;
++	__le32 param_id;
++	__le32 size;
++	u8 data[];
++} __packed;
++
++static int q6voice_send_cal(struct q6voice_session *cvp)
++{
++	struct device *dev = cvp->dev;
++	const struct q6voice_cal_header *hdr;
++	const struct firmware *fw;
++	unsigned int i, count, sent = 0;
++	size_t pos;
++	int ret;
++
++	if (!cal_firmware || !*cal_firmware)
++		return 0;
++
++	ret = request_firmware(&fw, cal_firmware, dev);
++	if (ret) {
++		dev_err(dev, "failed to load calibration '%s': %d\n",
++			cal_firmware, ret);
++		return ret;
++	}
++
++	if (fw->size < sizeof(*hdr)) {
++		dev_err(dev, "calibration '%s' is truncated\n", cal_firmware);
++		ret = -EINVAL;
++		goto out;
++	}
++
++	hdr = (const struct q6voice_cal_header *)fw->data;
++	if (memcmp(hdr->magic, Q6VOICE_CAL_MAGIC, sizeof(hdr->magic)) ||
++	    le32_to_cpu(hdr->version) != Q6VOICE_CAL_VERSION) {
++		dev_err(dev, "calibration '%s' is not in a known format\n",
++			cal_firmware);
++		ret = -EINVAL;
++		goto out;
++	}
++
++	count = le32_to_cpu(hdr->count);
++	dev_info(dev, "calibration '%s': devices %u/%u, %u parameters\n",
++		 cal_firmware, le32_to_cpu(hdr->tx_device),
++		 le32_to_cpu(hdr->rx_device), count);
++
++	pos = sizeof(*hdr);
++	for (i = 0; i < count; i++) {
++		const struct q6voice_cal_param *p;
++		u32 module_id, param_id, size;
++
++		if (pos + sizeof(*p) > fw->size) {
++			dev_err(dev, "calibration ends after %u parameters\n", i);
++			ret = -EINVAL;
++			goto out;
++		}
++
++		p = (const struct q6voice_cal_param *)(fw->data + pos);
++		module_id = le32_to_cpu(p->module_id);
++		param_id = le32_to_cpu(p->param_id);
++		size = le32_to_cpu(p->size);
++
++		if (size > U16_MAX ||
++		    pos + sizeof(*p) + ALIGN(size, 4) > fw->size) {
++			dev_err(dev, "parameter %u has bad size %u\n", i, size);
++			ret = -EINVAL;
++			goto out;
++		}
++
++		ret = q6cvp_send_param(cvp, module_id, param_id, p->data, size);
++		if (ret)
++			dev_warn(dev,
++				 "module %#x parameter %#x (%u bytes) rejected: %d\n",
++				 module_id, param_id, size, ret);
++		else
++			sent++;
++
++		pos += sizeof(*p) + ALIGN(size, 4);
++	}
++
++	dev_info(dev, "calibration: %u of %u parameters accepted\n", sent, count);
++	ret = sent ? 0 : -EIO;
++
++out:
++	release_firmware(fw);
++	return ret;
++}
++
+ struct q6voice_path_runtime {
+ 	struct q6voice_session *sessions[Q6VOICE_SERVICE_COUNT];
+ 	unsigned int started;
+@@ -63,6 +186,8 @@
+ 
+ 	q6cvp_topology_commit(cvp);
+ 
++	q6voice_send_cal(cvp);
++
+ 	return cvp;
+ }
+ 

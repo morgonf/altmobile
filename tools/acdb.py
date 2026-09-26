@@ -10,7 +10,7 @@
     acdb.py <файл> sets <ИМЯ>            разбор секции из наборов (CDFT, CDOT, OFST, CVD0)
     acdb.py <файл> vpst                  статическая калибровка голоса, расшифровка
     acdb.py <файл> vpdy                  динамическая калибровка голоса
-    acdb.py <файл> cal <TX> <RX> [--dyn] [--entry N]   цепочка калибровки для пары устройств
+    acdb.py <файл> cal <TX> <RX> [--dyn] [--list] [--entry N]   цепочка калибровки
     acdb.py <файл> export <TX> <RX> <вариант> <файл> [--dyn]   выгрузка калибровки
     acdb.py <файл> devprops [устр...]    свойства устройств и их топологии
     acdb.py <файл> hex <смещение> <длина>  шестнадцатеричный дамп
@@ -330,6 +330,12 @@ def cmd_cal(d, args):
             total += sum(x[3] for x in _cal_param_rows(d, cdft[a], cdot[b]))
         print(f"\n  ключи: {kd}   OFST={ofs} CVD0={cvo}   "
               f"записей {len(cvds)}, данных {total} байт")
+        if "--list" in args:
+            for i, (k, (a, b)) in enumerate(zip(cvds, pairs)):
+                np = len(cdft[a])
+                sz = sum(x[3] for x in _cal_param_rows(d, cdft[a], cdot[b]))
+                print(f"    [{i:3}] " + " ".join(f"0x{w:08x}" for w in k)
+                      + f"   параметров {np:3}, {sz:5} байт")
         if entry is None:
             continue
         if entry >= len(cvds):
