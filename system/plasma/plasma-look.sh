@@ -13,9 +13,11 @@ $K menuFont "Noto Sans,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K toolBarFont "Noto Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K smallestReadableFont "Noto Sans,9,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K fixed "Hack,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
-# Значки домашнего экрана и ящика Folio крупнее. Пишется при остановленной
+# Значки Folio 72: в ящике 3 столбца вместо 4 (80 тоже 3, 64 уже 4) (столбцы считаются как
+# ширина / (значок + отступы)), просьба пользователя. Ключ в группе Folio
+# контейнера, как в foliosettings.cpp (умолчание 48). Пишется при остановленной
 # оболочке, иначе она перезапишет файл при выходе.
 systemctl --user stop plasma-plasmashell.service
 kwriteconfig6 --file plasma-org.kde.plasma.mobileshell-appletsrc \
-	--group Containments --group 1 --group General --key delegateIconSize 64
+	--group Containments --group 1 --group Folio --key delegateIconSize 72
 systemctl --user start plasma-plasmashell.service
