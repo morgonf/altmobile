@@ -1,0 +1,12 @@
+[Unit]
+Description=Подхват SIM-карты, вставленной при работающем телефоне
+After=ModemManager.service
+Wants=ModemManager.service
+
+[Service]
+ExecStart=/usr/local/bin/alt-sim-hotplug.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

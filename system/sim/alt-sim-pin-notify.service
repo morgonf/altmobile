@@ -1,0 +1,12 @@
+[Unit]
+Description=Уведомление о заблокированной SIM-карте
+PartOf=graphical-session.target
+After=plasma-plasmashell.service
+
+[Service]
+ExecStart=/usr/local/bin/alt-sim-pin-notify.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
