@@ -29,6 +29,13 @@ while true; do
 			fi
 		fi ;;
 	esac
+	# Местоположение выключено кнопкой в шторке: приёмник GPS держим
+	# выключенным, даже если программа включила его через ModemManager
+	if [ -e /var/lib/alt-mobile/location-off ] &&
+	   mmcli -m any --location-status 2>/dev/null | grep -q "enabled:.*gps"; then
+		logger -t alt-sim-hotplug "местоположение выключено, гашу GPS модема"
+		mmcli -m any --location-disable-gps-nmea --location-disable-gps-raw >/dev/null 2>&1
+	fi
 	if mmcli -m any 2>/dev/null | grep -q "failed reason: sim-missing"; then
 		ST=$(qmicli -p -d $DEV --uim-get-card-status 2>/dev/null)
 		if echo "$ST" | grep -q "Primary GW:   session doesn't exist" &&

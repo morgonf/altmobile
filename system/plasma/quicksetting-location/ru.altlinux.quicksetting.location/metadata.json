@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KPackage/GenericQML",
+    "KPlugin": {
+        "Authors": [ { "Name": "morgonf" } ],
+        "Description": "Turn location services (geoclue, modem GPS) on or off",
+        "Description[ru]": "Включение и выключение определения местоположения (geoclue, GPS модема)",
+        "Icon": "gps",
+        "Id": "ru.altlinux.quicksetting.location",
+        "License": "GPL",
+        "Name": "Location",
+        "Name[ru]": "Местоположение"
+    }
+}

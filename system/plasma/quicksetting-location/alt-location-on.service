@@ -1,0 +1,7 @@
+[Unit]
+Description=Включить определение местоположения (geoclue, GPS модема)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rm -f /var/lib/alt-mobile/location-off
+ExecStart=/usr/bin/systemctl unmask geoclue.service

@@ -1,0 +1,11 @@
+[Unit]
+Description=Выключить определение местоположения (geoclue, GPS модема)
+
+[Service]
+Type=oneshot
+# Флаг читают 49-alt-mobile-location-off.rules (запрет чтения координат из
+# модема) и alt-sim-hotplug.sh (выключает приёмник, если его включили)
+ExecStart=/usr/bin/mkdir -p -m 755 /var/lib/alt-mobile
+ExecStart=/usr/bin/touch /var/lib/alt-mobile/location-off
+ExecStart=/usr/bin/systemctl mask --now geoclue.service
+ExecStart=-/usr/bin/mmcli -m any --location-disable-gps-nmea --location-disable-gps-raw

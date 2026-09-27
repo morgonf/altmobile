@@ -1,0 +1,15 @@
+// ALT Mobile: при выключенном местоположении (кнопка в шторке) никто не
+// получает координаты из модема напрямую, в обход geoclue (так делает,
+// например, Satellite). Номер 49, чтобы правило шло раньше
+// 50-alt-mobile-sim.rules. Действие Location только про чтение координат,
+// ввод PIN (Device.Control) не затрагивается.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.ModemManager1.Location") {
+        try {
+            polkit.spawn(["/usr/bin/test", "-e", "/var/lib/alt-mobile/location-off"]);
+            return polkit.Result.NO;
+        } catch (e) {
+            // флага нет: решают остальные правила
+        }
+    }
+});

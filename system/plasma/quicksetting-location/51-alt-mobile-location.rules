@@ -1,0 +1,12 @@
+// ALT Mobile: кнопка «Местоположение» в шторке запускает только эти две
+// службы, и только у того, кто сидит за телефоном (локальный активный
+// сеанс, группа wheel).
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.local && subject.active && subject.isInGroup("wheel")) {
+        var unit = action.lookup("unit"), verb = action.lookup("verb");
+        if ((unit == "alt-location-off.service" || unit == "alt-location-on.service") &&
+            verb == "start")
+            return polkit.Result.YES;
+    }
+});

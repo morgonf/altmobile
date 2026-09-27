@@ -206,9 +206,9 @@ diff -ruN a/containments/homescreens/folio/qml/FolioHomeScreen.qml b/containment
                      // one is ignored as anchors are set
 -                    height: Kirigami.Units.gridUnit * 6
 -                    width: Kirigami.Units.gridUnit * 6
-+                    // ALT Mobile: на 20 % меньше штатных 6 единиц
-+                    height: Kirigami.Units.gridUnit * 4.8
-+                    width: Kirigami.Units.gridUnit * 4.8
++                    // ALT Mobile: 4.2 единицы вместо штатных 6
++                    height: Kirigami.Units.gridUnit * 4.2
++                    width: Kirigami.Units.gridUnit * 4.2
  
                      anchors.topMargin: root.topMargin
                      anchors.bottomMargin: root.bottomMargin
@@ -247,3 +247,18 @@ diff -ruN a/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml b/kwin/
  
                  onClicked: {
                      if (closeRequested) {
+diff -ruN a/containments/homescreens/folio/qml/FavouritesBar.qml b/containments/homescreens/folio/qml/FavouritesBar.qml
+--- a/containments/homescreens/folio/qml/FavouritesBar.qml	2026-09-12 11:24:49.000000000 +0300
++++ b/containments/homescreens/folio/qml/FavouritesBar.qml	2026-09-28 02:06:18.472914757 +0300
+@@ -90,6 +90,11 @@
+             width: folio.HomeScreenState.pageCellWidth
+             height: folio.HomeScreenState.pageCellHeight
+ 
++            // ALT Mobile: в нижней панели значки мельче страничных и
++            // прижаты к низу, ближе к кнопкам навигации
++            scale: isLocationBottom ? 0.8 : 1
++            transformOrigin: Item.Bottom
++
+             // Keyboard navigation to other delegates
+             Keys.onPressed: (event) => {
+                 switch (event.key) {
