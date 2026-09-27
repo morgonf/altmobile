@@ -9,7 +9,9 @@ set -e
 apt-get install -y plasma-mobile plasma6-integration plasma6-breeze \
 	qqc2-breeze-style icon-theme-breeze plasma-keyboard maliit-keyboard \
 	powerdevil plasma-nm plasma-pa kscreen bluedevil xdg-desktop-portal-kde \
-	plasma-settings qmlkonsole kalk calindori krecorder koko spectacle
+	plasma-settings qmlkonsole kalk calindori krecorder koko spectacle \
+	plasma-nm-connect-mobile
+# plasma-settings 26.08.1 собирается отдельно, см. packages/README.md
 install -m 644 /home/altlinux/echo/private-tmp.conf /etc/tmpfiles.d/private-tmp.conf
 # Обход падения plasmashell в Qt 6.11.2 при открытии настроек виджета
 F=/usr/share/plasma/shells/org.kde.plasma.mobileshell/contents/configuration/AppletConfiguration.qml
