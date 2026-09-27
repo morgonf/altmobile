@@ -19,6 +19,8 @@
 | `kaccounts-integration` 26.08.1-alt1, `kcm_kaccounts` | исходники ALT, патч `kaccounts-integration/kaccounts-mobile.patch`, `kaccounts-integration/build.sh kcm_kaccounts` | «Добавить учётную запись…» было только в мелком меню «⋮», теперь крупной кнопкой в пустом списке |
 | `plasma-workspace` 6.7.5-alt2, `kcm_colors` | то же дерево, патч `plasma-workspace/colors-mobile.patch`, цель `kcm_colors` | выбор цвета выделения (список и образцы в одну строку) был шире экрана; теперь друг под другом |
 | `kwin` 6.7.5-alt1, только `kcm_animations` | исходники ALT (`kwin-6.7.5-alt1.src.rpm`, `rpmbuild -bp --nodeps`), патч `kwin/kwin-animations-mobile.patch`, одна цель (`build-kcm-animations.sh`, четыре потока, около минуты), ставится поверх с копией `.orig` (`install-kcm-animations.sh`); для конфигурации доставлены 18 пакетов `-devel` из BuildRequires | в «Анимации» описания эффектов обрезались «…»: флажок Breeze рисует подпись одной строкой, переноса не умеет. Описание вынесено в отдельную подпись с переносом по словам, касание её переключает флажок; у кнопки «Эффекты рабочего стола» снята жёсткая ширина |
+| `iio-sensor-proxy` 3.9-alt1.2 | патч `iio-sensor-proxy-ssc-compass-mag.patch`: компас из сырых магнитометра и акселерометра SSC, калибровка на ходу | у SLPI sdm845 нет готового компаса, подробности в `system/sensors/README.md` |
+| `gnome-compass` 0.4.0 | патч `gnome-compass-iio-sensor-proxy.patch`, ставится `packages/gnome-compass/install.sh` поверх файлов пакета | приложение знало только магнитометры PinePhone и Librem 5 в sysfs и без них рисовало случайную стрелку; теперь берёт направление из iio-sensor-proxy |
 
 Правки без пересборки:
 
