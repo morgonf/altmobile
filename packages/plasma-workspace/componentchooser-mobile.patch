@@ -1,0 +1,424 @@
+--- a/kcms/componentchooser/ui/main.qml
++++ b/kcms/componentchooser/ui/main.qml
+@@ -9,7 +9,11 @@
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami as Kirigami
+ import org.kde.kcmutils as KCM
++import org.kde.kirigamiaddons.formcard 1 as FormCard
+ 
++// ALT Mobile: страница в мобильном стиле карточек FormCard. Выпадающие
++// списки настольной FormLayout на телефоне обрезали названия приложений,
++// FormComboBoxDelegate открывает выбор диалогом во весь экран.
+ KCM.SimpleKCM {
+     id: root
+ 
+@@ -17,6 +21,8 @@
+         return i18n("’%1’ seems to not support the following mimetypes associated with this kind of application: %2", kcm_component.applications[kcm_component.index]["name"], kcm_component.unsupportedMimeTypes.join(", "))
+     }
+ 
++    leftPadding: 0
++    rightPadding: 0
+     topPadding: 0
+     bottomPadding: Kirigami.Units.gridUnit
+ 
+@@ -26,9 +32,18 @@
+         width: Math.min(root.width, Kirigami.Units.gridUnit * 25)
+     }
+ 
++    component ChooserDelegate: FormCard.FormComboBoxDelegate {
++        property var chooser
++        model: chooser.applications
++        textRole: "name"
++        currentIndex: chooser.index
++        onActivated: chooser.select(currentIndex)
++    }
++
+     component MimeMessage: Kirigami.InlineMessage {
+         property var componentChooser
+         Layout.fillWidth: true
++        Layout.margins: Kirigami.Units.smallSpacing
+         visible: componentChooser.unsupportedMimeTypes.length > 0 || componentChooser.mimeTypesNotAssociated.length > 0
+         type: Kirigami.MessageType.Warning
+         text: i18nc("@info:status", "This application may not be able to open all file types.");
+@@ -41,228 +56,200 @@
+         }
+     }
+ 
+-    Kirigami.FormLayout {
+-        id: form
++    ColumnLayout {
++        spacing: 0
+ 
+-        readonly property int longestComboBox: Math.max(browserCombo.implicitWidth,
+-                                                        calendarCombo.implicitWidth,
+-                                                        fileManagerCombo.implicitWidth,
+-                                                        textEditorCombo.implicitWidth,
+-                                                        pdfViewerCombo.implicitWidth,
+-                                                        imageViewerCombo.implicitWidth,
+-                                                        musicPlayerCombo.implicitWidth,
+-                                                        videoPlayerCombo.implicitWidth,
+-                                                        emailCombo.implicitWidth,
+-                                                        archiveCombo.implicitWidth,
+-                                                        terminalCombo.implicitWidth,
+-                                                        mapCombo.implicitWidth,
+-                                                        dialerCombo.implicitWidth)
+-
+-
+-        Item {
+-            Kirigami.FormData.label: i18nc("Internet related application’s category’s name", "Internet")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("Internet related application’s category’s name", "Internet")
+         }
+ 
+-        ComponentComboBox {
+-            id: browserCombo
+-            Kirigami.FormData.label: i18n("Web browser:")
+-            component: kcm.browsers
+-            Layout.preferredWidth: form.longestComboBox
++        FormCard.FormCard {
++            ChooserDelegate {
++                id: browsersDelegate
++                text: i18n("Web browser:").replace(/:$/, "")
++                chooser: kcm.browsers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.browsers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.browsers.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.browsers
+-        }
+-
+-        ComponentComboBox {
+-            id: emailCombo
+-            Kirigami.FormData.label: i18n("Email client:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.emailClients
+-
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.emailClients.isDefaults
++            MimeMessage {
++                componentChooser: kcm.browsers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.emailClients
+-        }
+-
+-        ComponentComboBox {
+-            id: calendarCombo
+-            Kirigami.FormData.label: i18nc("Default calendar application", "Calendar:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.calendar
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: emailClientsDelegate
++                text: i18n("Email client:").replace(/:$/, "")
++                chooser: kcm.emailClients
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.calendar.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.emailClients.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.calendar
+-        }
++            MimeMessage {
++                componentChooser: kcm.emailClients
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: calendarDelegate
++                text: i18nc("Default calendar application", "Calendar:").replace(/:$/, "")
++                chooser: kcm.calendar
+ 
+-        ComponentComboBox {
+-            id: dialerCombo
+-            Kirigami.FormData.label: i18nc("Default phone app", "Phone Numbers:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.telUriHandlers
++                KCM.SettingHighlighter {
++                    highlight: !kcm.calendar.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.calendar
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: telUriHandlersDelegate
++                text: i18nc("Default phone app", "Phone Numbers:").replace(/:$/, "")
++                chooser: kcm.telUriHandlers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.telUriHandlers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.telUriHandlers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.telUriHandlers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.telUriHandlers
+         }
+ 
+-
+-        Item {
+-            Kirigami.FormData.label: i18nc("Multimedia related application’s category’s name", "Multimedia")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("Multimedia related application’s category’s name", "Multimedia")
+         }
+ 
+-        ComponentComboBox {
+-            id: imageViewerCombo
+-            Kirigami.FormData.label: i18n("Image viewer:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.imageViewers
++        FormCard.FormCard {
++            ChooserDelegate {
++                id: imageViewersDelegate
++                text: i18n("Image viewer:").replace(/:$/, "")
++                chooser: kcm.imageViewers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.imageViewers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.imageViewers.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.imageViewers
+-        }
+-
+-        ComponentComboBox {
+-            id: musicPlayerCombo
+-            Kirigami.FormData.label: i18n("Music player:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.musicPlayers
+-
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.musicPlayers.isDefaults
++            MimeMessage {
++                componentChooser: kcm.imageViewers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.musicPlayers
+-        }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: musicPlayersDelegate
++                text: i18n("Music player:").replace(/:$/, "")
++                chooser: kcm.musicPlayers
+ 
+-        ComponentComboBox {
+-            id: videoPlayerCombo
+-            Kirigami.FormData.label: i18n("Video player:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.videoPlayers
++                KCM.SettingHighlighter {
++                    highlight: !kcm.musicPlayers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.musicPlayers
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: videoPlayersDelegate
++                text: i18n("Video player:").replace(/:$/, "")
++                chooser: kcm.videoPlayers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.videoPlayers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.videoPlayers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.videoPlayers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.videoPlayers
+         }
+ 
+-
+-        Item {
+-            Kirigami.FormData.label: i18nc("Documents related application’s category’s name", "Documents")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("Documents related application’s category’s name", "Documents")
+         }
+ 
+-        ComponentComboBox {
+-            id: textEditorCombo
+-            Kirigami.FormData.label: i18n("Text editor:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.textEditors
++        FormCard.FormCard {
++            ChooserDelegate {
++                id: textEditorsDelegate
++                text: i18n("Text editor:").replace(/:$/, "")
++                chooser: kcm.textEditors
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.textEditors.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.textEditors.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.textEditors
+-        }
+-
+-
+-        ComponentComboBox {
+-            id: pdfViewerCombo
+-            Kirigami.FormData.label: i18n("PDF viewer:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.pdfViewers
++            MimeMessage {
++                componentChooser: kcm.textEditors
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: pdfViewersDelegate
++                text: i18n("PDF viewer:").replace(/:$/, "")
++                chooser: kcm.pdfViewers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.pdfViewers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.pdfViewers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.pdfViewers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.pdfViewers
+         }
+ 
+-
+-        Item {
+-            Kirigami.FormData.label: i18nc("Utilities related application’s category’s name", "Utilities")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("Utilities related application’s category’s name", "Utilities")
+         }
+ 
+-        ComponentComboBox {
+-            id: fileManagerCombo
+-            Kirigami.FormData.label: i18n("File manager:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.fileManagers
++        FormCard.FormCard {
++            ChooserDelegate {
++                id: fileManagersDelegate
++                text: i18n("File manager:").replace(/:$/, "")
++                chooser: kcm.fileManagers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.fileManagers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.fileManagers.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.fileManagers
+-        }
+-
+-        ComponentComboBox {
+-            id: terminalCombo
+-            Kirigami.FormData.label: i18n("Terminal emulator:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.terminalEmulators
+-
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.terminalEmulators.isDefaults
++            MimeMessage {
++                componentChooser: kcm.fileManagers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.terminalEmulators
+-        }
+-
+-        ComponentComboBox {
+-            id: archiveCombo
+-            Kirigami.FormData.label: i18n("Archive manager:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.archiveManagers
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: terminalEmulatorsDelegate
++                text: i18n("Terminal emulator:").replace(/:$/, "")
++                chooser: kcm.terminalEmulators
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.archiveManagers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.terminalEmulators.isDefaults
++                }
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.archiveManagers
+-        }
++            MimeMessage {
++                componentChooser: kcm.terminalEmulators
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: archiveManagersDelegate
++                text: i18n("Archive manager:").replace(/:$/, "")
++                chooser: kcm.archiveManagers
+ 
+-        ComponentComboBox {
+-            id: mapCombo
+-            Kirigami.FormData.label: i18nc("Map related application’s category’s name", "Map:")
+-            Layout.preferredWidth: form.longestComboBox
+-            component: kcm.geoUriHandlers
++                KCM.SettingHighlighter {
++                    highlight: !kcm.archiveManagers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.archiveManagers
++            }
++            FormCard.FormDelegateSeparator {}
++            ChooserDelegate {
++                id: geoUriHandlersDelegate
++                text: i18nc("Map related application’s category’s name", "Map:").replace(/:$/, "")
++                chooser: kcm.geoUriHandlers
+ 
+-            KCM.SettingHighlighter {
+-                highlight: !kcm.geoUriHandlers.isDefaults
++                KCM.SettingHighlighter {
++                    highlight: !kcm.geoUriHandlers.isDefaults
++                }
++            }
++            MimeMessage {
++                componentChooser: kcm.geoUriHandlers
+             }
+-        }
+-        MimeMessage {
+-            componentChooser: kcm.geoUriHandlers
+         }
+     }
+ }
