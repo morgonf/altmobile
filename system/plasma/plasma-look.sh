@@ -22,11 +22,12 @@ $G font-name "Noto Sans 11"
 $G document-font-name "Noto Sans 11"
 $G monospace-font-name "Noto Sans Mono 11"
 gsettings set org.gnome.desktop.wm.preferences titlebar-font "Noto Sans Bold 11"
-# Значки Folio 72: в ящике 3 столбца вместо 4 (80 тоже 3, 64 уже 4) (столбцы считаются как
+# Значки Folio 82 при масштабе 2.75 (при масштабе 3 было 72, физически то же):
+# в ящике 3 столбца вместо 4 (столбцы считаются как
 # ширина / (значок + отступы)), просьба пользователя. Ключ в группе Folio
 # контейнера, как в foliosettings.cpp (умолчание 48). Пишется при остановленной
 # оболочке, иначе она перезапишет файл при выходе.
 systemctl --user stop plasma-plasmashell.service
 kwriteconfig6 --file plasma-org.kde.plasma.mobileshell-appletsrc \
-	--group Containments --group 1 --group Folio --key delegateIconSize 72
+	--group Containments --group 1 --group Folio --key delegateIconSize 82
 systemctl --user start plasma-plasmashell.service
