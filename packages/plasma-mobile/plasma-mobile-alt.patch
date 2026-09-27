@@ -74,8 +74,38 @@ diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml
      }
 diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanel.qml b/components/mobileshell/qml/navigationpanel/NavigationPanel.qml
 --- a/components/mobileshell/qml/navigationpanel/NavigationPanel.qml	2026-09-27 09:22:56.078524704 -0400
-+++ b/components/mobileshell/qml/navigationpanel/NavigationPanel.qml	2026-09-27 09:23:35.456963884 -0400
-@@ -91,6 +91,7 @@
++++ b/components/mobileshell/qml/navigationpanel/NavigationPanel.qml	2026-09-27 11:46:12.579641682 -0400
+@@ -62,11 +62,10 @@
+             visible: root.leftCornerAction.visible
+             Kirigami.Theme.colorSet: root.foregroundColorGroup
+             Kirigami.Theme.inherit: false
+-            enabled: root.leftCornerAction.enabled
+             shrinkSize: root.leftCornerAction.shrinkSize
+             iconSource: root.leftCornerAction.iconSource
+             onClicked: {
+-                if (enabled) {
++                if (root.leftCornerAction.enabled) {
+                     root.leftCornerAction.triggered();
+                 }
+             }
+@@ -78,27 +77,29 @@
+             visible: root.leftAction.visible
+             Kirigami.Theme.colorSet: root.foregroundColorGroup
+             Kirigami.Theme.inherit: false
+-            enabled: root.leftAction.enabled
+             shrinkSize: root.leftAction.shrinkSize
+             iconSource: root.leftAction.iconSource
+             onClicked: {
+-                if (enabled) {
++                if (root.leftAction.enabled) {
+                     root.leftAction.triggered();
+                 }
+             }
+         }
+ 
++        // ALT Mobile: кнопки всегда включены, доступность действия проверяется
++        // при нажатии. У выключенной кнопки Qt выключает и значок, и Kirigami
++        // рисует его серым, а пользователю нужен одинаковый цвет всех значков.
          NavigationPanelButton {
              id: middleButton
              anchors.centerIn: parent
@@ -83,6 +113,41 @@ diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanel.qml b/com
              visible: root.middleAction.visible
              Kirigami.Theme.colorSet: root.foregroundColorGroup
              Kirigami.Theme.inherit: false
+-            enabled: root.middleAction.enabled
+             shrinkSize: root.middleAction.shrinkSize
+             iconSource: root.middleAction.iconSource
+             onClicked: {
+-                if (enabled) {
++                if (root.middleAction.enabled) {
+                     root.middleAction.triggered();
+                 }
+             }
+@@ -109,11 +110,10 @@
+             visible: root.rightAction.visible
+             Kirigami.Theme.colorSet: root.foregroundColorGroup
+             Kirigami.Theme.inherit: false
+-            enabled: root.rightAction.enabled
+             shrinkSize: root.rightAction.shrinkSize
+             iconSource: root.rightAction.iconSource
+             onClicked: {
+-                if (enabled) {
++                if (root.rightAction.enabled) {
+                     root.rightAction.triggered();
+                 }
+             }
+@@ -124,11 +124,10 @@
+             visible: root.rightCornerAction.visible
+             Kirigami.Theme.colorSet: root.foregroundColorGroup
+             Kirigami.Theme.inherit: false
+-            enabled: root.rightCornerAction.enabled
+             shrinkSize: root.rightCornerAction.shrinkSize
+             iconSource: root.rightCornerAction.iconSource
+             onClicked: {
+-                if (enabled) {
++                if (root.rightCornerAction.enabled) {
+                     root.rightCornerAction.triggered();
+                 }
+             }
 diff -ruN a/components/mobileshell/qml/statusbar/StatusBar.qml b/components/mobileshell/qml/statusbar/StatusBar.qml
 --- a/components/mobileshell/qml/statusbar/StatusBar.qml	2026-09-27 09:22:57.293507400 -0400
 +++ b/components/mobileshell/qml/statusbar/StatusBar.qml	2026-09-27 09:23:35.456963884 -0400
