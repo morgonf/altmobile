@@ -44,7 +44,8 @@ Kirigami.ApplicationWindow {
             "path": simPath,
             "iface": "org.freedesktop.ModemManager1.Sim",
             "member": puk ? "SendPuk" : "SendPin",
-            "signature": puk ? "ss" : "s",
+            // сигнатура в скобках, как у Introspect: без них Encoder теряет аргументы
+            "signature": puk ? "(ss)" : "(s)",
             "arguments": puk ? [new DBus.string(pukField.text), new DBus.string(pinField.text)]
                              : [new DBus.string(pinField.text)],
         };

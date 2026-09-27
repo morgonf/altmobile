@@ -8,6 +8,10 @@ install -m 644 alt-sim-hotplug.service /etc/systemd/system/
 install -m 644 alt-sim-pin-notify.service /etc/systemd/user/
 # Подключение поднимает alt-sim-hotplug, когда модем готов (см. скрипт)
 nmcli con modify mts connection.autoconnect no
+# Следильщик модема в plasma-nm (kded networkmanagement) иначе выводит своё
+# окно «Требуется разблокирование PIN-код SIM-карты», в том числе на
+# sim-pin2, которое модем сообщает уже после разблокировки
+su altlinux -c "kwriteconfig6 --file plasma-nm --group General --key UnlockModemOnDetection false"
 systemctl daemon-reload
 systemctl enable alt-sim-hotplug.service
 systemctl restart alt-sim-hotplug.service

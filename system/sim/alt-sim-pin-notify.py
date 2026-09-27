@@ -3,6 +3,7 @@
 # ввода PIN (alt-sim-unlock), а уведомление с кнопкой «Разблокировать»
 # висит, пока карта заперта, чтобы окно можно было открыть снова.
 # Модуль «Сотовая сеть» запертый модем не видит, поэтому своё окно.
+import signal
 import subprocess
 from gi.repository import Gio, GLib
 
@@ -11,6 +12,19 @@ LOCK_SIM_PIN, LOCK_SIM_PUK = 2, 4
 session = Gio.bus_get_sync(Gio.BusType.SESSION)
 system = Gio.bus_get_sync(Gio.BusType.SYSTEM)
 state = {"notif": 0, "shown": False}
+# Окно запускается отдельной единицей systemd-run: не остаётся зомби и
+# перезапуск этой службы окно не закрывает.
+signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+
+
+def open_window():
+    subprocess.Popen(["systemd-run", "--user", "--quiet", "--collect",
+                      "/usr/local/bin/alt-sim-unlock"])
+
+
+def window_open():
+    return subprocess.run(["pgrep", "-f", "qml-qt6 /usr/share/alt-mobile/sim-unlock"],
+                          stdout=subprocess.DEVNULL).returncode == 0
 
 
 def locked():
@@ -52,14 +66,14 @@ def close():
 def on_action(conn, sender, path, iface, signal, params):
     nid, key = params.unpack()
     if nid == state["notif"]:
-        subprocess.Popen(["alt-sim-unlock"])
+        open_window()
 
 
 def tick():
     kind = locked()
     if kind and not state["shown"]:
         state["shown"] = True
-        subprocess.Popen(["alt-sim-unlock"])
+        open_window()
     if not kind:
         state["shown"] = False
     if kind and not state["notif"]:
