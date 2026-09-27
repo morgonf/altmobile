@@ -26,6 +26,14 @@ EOT
 cat > /usr/lib64/firefox/defaults/pref/alt-mobile.js <<'EOT'
 // ALT Mobile, OnePlus 6T: окно вопроса о браузере по умолчанию шире экрана
 pref("browser.shell.checkDefaultBrowser", false);
+// Настольный Firefox игнорирует <meta name="viewport">, и сайты открывались
+// в версии для ПК шириной 980 точек. С этим они берут ширину экрана.
+pref("dom.meta-viewport.enabled", true);
+// Масштабирование страницы щипком
+pref("apz.allow_zooming", true);
 EOT
 tail -4 $F
 cat /usr/lib64/firefox/defaults/pref/alt-mobile.js
+# Firefox браузер по умолчанию (экранная клавиатура в нём работает, в
+# X11-окне Chromium нет). Выполняется от пользователя внутри сеанса:
+#   xdg-settings set default-web-browser firefox.desktop
