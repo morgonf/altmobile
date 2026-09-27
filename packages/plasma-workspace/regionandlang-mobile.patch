@@ -1,27 +1,157 @@
---- /home/altlinux/RPM/BUILD/plasma-workspace-6.7.5/kcms/region_language/ui/main.qml.orig	2026-09-27 13:02:46.976972532 +0300
-+++ /home/altlinux/RPM/BUILD/plasma-workspace-6.7.5/kcms/region_language/ui/main.qml	2026-09-27 13:03:03.302079529 +0300
-@@ -169,6 +169,11 @@
+--- a/kcms/region_language/ui/main.qml
++++ b/kcms/region_language/ui/main.qml
+@@ -10,14 +10,43 @@
+ import org.kde.kirigami as Kirigami
+ import org.kde.kcmutils as KCM
+ import org.kde.kitemmodels
++import org.kde.kirigamiaddons.formcard 1 as FormCard
+ import kcmregionandlang
  
-                 Kirigami.TitleSubtitle {
+-KCM.ScrollViewKCM {
++// ALT Mobile: главная страница в мобильном стиле карточек FormCard, как
++// «Дата и время» мобильной оболочки. Строка целиком открывает выбор,
++// текущее значение переносится по словам.
++KCM.SimpleKCM {
+     id: root
+     implicitHeight: Kirigami.Units.gridUnit * 40
+     implicitWidth: Kirigami.Units.gridUnit * 20
+     enabled: kcm.enabled
+ 
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
++
++    function openSetting(page) {
++        // remove the excess pages before pushing new page
++        while (kcm.depth > 1) {
++            kcm.takeLast();
++        }
++
++        if (page === SettingType.Lang) {
++            languageSelectPage.active = true;
++            kcm.push(languageSelectPage.item);
++        } else if (page === SettingType.BinaryDialect) {
++            binaryDialectSelectPage.active = true;
++            kcm.push(binaryDialectSelectPage.item);
++        } else {
++            localeListPage.active = true;
++            localeListPage.item.setting = page;
++            localeListPage.item.filterText = '';
++            kcm.push(localeListPage.item);
++        }
++    }
++
+     headerPaddingEnabled: false // Let the InlineMessages touch the edges
+     header: ColumnLayout {
+         id: messagesLayout
+@@ -139,63 +168,58 @@
+         }
+     }
+ 
+-    view: ListView {
+-        model: kcm.optionsModel
+-        delegate: Kirigami.SubtitleDelegate {
+-            id: optionsDelegate
+-
+-            required property int index
+-            required property var model
+-
+-            width: ListView.view.width
+-
+-            text: model.name
+-            subtitle: {
+-                if (model.page === SettingType.Lang) {
+-                    return model.localeName;
+-                }
+-                return model.example;
+-            }
++    ColumnLayout {
++        spacing: 0
+ 
+-            Kirigami.Theme.useAlternateBackgroundColor: true
++        FormCard.FormHeader {
++            title: i18n("Language")
++        }
+ 
+-            // No hover effects wanted here
+-            hoverEnabled: false
+-            highlighted: false
+-            down: false
++        FormCard.FormCard {
++            Repeater {
++                model: kcm.optionsModel
++                delegate: FormCard.FormButtonDelegate {
++                    required property var model
++                    visible: model.page === SettingType.Lang
++                    text: model.name
++                    description: model.localeName ?? ""
++                    onClicked: root.openSetting(model.page)
++                }
++            }
++        }
+ 
+-            contentItem: RowLayout {
+-                spacing: Kirigami.Units.smallSpacing
++        FormCard.FormHeader {
++            // Строки нет в каталоге перевода модуля, для русского
++            // подставляем свою, чтобы не показывать английскую
++            title: {
++                const t = i18nc("@title:group", "Formats");
++                return t === "Formats" && Qt.locale().name.startsWith("ru") ? "Форматы" : t;
++            }
++        }
+ 
+-                Kirigami.TitleSubtitle {
++        FormCard.FormCard {
++            Repeater {
++                model: kcm.optionsModel
++                delegate: ColumnLayout {
++                    id: formatDelegate
++                    required property int index
++                    required property var model
++                    // Язык показан в своей карточке, первая строка форматов
++                    // идёт без разделителя сверху
++                    readonly property bool isFormat: model.page !== SettingType.Lang
++                    visible: isFormat
++                    spacing: 0
                      Layout.fillWidth: true
-+                    // ALT Mobile: на узком экране текст сжимается и переносится
-+                    // по словам, а не уходит под кнопку и не обрезается «…»
-+                    Layout.minimumWidth: 0
-+                    Layout.preferredWidth: 0
-+                    wrapMode: Text.WordWrap
-                     title: optionsDelegate.text
-                     subtitle: optionsDelegate.subtitle
-                     reserveSpaceForSubtitle: true
-@@ -178,6 +183,12 @@
-                     id: changeButton
-                     text: i18nc("@action:button for change the locale used", "Modify…")
-                     icon.name: "edit-entry"
-+                    // ALT Mobile: на узком экране только значок, подпись в подсказке
-+                    display: optionsDelegate.width < Kirigami.Units.gridUnit * 25
-+                        ? QQC2.AbstractButton.IconOnly : QQC2.AbstractButton.TextBesideIcon
-+                    QQC2.ToolTip.text: text
-+                    QQC2.ToolTip.visible: display === QQC2.AbstractButton.IconOnly && hovered
-+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
-                     onClicked: {
-                         // remove the excess pages before pushing new page
-                         while (kcm.depth > 1) {
+-                    title: optionsDelegate.text
+-                    subtitle: optionsDelegate.subtitle
+-                    reserveSpaceForSubtitle: true
+-                }
+ 
+-                QQC2.Button {
+-                    id: changeButton
+-                    text: i18nc("@action:button for change the locale used", "Modify…")
+-                    icon.name: "edit-entry"
+-                    onClicked: {
+-                        // remove the excess pages before pushing new page
+-                        while (kcm.depth > 1) {
+-                            kcm.takeLast();
+-                        }
+-
+-                        if (model.page === SettingType.Lang) {
+-                            languageSelectPage.active = true;
+-                            kcm.push(languageSelectPage.item);
+-                        } else if (model.page === SettingType.BinaryDialect) {
+-                            binaryDialectSelectPage.active = true;
+-                            kcm.push(binaryDialectSelectPage.item);
+-                        } else {
+-                            localeListPage.active = true;
+-                            localeListPage.item.setting = optionsDelegate.model.page;
+-                            localeListPage.item.filterText = '';
+-                            kcm.push(localeListPage.item);
+-                        }
++                    FormCard.FormDelegateSeparator {
++                        visible: formatDelegate.index > 1
++                    }
++
++                    FormCard.FormButtonDelegate {
++                        Layout.fillWidth: true
++                        text: formatDelegate.model.name
++                        description: formatDelegate.model.example ?? ""
++                        onClicked: root.openSetting(formatDelegate.model.page)
+                     }
+                 }
+             }
