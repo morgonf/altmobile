@@ -29,6 +29,11 @@ pref("browser.shell.checkDefaultBrowser", false);
 // Настольный Firefox игнорирует <meta name="viewport">, и сайты открывались
 // в версии для ПК шириной 980 точек. С этим они берут ширину экрана.
 pref("dom.meta-viewport.enabled", true);
+// Страницы без meta viewport (внутренние about:sessionrestore и прочие,
+// неадаптивные сайты вроде вики ALT) раскладываются шириной desktopWidth и
+// ужимаются в экран. При штатных 980 текст мелкий, при 540 читается и
+// страница помещается (720 ещё мелко).
+pref("browser.viewport.desktopWidth", 540);
 // Масштабирование страницы щипком
 pref("apz.allow_zooming", true);
 // Размер интерфейса выравнивает firefox/userChrome.css (всё 11 pt, как в
