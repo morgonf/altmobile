@@ -1,0 +1,17 @@
+--- a/src/kcm/ui/main.qml
++++ b/src/kcm/ui/main.qml
+@@ -153,6 +153,14 @@
+             explanation: xi18nc("@info", "Click <interface>Pair Device…</interface> to pair some")
+             width: parent.width - (Kirigami.Units.largeSpacing * 4)
+             anchors.centerIn: parent
++
++            // ALT Mobile: на телефоне кнопка в шапке мелкая и без подписи,
++            // даём то же действие крупной кнопкой в пустом списке
++            helpfulAction: Kirigami.Action {
++                text: i18n("Pair Device…")
++                icon.name: "list-add-symbolic"
++                onTriggered: root.KCMUtils.ConfigModule.runWizard(root)
++            }
+         }
+ 
+         model: BluezQt.Manager.bluetoothOperational ? devicesModel : null

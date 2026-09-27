@@ -1,0 +1,17 @@
+--- a/src/kcm/ui/main.qml
++++ b/src/kcm/ui/main.qml
+@@ -87,6 +87,14 @@
+             text: i18ndc("kaccounts-integration", "A text shown when a user has not yet added any accounts", "No accounts added yet")
+             explanation: xi18ndc("kaccounts-integration", "@info", "Click <interface>Add Account…</interface> to add one")
+ 
++            // ALT Mobile: на телефоне «Добавить учётную запись…» спрятано в
++            // мелком меню «⋮», даём то же действие крупной кнопкой
++            helpfulAction: Kirigami.Action {
++                text: i18ndc("kaccounts-integration", "@action:button", "Add Account…")
++                icon.name: "list-add-symbolic"
++                onTriggered: kcm.push("AvailableAccounts.qml")
++            }
++
+         }
+     }
+ 
