@@ -1,0 +1,395 @@
+--- a/kcms/nighttime/ui/main.qml
++++ b/kcms/nighttime/ui/main.qml
+@@ -11,13 +11,22 @@
+ 
+ import org.kde.kirigami as Kirigami
+ import org.kde.kcmutils as KCM
++import org.kde.kirigamiaddons.formcard 1 as FormCard
+ import org.kde.private.kcms.nighttime as Private
+ 
++// ALT Mobile: страница в мобильном стиле карточек FormCard. Настольная
++// вёрстка (FormLayout, ряд из переключателя и двух полей координат, карта
++// шириной 30 единиц) не помещалась в экран телефона.
+ KCM.SimpleKCM {
+     id: root
+ 
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
++
+     ColumnLayout {
+-        spacing: Kirigami.Units.smallSpacing
++        spacing: 0
+ 
+         QQC2.Label {
+             Layout.fillWidth: true
+@@ -30,16 +39,20 @@
+         }
+ 
+         SunPath {
++            Layout.fillWidth: true
+             Layout.maximumWidth: Kirigami.Units.gridUnit * 30
++            Layout.leftMargin: Kirigami.Units.gridUnit
++            Layout.rightMargin: Kirigami.Units.gridUnit
+             Layout.alignment: Qt.AlignHCenter
+             schedule: schedulePreview
+         }
+ 
+-        Kirigami.FormLayout {
+-            QQC2.ComboBox {
++        FormCard.FormCard {
++            Layout.topMargin: Kirigami.Units.gridUnit
++
++            FormCard.FormComboBoxDelegate {
+                 id: sourceComboBox
+-                Layout.minimumWidth: Kirigami.Units.gridUnit * 17
+-                Kirigami.FormData.label: i18nc("@label:listbox part of a sentence: 'Determine sunrise and sunset times [based on]'", "Determine sunrise and sunset times:")
++                text: i18nc("@label:listbox part of a sentence: 'Determine sunrise and sunset times [based on]'", "Determine sunrise and sunset times:").replace(/:$/, "")
+                 currentIndex: kcm.settings.source
+                 textRole: "text"
+                 valueRole: "value"
+@@ -54,49 +67,81 @@
+                     settingName: "source"
+                 }
+             }
++        }
+ 
+-            TimeField {
+-                id: sunriseStartTimeField
+-                Kirigami.FormData.label: i18nc("@label", "Sunrise:")
+-                value: kcm.settings.sunriseStart
+-                visible: kcm.settings.source === Private.NightTimeSettings.Times
+-                onActivated: (value) => {
+-                    kcm.settings.sunriseStart = Private.DarkLightScheduleValidator.validate(value, kcm.settings.sunsetStart, kcm.settings.transitionDuration);
+-                }
+-
+-                KCM.SettingStateBinding {
+-                    configObject: kcm.settings
+-                    settingName: "sunriseStart"
++        FormCard.FormCard {
++            Layout.topMargin: Kirigami.Units.largeSpacing
++            visible: kcm.settings.source === Private.NightTimeSettings.Times
++
++            FormCard.AbstractFormDelegate {
++                id: sunriseDelegate
++                background: null
++                contentItem: RowLayout {
++                    QQC2.Label {
++                        Layout.fillWidth: true
++                        text: i18nc("@label", "Sunrise:").replace(/:$/, "")
++                        textFormat: Text.PlainText
++                        wrapMode: Text.WordWrap
++                    }
++                    TimeField {
++                        id: sunriseStartTimeField
++                        value: kcm.settings.sunriseStart
++                        onActivated: (value) => {
++                            kcm.settings.sunriseStart = Private.DarkLightScheduleValidator.validate(value, kcm.settings.sunsetStart, kcm.settings.transitionDuration);
++                        }
++
++                        KCM.SettingStateBinding {
++                            configObject: kcm.settings
++                            settingName: "sunriseStart"
++                        }
++                    }
+                 }
+             }
+ 
+-            TimeField {
+-                id: sunsetStartTimeField
+-                Kirigami.FormData.label: i18nc("@label", "Sunset:")
+-                value: kcm.settings.sunsetStart
+-                visible: kcm.settings.source === Private.NightTimeSettings.Times
+-                onActivated: (value) => {
+-                    kcm.settings.sunsetStart = Private.DarkLightScheduleValidator.validate(value, kcm.settings.sunriseStart, kcm.settings.transitionDuration);
+-                }
++            FormCard.FormDelegateSeparator { above: sunriseDelegate; below: sunsetDelegate }
+ 
+-                KCM.SettingStateBinding {
+-                    configObject: kcm.settings
+-                    settingName: "sunsetStart"
++            FormCard.AbstractFormDelegate {
++                id: sunsetDelegate
++                background: null
++                contentItem: RowLayout {
++                    QQC2.Label {
++                        Layout.fillWidth: true
++                        text: i18nc("@label", "Sunset:").replace(/:$/, "")
++                        textFormat: Text.PlainText
++                        wrapMode: Text.WordWrap
++                    }
++                    TimeField {
++                        id: sunsetStartTimeField
++                        value: kcm.settings.sunsetStart
++                        onActivated: (value) => {
++                            kcm.settings.sunsetStart = Private.DarkLightScheduleValidator.validate(value, kcm.settings.sunriseStart, kcm.settings.transitionDuration);
++                        }
++
++                        KCM.SettingStateBinding {
++                            configObject: kcm.settings
++                            settingName: "sunsetStart"
++                        }
++                    }
+                 }
+             }
+ 
+-            QQC2.SpinBox {
+-                Kirigami.FormData.label: i18nc("@label:spinbox", "Transition duration:")
+-                visible: kcm.settings.source === Private.NightTimeSettings.Times
+-                from: 60
+-                to: 36000
+-                stepSize: 300
+-                value: kcm.settings.transitionDuration
+-                textFromValue: (value, locale) => i18ncp("@item:valuesuffix transition duration", "%1 minute", "%1 minutes", Math.round(value / 60))
+-                valueFromText: (text, locale) => parseInt(text) * 60
+-                onValueModified: {
+-                    kcm.settings.sunsetStart = Private.DarkLightScheduleValidator.validate(kcm.settings.sunsetStart, kcm.settings.sunriseStart, value);
+-                    kcm.settings.transitionDuration = value;
++            FormCard.FormDelegateSeparator { above: sunsetDelegate; below: transitionSpin }
++
++            FormCard.FormSpinBoxDelegate {
++                id: transitionSpin
++                label: i18nc("@label:spinbox", "Transition duration:").replace(/:$/, "")
++                from: 1 // minutes
++                to: 600
++                stepSize: 5
++                value: Math.round(kcm.settings.transitionDuration / 60)
++                textFromValue: (value, locale) => i18ncp("@item:valuesuffix transition duration", "%1 minute", "%1 minutes", value)
++                valueFromText: (text, locale) => parseInt(text)
++                onValueChanged: {
++                    const seconds = value * 60;
++                    if (kcm.settings.transitionDuration !== seconds) {
++                        kcm.settings.sunsetStart = Private.DarkLightScheduleValidator.validate(kcm.settings.sunsetStart, kcm.settings.sunriseStart, seconds);
++                        kcm.settings.transitionDuration = seconds;
++                    }
+                 }
+ 
+                 KCM.SettingStateBinding {
+@@ -106,16 +151,19 @@
+             }
+         }
+ 
+-        ColumnLayout {
+-            Layout.alignment: Qt.AlignHCenter
++        FormCard.FormCard {
++            Layout.topMargin: Kirigami.Units.largeSpacing
+             visible: kcm.settings.source === Private.NightTimeSettings.Location
+-            spacing: Kirigami.Units.smallSpacing
+ 
+             QQC2.ButtonGroup { id: locationGroup }
+ 
+-            QQC2.RadioButton {
++            FormCard.FormRadioDelegate {
++                id: automaticLocationRadio
+                 QQC2.ButtonGroup.group: locationGroup
+                 text: i18nc("@option:radio", "Automatically detect location")
++                description: automaticLocationProvider.name === "geoclue2"
++                    ? xi18nc("@info", "The <application>GeoClue2</application> service will be used to periodically update the device's location using GPS or cell tower triangulation if available, or else by sending its IP address to <link url='https://geoip.com/privacy/'>GeoIP</link>.")
++                    : xi18nc("@info", "The <application>%1</application> service will be used to periodically update the device's location. Please open a bug report at <link url='https://bugs.kde.org'>https://bugs.kde.org</link> asking KDE developers to write a detailed description of what this service will do.", automaticLocationProvider.name)
+                 checked: kcm.settings.automaticLocation
+                 onToggled: kcm.settings.automaticLocation = true;
+ 
+@@ -125,95 +173,78 @@
+                 }
+             }
+ 
+-            RowLayout {
+-                spacing: Kirigami.Units.smallSpacing
+-
+-                Item {
+-                    width: Kirigami.Units.gridUnit
+-                }
+-
+-                TextEdit {
+-                    Layout.maximumWidth: Kirigami.Units.gridUnit * 25
+-                    wrapMode: Text.Wrap
+-                    readOnly: true
+-                    color: Kirigami.Theme.textColor
+-                    font: Kirigami.Theme.smallFont
+-                    selectedTextColor: Kirigami.Theme.highlightedTextColor
+-                    selectionColor: Kirigami.Theme.highlightColor
+-                    textFormat: TextEdit.RichText
+-                    text: automaticLocationProvider.name === "geoclue2"
+-                        ? xi18nc("@info", "The <application>GeoClue2</application> service will be used to periodically update the device's location using GPS or cell tower triangulation if available, or else by sending its IP address to <link url='https://geoip.com/privacy/'>GeoIP</link>.")
+-                        : xi18nc("@info", "The <application>%1</application> service will be used to periodically update the device's location. Please open a bug report at <link url='https://bugs.kde.org'>https://bugs.kde.org</link> asking KDE developers to write a detailed description of what this service will do.", automaticLocationProvider.name)
++            FormCard.FormDelegateSeparator { above: automaticLocationRadio; below: manualLocationButton }
+ 
+-                    onLinkActivated: (url) => Qt.openUrlExternally(url)
++            FormCard.FormRadioDelegate {
++                id: manualLocationButton
++                QQC2.ButtonGroup.group: locationGroup
++                text: i18nc("@option:radio", "Use manual location:").replace(/:$/, "")
++                checked: !kcm.settings.automaticLocation
++                onToggled: kcm.settings.automaticLocation = false;
+ 
+-                    HoverHandler {
+-                        acceptedButtons: Qt.NoButton
+-                        cursorShape: parent.hoveredLink ? Qt.PointingHandCursor : Qt.ArrowCursor
+-                    }
++                KCM.SettingStateBinding {
++                    configObject: kcm.settings
++                    settingName: "automaticLocation"
+                 }
+             }
+ 
+-            RowLayout {
+-                spacing: Kirigami.Units.smallSpacing
+-
+-                QQC2.RadioButton {
+-                    id: manualLocationButton
+-                    QQC2.ButtonGroup.group: locationGroup
+-                    text: i18nc("@option:radio", "Use manual location:")
+-                    checked: !kcm.settings.automaticLocation
+-                    onToggled: kcm.settings.automaticLocation = false;
+-
+-                    KCM.SettingStateBinding {
+-                        configObject: kcm.settings
+-                        settingName: "automaticLocation"
++            FormCard.AbstractFormDelegate {
++                background: null
++                visible: manualLocationButton.checked
++                contentItem: RowLayout {
++                    QQC2.Label {
++                        Layout.fillWidth: true
++                        text: i18nc("@label", "Latitude:").replace(/:$/, "")
++                        textFormat: Text.PlainText
+                     }
+-                }
+-
+-                QQC2.Label {
+-                    enabled: manualLocationButton.checked
+-                    text: i18nc("@label", "Latitude:")
+-                    textFormat: Text.PlainText
+-                }
+-
+-                NumberField {
+-                    implicitWidth: 4 * Kirigami.Units.gridUnit
+-                    from: -90
+-                    to: 90
+-                    value: kcm.settings.manualLatitude
+-                    onValueEdited: (value) => kcm.settings.manualLatitude = value;
+-
+-                    KCM.SettingStateBinding {
+-                        configObject: kcm.settings
+-                        settingName: "manualLatitude"
+-                        extraEnabledConditions: manualLocationButton.checked
++                    NumberField {
++                        implicitWidth: 6 * Kirigami.Units.gridUnit
++                        from: -90
++                        to: 90
++                        value: kcm.settings.manualLatitude
++                        onValueEdited: (value) => kcm.settings.manualLatitude = value;
++
++                        KCM.SettingStateBinding {
++                            configObject: kcm.settings
++                            settingName: "manualLatitude"
++                            extraEnabledConditions: manualLocationButton.checked
++                        }
+                     }
+                 }
++            }
+ 
+-                QQC2.Label {
+-                    enabled: manualLocationButton.checked
+-                    text: i18nc("@label", "Longitude:")
+-                    textFormat: Text.PlainText
+-                }
+-
+-                NumberField {
+-                    implicitWidth: 4 * Kirigami.Units.gridUnit
+-                    from: -180
+-                    to: 180
+-                    value: kcm.settings.manualLongitude
+-                    onValueEdited: (value) => kcm.settings.manualLongitude = value;
+-
+-                    KCM.SettingStateBinding {
+-                        configObject: kcm.settings
+-                        settingName: "manualLongitude"
+-                        extraEnabledConditions: manualLocationButton.checked
++            FormCard.AbstractFormDelegate {
++                background: null
++                visible: manualLocationButton.checked
++                contentItem: RowLayout {
++                    QQC2.Label {
++                        Layout.fillWidth: true
++                        text: i18nc("@label", "Longitude:").replace(/:$/, "")
++                        textFormat: Text.PlainText
++                    }
++                    NumberField {
++                        implicitWidth: 6 * Kirigami.Units.gridUnit
++                        from: -180
++                        to: 180
++                        value: kcm.settings.manualLongitude
++                        onValueEdited: (value) => kcm.settings.manualLongitude = value;
++
++                        KCM.SettingStateBinding {
++                            configObject: kcm.settings
++                            settingName: "manualLongitude"
++                            extraEnabledConditions: manualLocationButton.checked
++                        }
+                     }
+                 }
+             }
+         }
+ 
+         WorldMap {
+-            Layout.alignment: Qt.AlignHCenter
++            Layout.fillWidth: true
++            Layout.topMargin: Kirigami.Units.largeSpacing
++            Layout.leftMargin: Kirigami.Units.gridUnit
++            Layout.rightMargin: Kirigami.Units.gridUnit
++            Layout.bottomMargin: Kirigami.Units.gridUnit
+             visible: kcm.settings.source === Private.NightTimeSettings.Location
+             latitude: if (kcm.settings.automaticLocation) {
+                 return automaticLocationProvider.position.coordinate.latitude;
+--- a/kcms/nighttime/ui/WorldMap.qml
++++ b/kcms/nighttime/ui/WorldMap.qml
+@@ -11,7 +11,8 @@
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami as Kirigami
+ 
+-Kirigami.FormLayout {
++// ALT Mobile: ColumnLayout вместо FormLayout, чтобы карта занимала ширину
++ColumnLayout {
+     id: root
+ 
+     property double latitude: 0
+@@ -66,9 +67,14 @@
+     }
+ 
+     ColumnLayout {
++        Layout.fillWidth: true
++
+         QQC2.Label {
+             id: mapLabel
+             wrapMode: Text.Wrap
++            // ALT Mobile: ширина от раскладки, иначе длинная строка раздвигает страницу
++            Layout.fillWidth: true
++            Layout.preferredWidth: 0
+             Layout.maximumWidth: mapRect.width
+             Layout.bottomMargin: Kirigami.Units.smallSpacing
+             Layout.alignment: Qt.AlignHCenter
+@@ -82,9 +88,11 @@
+         Kirigami.ShadowedRectangle {
+             id: mapRect
+             Layout.alignment: Qt.AlignHCenter
+-            implicitWidth: Kirigami.Units.gridUnit * 30
++            // ALT Mobile: карта сжимается под ширину экрана, пропорции 2:1
++            Layout.fillWidth: true
++            implicitWidth: Kirigami.Units.gridUnit * 10
+             Layout.maximumWidth: Kirigami.Units.gridUnit * 30
+-            implicitHeight: Kirigami.Units.gridUnit * 15
++            implicitHeight: width / 2
+             Layout.maximumHeight: Kirigami.Units.gridUnit * 15
+             radius: Kirigami.Units.cornerRadius
+             Kirigami.Theme.inherit: false
+@@ -230,6 +238,8 @@
+             selectionColor: Kirigami.Theme.highlightColor
+             font: Kirigami.Theme.smallFont
+             Layout.topMargin: Kirigami.Units.smallSpacing
++            Layout.fillWidth: true
++            Layout.preferredWidth: 0
+             Layout.maximumWidth: mapRect.width
+             Layout.alignment: Qt.AlignHCenter
+             text: xi18nc("@info", "Modified from <link url='https://commons.wikimedia.org/wiki/File:World_location_map_(equirectangular_180).svg'>World location map</link> by TUBS / Wikimedia Commons / <link url='https://creativecommons.org/licenses/by-sa/3.0'>CC BY-SA 3.0</link>")
