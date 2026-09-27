@@ -1,0 +1,67 @@
+--- a/src/kcms/animations/ui/main.qml
++++ b/src/kcms/animations/ui/main.qml
+@@ -180,24 +180,15 @@
+ 
+                     AnimationCheckBox {
+                         id: animationCheckBox
+-                        Layout.fillWidth: true
+-                        // Reserve space for the hidden configure button
+-                        Layout.rightMargin: !otherAnimationConfigure.visible ? (otherAnimationConfigure.implicitWidth + otherAnimationLayout.spacing) : undefined
+-
+-                        implicitWidth: 0
++                        Layout.alignment: Qt.AlignTop
+ 
+                         animationsModel: kcm.otherEffects
+                         index: otherAnimationLayout.index
+ 
+-                        text: kcm.otherEffects.data(kcm.otherEffects.index(index, 0), EffectsModel.DescriptionRole)
+-
+-                        // Center the indicator when multi-line
+-                        Binding {
+-                            target: animationCheckBox.indicator.anchors
+-                            property: "verticalCenter"
+-                            value: animationCheckBox.verticalCenter
+-                            when: animationCheckBox.contentItem.lineCount > 1
+-                        }
++                        // Стиль Breeze рисует подпись флажка одной строкой с
++                        // многоточием, поэтому описание вынесено в отдельную
++                        // подпись с переносом по словам.
++                        Accessible.name: animationDescription.text
+ 
+ 
+                         KCM.SettingHighlighter {
+@@ -205,6 +196,26 @@
+                         }
+                     }
+ 
++                    QQC2.Label {
++                        id: animationDescription
++                        Layout.fillWidth: true
++                        // Reserve space for the hidden configure button
++                        Layout.rightMargin: !otherAnimationConfigure.visible ? (otherAnimationConfigure.implicitWidth + otherAnimationLayout.spacing) : 0
++                        // Ширину задаёт раскладка, а не длина текста
++                        Layout.preferredWidth: 0
++                        wrapMode: Text.WordWrap
++                        textFormat: Text.PlainText
++                        text: kcm.otherEffects.data(kcm.otherEffects.index(otherAnimationLayout.index, 0), EffectsModel.DescriptionRole)
++
++                        TapHandler {
++                            enabled: animationCheckBox.enabled
++                            onTapped: {
++                                animationCheckBox.toggle();
++                                animationCheckBox.toggled();
++                            }
++                        }
++                    }
++
+                     QQC2.Button {
+                         id: otherAnimationConfigure
+                         icon.name: "configure"
+@@ -237,7 +248,6 @@
+             QQC2.Button {
+                 id: effectsKCMButton
+                 Kirigami.FormData.label: i18nc("@title:group translate as short as possible", "More effects settings:")
+-                Layout.preferredWidth: Kirigami.Units.gridUnit * 10
+ 
+                 readonly property var kcmData: kcm.effectsKCMData()
+ 

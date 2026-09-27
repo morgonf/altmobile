@@ -26,6 +26,8 @@
   `~/rlbuild.sh`, установка `~/rlinst.sh`;
 - Kirigami `delegates/TitleSubtitle.qml` перенос по словам по умолчанию,
   из `delegates/qmldir` убран `prefer` (`system/plasma/kirigami-titlesubtitle-wrap.sh`);
+- `kcm_animations.so` пересобран из `kwin` с патчем переноса описаний
+  (`packages/kwin`), исходники в `~/RPM/BUILD/kwin-6.7.5`;
 - `AppletConfiguration.qml` мобильной оболочки: обход падения Qt 6.11.2;
 - `kcm_navigation.mo` русский (строки модуль переводчикам не отдаёт);
 - `libxslt` пересобран с libxml2 2.14 (падений браузеров не устранило);
@@ -41,7 +43,8 @@
 В 13:16 телефон замер во время `rpmbuild -ba plasma-settings` в восемь потоков и оказался в
 fastboot (слот снят `fastboot --set-active=a`). Журнал обрывается без
 следов нехватки памяти или паники, причина не установлена. Вероятно, перегрев: даже в один поток
-температура доходила до 77 °C. Пересобирать только в один поток и с низким приоритетом (`nice -n 19`, `-j1`).
+температура доходила до 77 °C. Собирать в четыре потока со сторожем температуры
+(`scripts/build-thermal-guard.sh`), см. `packages/README.md`.
 
 После перезагрузки мастер первого запуска снова крутил `mts`: флаг
 `wizardRun` стоял не в той группе, исправлено (см. `system/plasma/README.md`).
@@ -67,10 +70,7 @@ fastboot (слот снят `fastboot --set-active=a`). Журнал обрыв�
 
 ## Что делать дальше, по порядку
 
-1. **«Анимация» обрезает подписи** (`kcm_animations`, пакет `kwin`).
-   Развернуть исходники kwin так же, как plasma-workspace, найти QML,
-   добавить перенос, собрать одну цель, поставить поверх с `.orig`.
-2. **Единый мобильный стиль модулей настроек.** Пользователю нравятся
+1. **Единый мобильный стиль модулей настроек.** Пользователю нравятся
    «Дата и время» и «Оболочка» (карточки `kirigami-addons` FormCard). Модули
    из настольного Plasma выглядят как для ПК. Переводить вёрстку на
    FormCard по одному, начиная с тех, которыми пользуются; сначала спросить
@@ -78,14 +78,14 @@ fastboot (слот снят `fastboot --set-active=a`). Журнал обрыв�
    уведомления, Bluetooth, экран, приложения по умолчанию, анимация,
    смена дня и ночи (не влезает на экран), учётные записи (мелкие «три
    точки»).
-3. Браузеры на QtWebEngine (Angelfish) и WebKit (Epiphany) падают в
+2. Браузеры на QtWebEngine (Angelfish) и WebKit (Epiphany) падают в
    процессе отрисовки, место падения в `libQt6WebEngineCore` найдено,
    отладочная информация для него не ставится («битые пакеты»: нужна
    `debug64(libxslt.so.1)`, а libxslt пересобран локально).
-4. Звонилка `plasma-dialer`, SMS `spacebar`, контакты `plasma-phonebook`:
+3. Звонилка `plasma-dialer`, SMS `spacebar`, контакты `plasma-phonebook`:
    собрать из исходников, почти все зависимости в Sisyphus есть (нет
    `futuresql` для spacebar).
-5. Отчёты разработчикам: ALT (недостающие зависимости plasma-mobile,
+4. Отчёты разработчикам: ALT (недостающие зависимости plasma-mobile,
    `-x all` не проблема, libxslt/libxml2, старый plasma-settings), KDE
    (перевод kcm_navigation, Binding в AppletConfiguration.qml, вёрстка
    регион-модуля для телефона), Qt (QQmlBind в 6.11.2).
