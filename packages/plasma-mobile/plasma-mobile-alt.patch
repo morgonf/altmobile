@@ -1,7 +1,7 @@
 diff -ruN a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml
 --- a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml	2026-09-27 09:22:55.018539799 -0400
-+++ b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml	2026-09-27 09:23:35.456963884 -0400
-@@ -16,9 +16,17 @@
++++ b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml	2026-09-27 11:40:09.410473206 -0400
+@@ -16,15 +16,38 @@
  
      readonly property bool isShowing: height > 0
  
@@ -19,6 +19,35 @@ diff -ruN a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml b
          from: 0
          to: root.fullHeight
          duration: 200
+         easing.type: Easing.OutExpo
+     }
+ 
++    // ALT Mobile: если окно показалось раньше сигнала о запуске или
++    // приложение закрыли до появления окна, сброс по смене окна не
++    // срабатывал, и панели оставались в тёмных цветах окна на главном
++    // экране. Через секунду после анимации проверяем, есть ли окно.
++    Timer {
++        id: settleTimer
++        interval: 1000
++        onTriggered: {
++            if (root.height > 0 && root.maximizedTracker && !root.maximizedTracker.showingWindow) {
++                root.color = 'transparent';
++                root.height = 0;
++            }
++        }
++    }
++
+     // Reset when maximized window state changes
+     Connections {
+         target: maximizedTracker
+@@ -46,6 +69,7 @@
+ 
+             root.color = color;
+             heightAnim.restart();
++            settleTimer.restart();
+         }
+     }
+ }
 diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml b/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml
 --- a/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml	2026-09-27 09:22:55.590531653 -0400
 +++ b/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml	2026-09-27 09:23:35.456963884 -0400
