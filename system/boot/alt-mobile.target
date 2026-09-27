@@ -1,0 +1,13 @@
+[Unit]
+Description=ALT Mobile на OnePlus 6T: модем, процессоры DSP, датчики, звук
+Documentation=file:///usr/share/doc/alt-mobile/boot-order.md
+# Слои описаны в docs/boot-order.md репозитория, порядок внутри слоёв
+# задают drop-in-файлы служб (After=), цель только собирает их вместе.
+Wants=rmtfs.service pd-mapper.service tqftpserv.service qbootctl-mark-successful.service
+Wants=ModemManager.service alt-sim-hotplug.service alt-gps-nmea.service
+Wants=hexagonrpcd-sdsp.service hexagonrpcd-adsp-audio.service q6voiced.service q6echo-activate.service
+Wants=iio-sensor-proxy.service
+After=multi-user.target
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+#!/bin/sh
+# Состояние ALT Mobile по слоям загрузки (docs/boot-order.md).
+# Запуск от пользователя: alt-mobile-status
+s() { printf "  %-32s %s\n" "$1" "$(systemctl is-active "$1" 2>/dev/null)"; }
+u() { printf "  %-32s %s\n" "$1" "$(systemctl --user is-active "$1" 2>/dev/null)"; }
+echo "0. Qualcomm"; for x in rmtfs pd-mapper tqftpserv qbootctl-mark-successful; do s $x; done
+for r in /sys/class/remoteproc/remoteproc*; do printf "  %-32s %s\n" "remoteproc $(cat $r/name)" "$(cat $r/state)"; done
+echo "1. Модем"; for x in ModemManager alt-sim-hotplug alt-gps-nmea; do s $x; done
+printf "  %-32s %s\n" "SIM / сеть" "$(mmcli -m any 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s+\|?\s*(state|lock):' | awk -F': ' '{print $2}' | tr '\n' ' ')"
+echo "2. Процессоры DSP"; for x in hexagonrpcd-sdsp hexagonrpcd-adsp-audio q6voiced q6echo-activate; do s $x; done
+echo "3. Датчики"; s iio-sensor-proxy
+for p in HasAccelerometer HasAmbientLight HasProximity; do
+	printf "  %-32s %s\n" "$p" "$(busctl --system get-property net.hadess.SensorProxy /net/hadess/SensorProxy net.hadess.SensorProxy $p 2>/dev/null)"
+done
+echo "4. Сеанс"; s plasma-mobile; for x in kwin_wayland plasmashell; do printf "  %-32s %s\n" "$x" "$(pgrep -x $x >/dev/null && echo работает || echo нет)"; done
+echo "5. Пользователь"; u alt-sim-pin-notify
+printf "  %-32s %s\n" "агент geoclue" "$(pgrep -f '[g]eoclue-2.0/demos/agent' >/dev/null && echo работает || echo нет)"
