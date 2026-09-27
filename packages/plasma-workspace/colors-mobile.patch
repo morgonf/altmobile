@@ -1,0 +1,33 @@
+--- a/kcms/colors/ui/AccentColorUI.qml
++++ b/kcms/colors/ui/AccentColorUI.qml
+@@ -12,7 +12,9 @@
+ 
+ import org.kde.kirigami as Kirigami
+ 
+-RowLayout {
++// ALT Mobile: выбор режима и образцы цвета друг под другом, в одну строку
++// с длинным текстом выпадающего списка они не помещались на телефон
++ColumnLayout {
+     id: accentColorUI
+ 
+     readonly property int colorButtonSize: Math.round(Kirigami.Units.gridUnit * 1.25)
+@@ -21,7 +23,7 @@
+ 
+     QQC2.ComboBox {
+         id: colorModeBox
+-        Layout.alignment: Qt.AlignTop | Qt.AlignRight
++        Layout.fillWidth: true
+ 
+         model: [
+             i18nc("@item:inlistbox Accent color from color scheme", "Accent color from color scheme"),
+--- a/kcms/colors/ui/main.qml
++++ b/kcms/colors/ui/main.qml
+@@ -106,7 +106,7 @@
+ 
+             AccentColorUI {
+                 id: colourFlow
+-                Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
++                Layout.fillWidth: true
+             }
+ 
+             RowLayout {
