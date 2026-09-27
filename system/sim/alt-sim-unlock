@@ -1,0 +1,13 @@
+#!/bin/sh
+# Открыть окно разблокировки SIM (sim-unlock/main.qml), если карта заперта.
+# Второй экземпляр не запускается. Вызывают alt-sim-pin-notify (уведомление
+# и первый показ после входа) и сам пользователь.
+QML=/usr/share/alt-mobile/sim-unlock/main.qml
+pgrep -f "qml-qt6 $QML" >/dev/null && exit 0
+KV=$(mmcli -m any -K 2>/dev/null) || exit 1
+get() { echo "$KV" | sed -n "s/^$1 *: //p" | head -1; }
+LOCK=$(get modem.generic.unlock-required)
+case "$LOCK" in sim-pin|sim-puk) ;; *) exit 0 ;; esac
+SIM=$(get modem.generic.sim)
+N=$(echo "$KV" | sed -n "s/^modem.generic.unlock-retries.value\[[0-9]*\] *: $LOCK (\([0-9]*\))/\1/p" | head -1)
+exec qml-qt6 "$QML" -- "$SIM" "$LOCK" "${N:--1}"

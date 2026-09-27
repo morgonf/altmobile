@@ -5,8 +5,30 @@
 # failed/sim-missing. Раз в 10 секунд: если ModemManager пишет sim-missing,
 # а QMI видит карту с USIM без сессии, открываем сессию и перезапускаем
 # ModemManager. Найдено и проверено вручную 27.09.2026.
+#
+# Мобильный интернет. У подключения CON стоит autoconnect no: иначе
+# NetworkManager на запертой карте уходит в need-auth и агент plasma-nm
+# показывает своё окно «Вход в mts» поверх нашего окна PIN. Поднимаем
+# подключение сами, один раз после того, как модем стал готов (после
+# загрузки или разблокировки). Если пользователь потом выключит данные,
+# не включаем их обратно, пока карта снова не окажется заперта.
 DEV=qrtr://0
+CON=mts
+UP=0
 while true; do
+	ST=$(mmcli -m any -K 2>/dev/null | sed -n 's/^modem.generic.state *: //p')
+	case "$ST" in
+	locked|"") UP=0 ;;
+	registered|connected)
+		if [ $UP = 0 ]; then
+			UP=1
+			if [ "$(nmcli -t radio wwan)" = enabled ] &&
+			   ! nmcli -t -f TYPE con show --active | grep -q gsm; then
+				logger -t alt-sim-hotplug "модем готов ($ST), поднимаю $CON"
+				nmcli con up "$CON" 2>&1 | logger -t alt-sim-hotplug
+			fi
+		fi ;;
+	esac
 	if mmcli -m any 2>/dev/null | grep -q "failed reason: sim-missing"; then
 		ST=$(qmicli -p -d $DEV --uim-get-card-status 2>/dev/null)
 		if echo "$ST" | grep -q "Primary GW:   session doesn't exist" &&

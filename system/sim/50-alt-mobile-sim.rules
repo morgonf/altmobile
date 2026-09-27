@@ -1,0 +1,10 @@
+// ALT Mobile: ввод PIN-кода SIM и управление модемом без пароля
+// пользователя для того, кто сидит за телефоном (локальный активный сеанс,
+// группа wheel). По умолчанию ModemManager требует auth_self_keep, и
+// поверх окна PIN вылезало бы окно пароля.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.ModemManager1.Device.Control" &&
+        subject.local && subject.active && subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

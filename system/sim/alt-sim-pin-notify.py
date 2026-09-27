@@ -1,8 +1,8 @@
 #!/usr/bin/python3
-# Уведомление «SIM-карта заблокирована» с кнопкой, открывающей экран
-# разблокировки в «Сотовой сети» (kcm_cellular_network). Вместо старого
-# окна plasma-nm на виджетах, в котором не выходила экранная клавиатура;
-# само окно отключено у подключения mts: gsm.pin-flags not-required.
+# Запертая SIM-карта: при первом обнаружении за сеанс сразу открывает окно
+# ввода PIN (alt-sim-unlock), а уведомление с кнопкой «Разблокировать»
+# висит, пока карта заперта, чтобы окно можно было открыть снова.
+# Модуль «Сотовая сеть» запертый модем не видит, поэтому своё окно.
 import subprocess
 from gi.repository import Gio, GLib
 
@@ -10,7 +10,7 @@ MM = "org.freedesktop.ModemManager1"
 LOCK_SIM_PIN, LOCK_SIM_PUK = 2, 4
 session = Gio.bus_get_sync(Gio.BusType.SESSION)
 system = Gio.bus_get_sync(Gio.BusType.SYSTEM)
-state = {"notif": 0}
+state = {"notif": 0, "shown": False}
 
 
 def locked():
@@ -35,7 +35,7 @@ def notify(kind):
                           GLib.Variant("(susssasa{sv}i)", ("SIM-карта", 0, "smartphone",
                                        "SIM-карта заблокирована", body,
                                        ["default", "Разблокировать", "unlock", "Разблокировать"],
-                                       {"urgency": GLib.Variant("y", 2),
+                                       {"urgency": GLib.Variant("y", 1),
                                         "resident": GLib.Variant("b", True)}, 0)),
                           None, 0, -1, None)
     state["notif"] = r.unpack()[0]
@@ -52,11 +52,16 @@ def close():
 def on_action(conn, sender, path, iface, signal, params):
     nid, key = params.unpack()
     if nid == state["notif"]:
-        subprocess.Popen(["plasma-settings", "-m", "kcm_cellular_network"])
+        subprocess.Popen(["alt-sim-unlock"])
 
 
 def tick():
     kind = locked()
+    if kind and not state["shown"]:
+        state["shown"] = True
+        subprocess.Popen(["alt-sim-unlock"])
+    if not kind:
+        state["shown"] = False
     if kind and not state["notif"]:
         notify(kind)
     elif not kind and state["notif"]:
