@@ -156,3 +156,17 @@ PlasmaQuick::ConfigView::setSource configview.cpp:278   (libplasma 6.7.5)
 `rpm [alt] http://ftp.altlinux.org/pub/distributions/ALTLinux Sisyphus/aarch64 debuginfo`
 (`/etc/apt/sources.list.d/debuginfo.list`), исходники приходят вместе с ней в
 `/usr/src/debug`.
+
+## Меню приложений (28.09.2026)
+
+`hide-apps.sh` (от root) прячет из меню Plasma то, что осталось от Phosh и
+под Plasma ничего не настраивает (ALT Mobile Tweaks, Тюнер, Менеджер
+папок, Параметры Rygel), и версии GNOME там, где есть такая же программа
+KDE: Калькулятор, Часы, Погода, Консоль, Календарь, Vocalis, Loupe (их
+заменяют Kalk, KClock, KWeather, QMLKonsole, Calindori, KRecorder, Koko).
+Пакеты не удаляются, в `/usr/local/share/applications` кладётся копия
+ярлыка с `NotShowIn=KDE;`, под Phosh всё видно. Вернуть приложение:
+удалить его копию и выполнить `kbuildsycoca6`.
+
+`default-apps.sh` (от пользователя) назначает Koko, Amberol и Light Video
+для картинок, музыки и видео: до этого всё открывал Firefox.
