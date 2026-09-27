@@ -1,0 +1,27 @@
+--- /home/altlinux/RPM/BUILD/plasma-workspace-6.7.5/kcms/region_language/ui/main.qml.orig	2026-09-27 13:02:46.976972532 +0300
++++ /home/altlinux/RPM/BUILD/plasma-workspace-6.7.5/kcms/region_language/ui/main.qml	2026-09-27 13:03:03.302079529 +0300
+@@ -169,6 +169,11 @@
+ 
+                 Kirigami.TitleSubtitle {
+                     Layout.fillWidth: true
++                    // ALT Mobile: на узком экране текст сжимается и переносится
++                    // по словам, а не уходит под кнопку и не обрезается «…»
++                    Layout.minimumWidth: 0
++                    Layout.preferredWidth: 0
++                    wrapMode: Text.WordWrap
+                     title: optionsDelegate.text
+                     subtitle: optionsDelegate.subtitle
+                     reserveSpaceForSubtitle: true
+@@ -178,6 +183,12 @@
+                     id: changeButton
+                     text: i18nc("@action:button for change the locale used", "Modify…")
+                     icon.name: "edit-entry"
++                    // ALT Mobile: на узком экране только значок, подпись в подсказке
++                    display: optionsDelegate.width < Kirigami.Units.gridUnit * 25
++                        ? QQC2.AbstractButton.IconOnly : QQC2.AbstractButton.TextBesideIcon
++                    QQC2.ToolTip.text: text
++                    QQC2.ToolTip.visible: display === QQC2.AbstractButton.IconOnly && hovered
++                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                     onClicked: {
+                         // remove the excess pages before pushing new page
+                         while (kcm.depth > 1) {
