@@ -22,7 +22,10 @@ install -m 644 /home/altlinux/echo/plasma/AppletConfiguration.qml $F
 # Мастер первого запуска Plasma Mobile не нужен: телефон уже настроен, а его
 # шаг мобильной связи без конца перезапускал подключение mts (2575 раз за
 # несколько минут), и окно запроса секрета мигало, не давая ничего ввести.
-su altlinux -c "kwriteconfig6 --file plasmamobilerc --group General --key wizardRun true"
+# Флаг мастер читает из группы [InitialStart] (initialstart/settings.cpp),
+# запись в [General] он не видит и запускается при каждом входе.
+su altlinux -c "kwriteconfig6 --file plasmamobilerc --group InitialStart --key wizardRun true"
+su altlinux -c "kwriteconfig6 --file plasmamobilerc --group General --key wizardRun --delete"
 # без сна при простое, как было под Phosh
 install -D -m 644 -o altlinux -g altlinux /home/altlinux/echo/plasma/powerdevilrc \
 	/home/altlinux/.config/powerdevilrc
