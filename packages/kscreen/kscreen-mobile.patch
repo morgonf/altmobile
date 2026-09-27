@@ -1,0 +1,13 @@
+--- a/kcm/ui/RotationButton.qml
++++ b/kcm/ui/RotationButton.qml
+@@ -17,7 +17,9 @@
+     property /*KScreen::Output::Rotation*/int outputRotation
+     property string tooltip
+ 
+-    Layout.fillWidth: true
++    // ALT Mobile: ширина по значку, растянутые кнопки выталкивали четвёртую
++    // за край экрана телефона
++    Layout.preferredWidth: implicitWidth
+     height: childrenRect.height
+ 
+     checkable: true
