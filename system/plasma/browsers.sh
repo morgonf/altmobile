@@ -31,9 +31,18 @@ pref("browser.shell.checkDefaultBrowser", false);
 pref("dom.meta-viewport.enabled", true);
 // Масштабирование страницы щипком
 pref("apz.allow_zooming", true);
+// Пользовательский userChrome.css (панели Firefox на 15 % крупнее)
+pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
 EOT
 tail -4 $F
 cat /usr/lib64/firefox/defaults/pref/alt-mobile.js
 # Firefox браузер по умолчанию (экранная клавиатура в нём работает, в
 # X11-окне Chromium нет). Выполняется от пользователя внутри сеанса:
 #   xdg-settings set default-web-browser firefox.desktop
+# Панели Firefox под системный шрифт: firefox/userChrome.css в каталог
+# chrome профиля (от пользователя, Firefox закрыт):
+#   P=$(dirname $(ls ~/.config/mozilla/firefox/*.default-default/prefs.js))
+#   mkdir -p "$P/chrome" && cp firefox/userChrome.css "$P/chrome/"
+# ui.textScaleFactor и layout.css.devPixelsPerPx не годятся: первый
+# увеличивает и страницу (она вылезает за экран), второй под Wayland не
+# действует.

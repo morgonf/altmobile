@@ -1,0 +1,9 @@
+/* ALT Mobile, OnePlus 6T: панели Firefox на 15 % крупнее, под системный
+   шрифт PT Root UI 11 при масштабе 3. Страницы не затрагиваются. */
+/* Только верхние контейнеры: вложенные em иначе перемножаются */
+#nav-bar, #TabsToolbar, menupopup, panel {
+  font-size: 1.15em !important;
+}
+:root {
+  --toolbarbutton-inner-padding: 10px !important;
+}
