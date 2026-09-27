@@ -1,0 +1,4 @@
+s/192\.168\.0\.10/<IP-телефона>/g
+s/00:11:22:33:44:55/<BSSID>/g
+s/(connection (show|modify)|con modify) MyWifi/\1 <SSID>/g
+s/«MyWifi»/«<SSID>»/g
