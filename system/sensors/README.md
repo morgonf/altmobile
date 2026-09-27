@@ -1,0 +1,27 @@
+# Датчики OnePlus 6T (акселерометр, освещённость, приближение)
+
+Датчики подключены к процессору SLPI и доступны только через QMI-службу
+SSC. Проверено 27.09.2026.
+
+- `hexagonrpcd` (Sisyphus) отдаёт процессору датчиков файлы реестра и
+  библиотеки. Файлы уже вынул droid-juicer при установке ALT Mobile в
+  `/var/lib/droid-juicer/sensors/` (dsp/sdsp 21 файл, sensors/config 55,
+  sensors/registry 277, со своего раздела persist). Служба
+  `hexagonrpcd-sdsp` была выключена, теперь включена.
+- `libssc` (Sisyphus) с утилитой `ssccli`: акселерометр, освещённость,
+  приближение и магнитометр отвечают; «компас» (виртуальный датчик) нет.
+  Магнитометр даёт ~100 мкТл при земных ~50, не откалиброван.
+- `iio-sensor-proxy` в Sisyphus собран без SSC (ALT bug 59720). Пересобран
+  `3.9-alt1.1` с `--enable ssc_support` (`packages/iio-sensor-proxy`).
+- `81-alt-mobile-sensors.rules`: upstream включает через SSC только свет и
+  компас, акселерометр и приближение добавлены; матрица ориентации
+  акселерометра `-1,0,0; 0,1,0; 0,0,-1` (правило postmarketOS для fajita,
+  на живом повороте ещё не проверена).
+- Drop-in `iio-sensor-proxy.service.d/ssc.conf`: запуск после
+  hexagonrpcd и доступ к `AF_QIPCRTR`.
+
+Журнал hexagonrpcd засоряют попытки записать `temp.json` по пути
+`/mnt/vendor/mnt/vendor/persist/...`: hexagonrpcd раздаёт файлы только на
+чтение, на работу датчиков это не влияет.
+
+Установка: `install.sh` от root.
