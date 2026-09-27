@@ -11,6 +11,10 @@ apt-get install -y plasma-mobile plasma6-integration plasma6-breeze \
 	powerdevil plasma-nm plasma-pa kscreen bluedevil xdg-desktop-portal-kde \
 	plasma-settings qmlkonsole kalk calindori krecorder koko spectacle
 install -m 644 /home/altlinux/echo/private-tmp.conf /etc/tmpfiles.d/private-tmp.conf
+# Обход падения plasmashell в Qt 6.11.2 при открытии настроек виджета
+F=/usr/share/plasma/shells/org.kde.plasma.mobileshell/contents/configuration/AppletConfiguration.qml
+[ -f $F.orig ] || cp -a $F $F.orig
+install -m 644 /home/altlinux/echo/plasma/AppletConfiguration.qml $F
 # Мастер первого запуска Plasma Mobile не нужен: телефон уже настроен, а его
 # шаг мобильной связи без конца перезапускал подключение mts (2575 раз за
 # несколько минут), и окно запроса секрета мигало, не давая ничего ввести.

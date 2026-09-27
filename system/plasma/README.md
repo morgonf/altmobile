@@ -94,3 +94,29 @@ PIN-кода и спросить секрет. Вводить в такое ок
   показывают август или 1970 год, личная временная папка pam_mktemp
   выглядела старой и удалялась через 15 минут после загрузки, программы
   теряли TMPDIR (так не запускался Chromium).
+
+## Падение plasmashell при открытии настроек виджета
+
+Оболочка падала (экран гас и возвращался) при открытии настроек любого
+виджета. Стек из-под gdb с отладочной информацией из `RPMS.debuginfo`:
+
+```
+toVariant                          qv4engine.cpp:1567
+QQmlBindPrivate::postEvalEntry     qqmlbind.cpp:1456
+QQmlBind::eval / componentComplete qqmlbind.cpp:1500 / 1283
+PlasmaQuick::ConfigView::setSource configview.cpp:278   (libplasma 6.7.5)
+```
+
+Виновник `Binding` с группированными целями `root.Window.window.flags` и
+`root.Window.window.visibility` в
+`/usr/share/plasma/shells/org.kde.plasma.mobileshell/contents/configuration/AppletConfiguration.qml`
+(пакет `plasma-mobile` 6.7.5, Qt 6.11.2). Заменён обычным кодом, который
+выставляет те же свойства при появлении окна, файл
+`AppletConfiguration.qml` здесь, оригинал рядом с суффиксом `.orig`.
+Проверено 27 сентября: настройки часов открываются. Стоит сообщить в KDE
+(plasma-mobile) и Qt (qtdeclarative, `QQmlBind`).
+
+Отладочная информация ставится из раздела
+`rpm [alt] http://ftp.altlinux.org/pub/distributions/ALTLinux Sisyphus/aarch64 debuginfo`
+(`/etc/apt/sources.list.d/debuginfo.list`), исходники приходят вместе с ней в
+`/usr/src/debug`.
