@@ -7,7 +7,13 @@ Wants=rmtfs.service pd-mapper.service tqftpserv.service qbootctl-mark-successful
 Wants=ModemManager.service alt-sim-hotplug.service alt-gps-nmea.service
 Wants=hexagonrpcd-sdsp.service hexagonrpcd-adsp-audio.service q6voiced.service q6echo-activate.service
 Wants=iio-sensor-proxy.service
-After=multi-user.target
+# Без неявных правил systemd. С ними multi-user.target ждал бы эту цель,
+# а она сама стояла после multi-user.target: кольцо, при котором systemd
+# выбрасывает из загрузки случайное задание. Порядок служб задают только
+# drop-in-файлы, цель ни с чем не упорядочена.
+DefaultDependencies=no
+Conflicts=shutdown.target
+Before=shutdown.target
 
 [Install]
 WantedBy=multi-user.target
