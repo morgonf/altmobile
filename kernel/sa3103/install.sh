@@ -3,8 +3,6 @@
 # модуля (собрать заранее: make в этом каталоге на телефоне). От root, затем
 # перезагрузка. Откат: вернуть $F.before-sa3103 и удалить updates/sa3103.ko.
 set -e
-echo 0x0c > /sys/bus/i2c/devices/i2c-16/delete_device || true
-/sbin/rmmod sa3103 || true
 K=$(uname -r)
 F=/boot/devicetree/$K/qcom/sdm845-oneplus-fajita.dtb
 [ -f $F.before-sa3103 ] || cp -a $F $F.before-sa3103
