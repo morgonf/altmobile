@@ -1,0 +1,31 @@
+--- a/src/qml/components/PageHeader.qml
++++ b/src/qml/components/PageHeader.qml
+@@ -29,6 +29,14 @@
+         let item = titleDelegate.createObject(root);
+         titleDelegateContainer.contentItem = item;
+         item.parent = titleDelegateContainer;
++
++        // На узком экране телефона длинный заголовок переносим целыми
++        // словами в две строки, а не обрезаем многоточием.
++        let heading = item.children.length > 0 ? item.children[0] : null;
++        if (heading && heading.wrapMode !== undefined) {
++            heading.wrapMode = Text.WordWrap;
++            heading.maximumLineCount = 2;
++        }
+     }
+ 
+     RowLayout {
+@@ -61,10 +69,12 @@
+             id: titleDelegateContainer
+             padding: 0
+             Layout.leftMargin: Kirigami.Units.largeSpacing
++            // Без этого ширина берётся по тексту и заголовок уходит за экран
++            Layout.fillWidth: true
++            Layout.minimumWidth: 0
+         }
+ 
+         Kirigami.ActionToolBar {
+-            Layout.fillWidth: true
+             Layout.leftMargin: Kirigami.Units.largeSpacing
+             alignment: Qt.AlignRight
+             Layout.fillHeight: true

@@ -2,7 +2,7 @@
 
 Name: %rname
 Version: 26.08.1
-Release: alt0.1
+Release: alt0.2
 %K6init
 
 Group: Graphical desktop/KDE
@@ -16,6 +16,7 @@ Provides: kde5-plasma-settings = %EVR
 Obsoletes: kde5-plasma-settings < %EVR
 
 Source: %rname-%version.tar
+Patch1: plasma-settings-mobile-page-header.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: extra-cmake-modules qt6-base-devel
@@ -48,6 +49,7 @@ Core files needed for %rname
 
 %prep
 %setup -n %rname-%version
+%patch1 -p1
 
 %build
 %K6build
@@ -71,6 +73,9 @@ Core files needed for %rname
 
 
 %changelog
+* Sun Sep 27 2026 morgonf <morgonf@altlinux.org> 26.08.1-alt0.2
+- page header: title fills available width and wraps by words
+
 * Sun Sep 27 2026 morgonf <morgonf@altlinux.org> 26.08.1-alt0.1
 - local build: filters desktop-only and X11 KCMs on handset
 
