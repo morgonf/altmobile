@@ -1,0 +1,12 @@
+[Unit]
+Description=Стандартные строки NMEA для GPS модема
+After=ModemManager.service
+Wants=ModemManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/alt-gps-nmea.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

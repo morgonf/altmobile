@@ -125,6 +125,8 @@ fastboot (слот снят `fastboot --set-active=a`). Журнал обрыв�
    Правильно: выключить 802.11r на роутере, либо научить NetworkManager
    не предлагать FT-PSK (в 1.58 выключателя нет). Калибровка антенны в
    порядке: board-2.bin содержит `variant=oneplus_sdm845`.
+7. AGPS: модем не включает `agps-msb` («Failed to receive operation mode
+   indication»), GPS работает в автономном режиме (`system/gps/`).
 4. Устойчивость к обновлениям: пересобранные модули лежат поверх файлов
    пакетов, apt их затрёт. Собрать полноценные RPM из патчей
    `packages/*` с повышенным выпуском; kwin и plasma-workspace на телефоне
