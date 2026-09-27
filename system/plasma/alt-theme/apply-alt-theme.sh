@@ -11,31 +11,46 @@
 # гекс с вырезанной рамкой телефона, одноцветный, перекрашивается под тему.
 # Обои: WP_1 из медиакита, CMYK переведён в sRGB по встроенному профилю,
 # вертикальный кадр 1080x2340.
+#
+# Два варианта: тёмный (по умолчанию с 28.09.2026) и светлый.
+#   apply-alt-theme.sh        тёмная схема ALTMobileDark
+#   apply-alt-theme.sh light  светлая схема ALTMobile
+# Тёмная основная: экран 6T AMOLED, тёмные пиксели почти не тратят заряд, и
+# белые окна после тёмных обоев не слепят. Фон почти чёрный нейтральный
+# графит (#101010 содержимое, #1a1a1a окна), текст приглушённо-белый
+# #ececec, акцент тот же #f5911f, ссылки светлее (#ffb050), текст на
+# оранжевом выделении тёмный.
 set -e
+case "${1:-dark}" in
+	light) SCHEME=ALTMobile; GTKSCHEME=default ;;
+	*) SCHEME=ALTMobileDark; GTKSCHEME=prefer-dark ;;
+esac
 cd "$(dirname "$0")"
 D=${XDG_DATA_HOME:-$HOME/.local/share}
 mkdir -p "$D/icons" "$D/color-schemes" "$D/wallpapers"
 cp -r icons/ALT "$D/icons/"
-cp ALTMobile.colors "$D/color-schemes/"
+cp ALTMobile.colors ALTMobileDark.colors "$D/color-schemes/"
 cp alt-mobile-wallpaper.jpg "$D/wallpapers/"
 
 # Акцент из обоев иначе перекрашивает схему обратно в цвета Breeze
 kwriteconfig6 --file kdeglobals --group General --key accentColorFromWallpaper false
 kwriteconfig6 --file kdeglobals --group General --key AccentColor --delete
-plasma-apply-colorscheme ALTMobile 2>&1 | grep -v -e xrdb -e xcb_connect || true
+plasma-apply-colorscheme $SCHEME 2>&1 | grep -v -e xrdb -e xcb_connect || true
 /usr/libexec/plasma-changeicons ALT
 
 # Приложения GTK (Firefox, калькулятор и др.) в тех же цветах и шрифте:
 # нужен пакет kde-gtk-config (модуль kded gtkconfig переносит схему Plasma
 # в ~/.config/gtk-3.0/colors.css). Тема GTK Breeze вместо Adwaita от Phosh,
-# prefer-dark от Phosh снят. После смены схемы модуль пишет цвета заново.
+# color-scheme для приложений на libadwaita (Вызовы, Сообщения, Контакты):
+# prefer-dark с тёмной схемой, default со светлой. После смены схемы модуль
+# пишет цвета заново.
 G="gsettings set org.gnome.desktop.interface"
 $G gtk-theme Breeze
-$G color-scheme default
+$G color-scheme $GTKSCHEME
 $G icon-theme ALT
 busctl --user call org.kde.kded6 /kded org.kde.kded6 loadModule s gtkconfig >/dev/null
 plasma-apply-colorscheme BreezeLight >/dev/null 2>&1
-plasma-apply-colorscheme ALTMobile 2>&1 | grep -v -e xrdb -e xcb_connect || true
+plasma-apply-colorscheme $SCHEME 2>&1 | grep -v -e xrdb -e xcb_connect || true
 
 plasma-apply-wallpaperimage "$D/wallpapers/alt-mobile-wallpaper.jpg"
 G="kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key"
