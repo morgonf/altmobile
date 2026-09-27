@@ -11,7 +11,7 @@
 
 Name: iio-sensor-proxy
 Version: %ver_major.9
-Release: alt1.1
+Release: alt1.2
 
 Summary: IIO sensors to input device proxy
 Group: System/Kernel and hardware
@@ -22,6 +22,8 @@ Vcs: https://gitlab.freedesktop.org/hadess/iio-sensor-proxy.git
 
 Source: %name-%version.tar
 Patch: %name-%version-alt1.patch
+# Компас из сырых магнитометра и акселерометра SSC (OnePlus 6T)
+Patch1: %name-ssc-compass-mag.patch
 
 %define meson_ver 0.54
 %define glib_ver 2.76
@@ -66,6 +68,7 @@ Developer documentation for %name.
 %prep
 %setup
 %patch -p1
+%patch1 -p1
 
 %build
 %meson \
@@ -100,6 +103,11 @@ dbus-run-session %__meson_test -t 4
 
 
 %changelog
+* Mon Sep 28 2026 morgonf <morgonf@altlinux.org> 3.9-alt1.2
+- ssc compass: compute the heading from the raw SSC magnetometer and
+  accelerometer (SLPI of sdm845 has no virtual compass), online
+  hard-iron calibration kept in /var/lib/iio-sensor-proxy
+
 * Sun Sep 27 2026 morgonf <morgonf@altlinux.org> 3.9-alt1.1
 - local build with SSC (Qualcomm Sensor Core) support via libssc
   for OnePlus 6T (sdm845), see ALT bug 59720
