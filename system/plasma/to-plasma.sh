@@ -12,6 +12,8 @@ apt-get install -y plasma-mobile plasma6-integration plasma6-breeze \
 	plasma-settings qmlkonsole kalk calindori krecorder koko spectacle \
 	plasma-nm-connect-mobile
 # plasma-settings 26.08.1 собирается отдельно, см. packages/README.md
+# Русский перевод модуля навигации (в KDE строки этого модуля не выгружаются)
+install -m 644 /home/altlinux/echo/plasma/kcm_navigation.mo /usr/share/locale/ru/LC_MESSAGES/kcm_navigation.mo
 install -m 644 /home/altlinux/echo/private-tmp.conf /etc/tmpfiles.d/private-tmp.conf
 # Обход падения plasmashell в Qt 6.11.2 при открытии настроек виджета
 F=/usr/share/plasma/shells/org.kde.plasma.mobileshell/contents/configuration/AppletConfiguration.qml
