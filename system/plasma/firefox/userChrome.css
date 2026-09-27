@@ -1,0 +1,15 @@
+/* ALT Mobile, OnePlus 6T: единый системный размер шрифта (PT Root UI 11 pt)
+   во всех частях интерфейса Firefox. mobile-config-firefox задаёт адресной
+   строке 9 pt, а панели и уведомления Firefox уменьшены сами по себе, из-за
+   этого вкладки выглядели крупными, а остальное мелким. Абсолютные pt, чтобы
+   вложенные элементы не перемножали размер. */
+#urlbar-input, #urlbar .urlbar-input, .urlbarView,
+#TabsToolbar .tab-label,
+notification-message, .notificationbox-stack, .infobar,
+panel, panelview, .panel-subview-body, menupopup, menuitem, menu,
+#unified-extensions-panel, #unified-extensions-view, .unified-extensions-item,
+#appMenu-popup, #PanelUI-menu-button, .panel-header, .panel-footer,
+popupnotification, .popup-notification-description, .popup-notification-body,
+tooltip {
+  font-size: 11pt !important;
+}

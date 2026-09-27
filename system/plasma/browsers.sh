@@ -31,11 +31,11 @@ pref("browser.shell.checkDefaultBrowser", false);
 pref("dom.meta-viewport.enabled", true);
 // Масштабирование страницы щипком
 pref("apz.allow_zooming", true);
-// Весь Firefox равномерно на 10 % крупнее системного масштаба 3: интерфейс,
-// меню и страницы. Адаптивные сайты при 3.3 ещё помещаются, при 3.5 уже
-// обрезаются. userChrome.css давал разнобой размеров, ui.textScaleFactor
-// выталкивал страницу за экран.
-pref("layout.css.devPixelsPerPx", "3.3");
+// Размер интерфейса выравнивает firefox/userChrome.css (всё 11 pt, как в
+// системе). Общий масштаб оставлен системным: layout.css.devPixelsPerPx 3.3
+// увеличивал всё, но не выравнивал адресную строку (mobile-config задаёт ей
+// 9 pt) с вкладками.
+pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);
 // Системный шрифт PT Root UI для страниц без своего шрифта
 pref("font.name.sans-serif.x-cyrillic", "PT Root UI");
 pref("font.name.sans-serif.x-western", "PT Root UI");
@@ -47,3 +47,7 @@ cat /usr/lib64/firefox/defaults/pref/alt-mobile.js
 # Firefox браузер по умолчанию (экранная клавиатура в нём работает, в
 # X11-окне Chromium нет). Выполняется от пользователя внутри сеанса:
 #   xdg-settings set default-web-browser firefox.desktop
+# Единый размер шрифта интерфейса: firefox/userChrome.css в каталог chrome
+# профиля (от пользователя, Firefox закрыт):
+#   P=$(dirname $(ls ~/.config/mozilla/firefox/*.default-default/prefs.js))
+#   mkdir -p "$P/chrome" && cp firefox/userChrome.css "$P/chrome/"
