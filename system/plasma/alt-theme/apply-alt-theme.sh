@@ -25,6 +25,18 @@ kwriteconfig6 --file kdeglobals --group General --key AccentColor --delete
 plasma-apply-colorscheme ALTMobile 2>&1 | grep -v -e xrdb -e xcb_connect || true
 /usr/libexec/plasma-changeicons ALT
 
+# Приложения GTK (Firefox, калькулятор и др.) в тех же цветах и шрифте:
+# нужен пакет kde-gtk-config (модуль kded gtkconfig переносит схему Plasma
+# в ~/.config/gtk-3.0/colors.css). Тема GTK Breeze вместо Adwaita от Phosh,
+# prefer-dark от Phosh снят. После смены схемы модуль пишет цвета заново.
+G="gsettings set org.gnome.desktop.interface"
+$G gtk-theme Breeze
+$G color-scheme default
+$G icon-theme ALT
+busctl --user call org.kde.kded6 /kded org.kde.kded6 loadModule s gtkconfig >/dev/null
+plasma-apply-colorscheme BreezeLight >/dev/null 2>&1
+plasma-apply-colorscheme ALTMobile 2>&1 | grep -v -e xrdb -e xcb_connect || true
+
 plasma-apply-wallpaperimage "$D/wallpapers/alt-mobile-wallpaper.jpg"
 G="kwriteconfig6 --file kscreenlockerrc --group Greeter --group Wallpaper --group org.kde.image --group General --key"
 $G Image "file://$D/wallpapers/alt-mobile-wallpaper.jpg"
