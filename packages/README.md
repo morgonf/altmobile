@@ -21,6 +21,7 @@
 | `kwin` 6.7.5-alt1, только `kcm_animations` | исходники ALT (`kwin-6.7.5-alt1.src.rpm`, `rpmbuild -bp --nodeps`), патч `kwin/kwin-animations-mobile.patch`, одна цель (`build-kcm-animations.sh`, четыре потока, около минуты), ставится поверх с копией `.orig` (`install-kcm-animations.sh`); для конфигурации доставлены 18 пакетов `-devel` из BuildRequires | в «Анимации» описания эффектов обрезались «…»: флажок Breeze рисует подпись одной строкой, переноса не умеет. Описание вынесено в отдельную подпись с переносом по словам, касание её переключает флажок; у кнопки «Эффекты рабочего стола» снята жёсткая ширина |
 | `iio-sensor-proxy` 3.9-alt1.2 | патч `iio-sensor-proxy-ssc-compass-mag.patch`: компас из сырых магнитометра и акселерометра SSC, калибровка на ходу | у SLPI sdm845 нет готового компаса, подробности в `system/sensors/README.md` |
 | `gnome-compass` 0.4.0 | патч `gnome-compass-iio-sensor-proxy.patch`, ставится `packages/gnome-compass/install.sh` поверх файлов пакета | приложение знало только магнитометры PinePhone и Librem 5 в sysfs и без них рисовало случайную стрелку; теперь берёт направление из iio-sensor-proxy |
+| `plasma-keyboard` 6.7.5 | `packages/plasma-keyboard/install.sh`: в стиле Breeze `languagePopupListEnabled: false`; языки ru и en в `system/plasma/keyboard.sh` | кнопка языка открывала меню вместо переключения; языки выбрать было негде, модуль настроек помечен только для ПК |
 
 Правки без пересборки:
 
