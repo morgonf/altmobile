@@ -1,0 +1,439 @@
+--- a/kcms/notifications/ui/main.qml
++++ b/kcms/notifications/ui/main.qml
+@@ -11,12 +11,22 @@
+ import org.kde.kirigami as Kirigami
+ import org.kde.kquickcontrols as KQuickControls
+ import org.kde.kcmutils as KCM
++import org.kde.kirigamiaddons.formcard 1 as FormCard
+ 
+ import org.kde.notificationmanager as NotificationManager
+ 
++// ALT Mobile: страница в мобильном стиле карточек FormCard, как «Дата и
++// время» мобильной оболочки. Настольная FormLayout не помещалась в экран.
++// Сочетание клавиш для «Не беспокоить» и значки в панели задач на телефоне
++// не нужны и не показываются.
+ KCM.SimpleKCM {
+     id: root
+ 
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
++
+     // Sidebar on SourcesPage is 1/3 of the width at a minimum of 12, so assume 3 * 12 = 36 as preferred
+     implicitWidth: Kirigami.Units.gridUnit * 36
+ 
+@@ -42,21 +52,6 @@
+         });
+     }
+ 
+-    actions: [
+-        Kirigami.Action {
+-            text: i18nc("@action:button Plasma-specific notifications", "Configure for System…")
+-            icon.name: "plasma-symbolic"
+-            enabled: root.notificationsAvailable
+-            onTriggered: root.openSystemNotificationSettings()
+-        },
+-        Kirigami.Action {
+-            text: i18nc("@action:button Application-specific notifications", "Configure for Applications…")
+-            icon.name: "applications-all-symbolic"
+-            enabled: root.notificationsAvailable
+-            onTriggered: root.openSourcesSettings()
+-        }
+-    ]
+-
+     Connections {
+         target: kcm
+         function onNavigateToComponent(desktopEntry, notifyRcName, eventId) {
+@@ -120,222 +115,209 @@
+         parent: root
+     }
+ 
+-    Kirigami.FormLayout {
+-
+-        Item {
+-            Kirigami.FormData.label: i18nc("@title:group", "Do Not Disturb mode")
+-            Kirigami.FormData.isSection: true
+-        }
+-
+-        QtControls.CheckBox {
+-            Kirigami.FormData.label: i18nc("Automatically enable Do Not Disturb mode when screens are mirrored", "Enable automatically:")
+-            text: i18nc("Automatically enable Do Not Disturb mode when screens are mirrored", "When screens are mirrored")
+-            checked: kcm.dndSettings.whenScreensMirrored
+-            onClicked: kcm.dndSettings.whenScreensMirrored = checked
+-
+-            KCM.SettingStateBinding {
+-                configObject: kcm.dndSettings
+-                settingName: "WhenScreensMirrored"
+-                extraEnabledConditions: root.notificationsAvailable
+-            }
+-        }
++    ColumnLayout {
++        spacing: 0
+ 
+-        QtControls.CheckBox {
+-            text: i18nc("Automatically enable Do Not Disturb mode during screen sharing", "During screen sharing")
+-            checked: kcm.dndSettings.whenScreenSharing
+-            onClicked: kcm.dndSettings.whenScreenSharing = checked
+-            // Only applicable to Wayland where we can control who can cast the screen
+-            visible: Qt.platform.pluginName.includes("wayland")
++        FormCard.FormCard {
++            Layout.topMargin: Kirigami.Units.largeSpacing
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.dndSettings
+-                settingName: "WhenScreenSharing"
+-                extraEnabledConditions: root.notificationsAvailable
++            FormCard.FormButtonDelegate {
++                id: systemButton
++                icon.name: "plasma-symbolic"
++                text: i18nc("@action:button Plasma-specific notifications", "Configure for System…")
++                enabled: root.notificationsAvailable
++                onClicked: root.openSystemNotificationSettings()
+             }
+-        }
+ 
+-        QtControls.CheckBox {
+-            text: i18nc("Automatically enable Do Not Disturb mode while a fullscreen application is focused", "While a fullscreen application is focused")
+-            checked: kcm.dndSettings.whenFullscreen
+-            onClicked: kcm.dndSettings.whenFullscreen = checked
++            FormCard.FormDelegateSeparator { above: systemButton; below: appsButton }
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.dndSettings
+-                settingName: "WhenFullscreen"
+-                extraEnabledConditions: root.notificationsAvailable
++            FormCard.FormButtonDelegate {
++                id: appsButton
++                icon.name: "applications-all-symbolic"
++                text: i18nc("@action:button Application-specific notifications", "Configure for Applications…")
++                enabled: root.notificationsAvailable
++                onClicked: root.openSourcesSettings()
+             }
+         }
+ 
+-        KQuickControls.KeySequenceItem {
+-            Kirigami.FormData.label: i18nc("Keyboard shortcut to turn Do Not Disturb mode on and off", "Manually toggle with shortcut:")
+-            enabled: root.notificationsAvailable
+-            keySequence: kcm.toggleDoNotDisturbShortcut
+-            onCaptureFinished: kcm.toggleDoNotDisturbShortcut = keySequence
++        FormCard.FormHeader {
++            title: i18nc("@title:group", "Do Not Disturb mode")
+         }
+ 
+-        Item {
+-            Kirigami.FormData.label: i18nc("@title:group", "Visibility conditions")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormSectionText {
++            text: i18nc("Automatically enable Do Not Disturb mode when screens are mirrored", "Enable automatically:")
+         }
+ 
+-        QtControls.CheckBox {
+-            Kirigami.FormData.label: i18n("Critical notifications:")
+-            text: i18n("Show in Do Not Disturb mode")
+-            checked: kcm.notificationSettings.criticalInDndMode
+-            onClicked: kcm.notificationSettings.criticalInDndMode = checked
++        FormCard.FormCard {
++            FormCard.FormSwitchDelegate {
++                id: dndMirrored
++                text: i18nc("Automatically enable Do Not Disturb mode when screens are mirrored", "When screens are mirrored")
++                checked: kcm.dndSettings.whenScreensMirrored
++                onClicked: kcm.dndSettings.whenScreensMirrored = checked
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "CriticalInDndMode"
+-                extraEnabledConditions: root.notificationsAvailable
++                KCM.SettingStateBinding {
++                    configObject: kcm.dndSettings
++                    settingName: "WhenScreensMirrored"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
+             }
+-        }
+ 
+-        QtControls.CheckBox {
+-            Kirigami.FormData.label: i18n("Low priority notifications:")
+-            text: i18n("Show popup")
+-            checked: kcm.notificationSettings.lowPriorityPopups
+-            onClicked: kcm.notificationSettings.lowPriorityPopups = checked
++            FormCard.FormDelegateSeparator { above: dndMirrored; below: dndSharing; visible: dndSharing.visible }
++
++            FormCard.FormSwitchDelegate {
++                id: dndSharing
++                text: i18nc("Automatically enable Do Not Disturb mode during screen sharing", "During screen sharing")
++                checked: kcm.dndSettings.whenScreenSharing
++                onClicked: kcm.dndSettings.whenScreenSharing = checked
++                // Only applicable to Wayland where we can control who can cast the screen
++                visible: Qt.platform.pluginName.includes("wayland")
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "LowPriorityPopups"
+-                extraEnabledConditions: root.notificationsAvailable
++                KCM.SettingStateBinding {
++                    configObject: kcm.dndSettings
++                    settingName: "WhenScreenSharing"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
+             }
+-        }
+ 
+-        QtControls.CheckBox {
+-            text: i18n("Show in history")
+-            checked: kcm.notificationSettings.lowPriorityHistory
+-            onClicked: kcm.notificationSettings.lowPriorityHistory = checked
++            FormCard.FormDelegateSeparator { above: dndSharing; below: dndFullscreen }
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "LowPriorityHistory"
+-                extraEnabledConditions: root.notificationsAvailable
+-            }
+-        }
++            FormCard.FormSwitchDelegate {
++                id: dndFullscreen
++                text: i18nc("Automatically enable Do Not Disturb mode while a fullscreen application is focused", "While a fullscreen application is focused")
++                checked: kcm.dndSettings.whenFullscreen
++                onClicked: kcm.dndSettings.whenFullscreen = checked
+ 
+-        QtControls.ButtonGroup {
+-            id: positionGroup
+-            buttons: [positionCloseToWidget, positionCustomPosition]
++                KCM.SettingStateBinding {
++                    configObject: kcm.dndSettings
++                    settingName: "WhenFullscreen"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
++            }
+         }
+ 
+-        Item {
+-            Kirigami.FormData.label: i18nc("@title:group As in: 'notification popups'", "Popups")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("@title:group", "Visibility conditions")
+         }
+ 
+-        QtControls.RadioButton {
+-            id: positionCloseToWidget
+-            Kirigami.FormData.label: i18nc("@label", "Location:")
+-            text: i18nc("Popup position near notification plasmoid", "Near notification icon") // "widget"
+-            checked: kcm.notificationSettings.popupPosition === NotificationManager.Settings.CloseToWidget
+-                // Force binding re-evaluation when user returns from position selector
+-                + kcm.currentIndex * 0
+-            onClicked: kcm.notificationSettings.popupPosition = NotificationManager.Settings.CloseToWidget
++        FormCard.FormCard {
++            FormCard.FormSwitchDelegate {
++                id: criticalInDnd
++                text: i18n("Critical notifications:").replace(/:$/, "")
++                description: i18n("Show in Do Not Disturb mode")
++                checked: kcm.notificationSettings.criticalInDndMode
++                onClicked: kcm.notificationSettings.criticalInDndMode = checked
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "PopupPosition"
+-                extraEnabledConditions: root.notificationsAvailable
++                KCM.SettingStateBinding {
++                    configObject: kcm.notificationSettings
++                    settingName: "CriticalInDndMode"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
+             }
+-        }
+ 
+-        RowLayout {
+-            spacing: 0
+-            enabled: positionCloseToWidget.enabled
++            FormCard.FormDelegateSeparator { above: criticalInDnd; below: lowPopups }
+ 
+-            QtControls.RadioButton {
+-                id: positionCustomPosition
+-                checked: kcm.notificationSettings.popupPosition !== NotificationManager.Settings.CloseToWidget
+-                    + kcm.currentIndex * 0
+-                activeFocusOnTab: false
++            FormCard.FormSwitchDelegate {
++                id: lowPopups
++                text: i18n("Low priority notifications:").replace(/:$/, "")
++                description: i18n("Show popup")
++                checked: kcm.notificationSettings.lowPriorityPopups
++                onClicked: kcm.notificationSettings.lowPriorityPopups = checked
+ 
+-                MouseArea {
+-                    anchors.fill: parent
+-                    onClicked: positionCustomButton.clicked()
++                KCM.SettingStateBinding {
++                    configObject: kcm.notificationSettings
++                    settingName: "LowPriorityPopups"
++                    extraEnabledConditions: root.notificationsAvailable
+                 }
++            }
++
++            FormCard.FormDelegateSeparator { above: lowPopups; below: lowHistory }
++
++            FormCard.FormSwitchDelegate {
++                id: lowHistory
++                text: i18n("Low priority notifications:").replace(/:$/, "")
++                description: i18n("Show in history")
++                checked: kcm.notificationSettings.lowPriorityHistory
++                onClicked: kcm.notificationSettings.lowPriorityHistory = checked
+ 
+                 KCM.SettingStateBinding {
+                     configObject: kcm.notificationSettings
+-                    settingName: "PopupPosition"
++                    settingName: "LowPriorityHistory"
+                     extraEnabledConditions: root.notificationsAvailable
+                 }
+-
+-            }
+-            QtControls.Button {
+-                id: positionCustomButton
+-                text: i18nc("@action:button choose custom notification position", "Choose…")
+-                icon.name: "preferences-desktop-display"
+-                onClicked: popupPositionDialog.open()
+             }
+         }
+ 
+-        TextMetrics {
+-            id: timeoutSpinnerMetrics
+-            font: timeoutSpinner.font
+-            text: i18np("%1 second", "%1 seconds", 888)
++        FormCard.FormHeader {
++            title: i18nc("@title:group As in: 'notification popups'", "Popups")
+         }
+ 
+-        QtControls.SpinBox {
+-            id: timeoutSpinner
+-            Kirigami.FormData.label: i18nc("Part of a sentence like, 'Hide popup after n seconds'", "Hide after:")
+-            Layout.preferredWidth: timeoutSpinnerMetrics.width + leftPadding + rightPadding
+-            from: 1000 // 1 second
+-            to: 120000 // 2 minutes
+-            stepSize: 1000
+-            value: kcm.notificationSettings.popupTimeout
+-            editable: true
+-            valueFromText: function(text, locale) {
+-                return parseInt(text) * 1000;
+-            }
+-            textFromValue: function(value, locale) {
+-                return i18np("%1 second", "%1 seconds", Math.round(value / 1000));
+-            }
+-            onValueModified: kcm.notificationSettings.popupTimeout = value
++        FormCard.FormCard {
++            FormCard.FormSpinBoxDelegate {
++                id: timeoutSpinner
++                label: i18nc("Part of a sentence like, 'Hide popup after n seconds'", "Hide after:").replace(/:$/, "")
++                from: 1 // seconds
++                to: 120
++                stepSize: 1
++                value: Math.round(kcm.notificationSettings.popupTimeout / 1000)
++                textFromValue: function(value, locale) {
++                    return i18np("%1 second", "%1 seconds", value);
++                }
++                valueFromText: function(text, locale) {
++                    return parseInt(text);
++                }
++                onValueChanged: {
++                    if (kcm.notificationSettings.popupTimeout !== value * 1000) {
++                        kcm.notificationSettings.popupTimeout = value * 1000;
++                    }
++                }
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "PopupTimeout"
+-                extraEnabledConditions: root.notificationsAvailable
++                KCM.SettingStateBinding {
++                    configObject: kcm.notificationSettings
++                    settingName: "PopupTimeout"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
+             }
+-        }
+ 
+-        QtControls.CheckBox {
+-            text: i18nc("@option:check Show progress bar on notifications indicating when it will hide","Show timeout indicator")
+-            checked: kcm.notificationSettings.showPopupTimeout
+-            onClicked: kcm.notificationSettings.showPopupTimeout = checked
++            FormCard.FormDelegateSeparator { above: timeoutSpinner; below: timeoutIndicator }
++
++            FormCard.FormSwitchDelegate {
++                id: timeoutIndicator
++                text: i18nc("@option:check Show progress bar on notifications indicating when it will hide","Show timeout indicator")
++                checked: kcm.notificationSettings.showPopupTimeout
++                onClicked: kcm.notificationSettings.showPopupTimeout = checked
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.notificationSettings
+-                settingName: "ShowPopupTimeout"
+-                extraEnabledConditions: root.notificationsAvailable
++                KCM.SettingStateBinding {
++                    configObject: kcm.notificationSettings
++                    settingName: "ShowPopupTimeout"
++                    extraEnabledConditions: root.notificationsAvailable
++                }
+             }
+         }
+ 
+-        Item {
+-            Kirigami.FormData.label: i18nc("@title:group", "Additional feedback")
+-            Kirigami.FormData.isSection: true
++        FormCard.FormHeader {
++            title: i18nc("@title:group", "Additional feedback")
+         }
+ 
+-        QtControls.CheckBox {
+-            id: applicationJobsEnabledCheck
+-            text: i18nc("Show application jobs in notification widget", "Show in notifications")
+-            Kirigami.FormData.label: i18n("Application progress:")
+-            checked: kcm.jobSettings.inNotifications
+-            onClicked: kcm.jobSettings.inNotifications = checked
++        FormCard.FormCard {
++            Layout.bottomMargin: Kirigami.Units.largeSpacing
+ 
+-            KCM.SettingStateBinding {
+-                configObject: kcm.jobSettings
+-                settingName: "InNotifications"
++            FormCard.FormSwitchDelegate {
++                id: applicationJobsEnabledCheck
++                text: i18n("Application progress:").replace(/:$/, "")
++                description: i18nc("Show application jobs in notification widget", "Show in notifications")
++                checked: kcm.jobSettings.inNotifications
++                onClicked: kcm.jobSettings.inNotifications = checked
++
++                KCM.SettingStateBinding {
++                    configObject: kcm.jobSettings
++                    settingName: "InNotifications"
++                }
+             }
+-        }
+ 
+-        RowLayout { // just for indentation
+-            QtControls.CheckBox {
+-                Layout.leftMargin: mirrored ? 0 : indicator.width
+-                Layout.rightMargin: mirrored ? indicator.width : 0
++            FormCard.FormDelegateSeparator { above: applicationJobsEnabledCheck; below: permanentPopups }
++
++            FormCard.FormSwitchDelegate {
++                id: permanentPopups
+                 text: i18nc("Keep application job popup open for entire duration of job", "Keep popup open during progress")
+                 checked: kcm.jobSettings.permanentPopups
+                 onClicked: kcm.jobSettings.permanentPopups = checked
+@@ -347,17 +329,5 @@
+                 }
+             }
+         }
+-
+-        QtControls.CheckBox {
+-            Kirigami.FormData.label: i18n("Notification badges:")
+-            text: i18n("Show in task manager")
+-            checked: kcm.badgeSettings.inTaskManager
+-            onClicked: kcm.badgeSettings.inTaskManager = checked
+-
+-            KCM.SettingStateBinding {
+-                configObject: kcm.badgeSettings
+-                settingName: "InTaskManager"
+-            }
+-        }
+     }
+ }
