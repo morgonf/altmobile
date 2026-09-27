@@ -1,0 +1,152 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: plasma-mobile 6.7.5 (ALT Mobile)\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=n==1 ? 3 : n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+
+msgid "%1MB/s"
+msgstr "%1 МБ/с"
+
+msgid "%1kB/s"
+msgstr "%1 КБ/с"
+
+msgid "Allow android direct access to hotplugged devices"
+msgstr "Разрешить Android прямой доступ к подключаемым устройствам"
+
+msgid "Are you sure you want to reset Waydroid? This is a destructive action, and will wipe all user data."
+msgstr "Сбросить Waydroid? Действие необратимо, все данные пользователя будут удалены."
+
+msgid "Certify my device for Google Play Protect"
+msgstr "Сертифицировать устройство для Google Play Защиты"
+
+msgid "Check installation"
+msgstr "Проверить установку"
+
+msgid "Configure Waydroid"
+msgstr "Настроить Waydroid"
+
+msgctxt "@title:window"
+msgid "Confirm Waydroid Reset"
+msgstr "Подтверждение сброса Waydroid"
+
+msgid "Copy"
+msgstr "Копировать"
+
+msgctxt "@action:button"
+msgid "Copy Android ID and open the website"
+msgstr "Скопировать Android ID и открыть сайт"
+
+msgctxt "@action:button"
+msgid "Delete the application"
+msgstr "Удалить приложение"
+
+msgid "Downloading %1MB/%2MB Speed %3"
+msgstr "Загрузка %1 из %2 МБ, скорость %3"
+
+msgid "Enables/Disables window integration with the desktop"
+msgstr "Включает и выключает встраивание окон Android в рабочий стол"
+
+msgid "General information"
+msgstr "Общие сведения"
+
+msgid "Google Play Protect configuration"
+msgstr "Настройка Google Play Защиты"
+
+msgid "IP address"
+msgstr "IP-адрес"
+
+msgid "Initial configuration"
+msgstr "Начальная настройка"
+
+msgctxt "@action:button"
+msgid "Install APK"
+msgstr "Установить APK"
+
+msgid "Installed applications"
+msgstr "Установленные приложения"
+
+msgid "Let the Waydroid container sleep (after the display timeout) when no apps are active"
+msgstr "Усыплять контейнер Waydroid после отключения экрана, если нет активных приложений"
+
+msgid "May require restarting the Waydroid session to apply"
+msgstr "Может потребоваться перезапуск сеанса Waydroid"
+
+msgid "Multi Windows"
+msgstr "Отдельные окна"
+
+msgid "Reset Waydroid"
+msgstr "Сбросить Waydroid"
+
+msgid "Running"
+msgstr "Работает"
+
+msgid "Start the session"
+msgstr "Запустить сеанс"
+
+msgid "Stop session"
+msgstr "Остановить сеанс"
+
+msgid "Suspend"
+msgstr "Усыплять"
+
+msgid "System type"
+msgstr "Тип системы"
+
+msgid "The Waydroid session is not running."
+msgstr "Сеанс Waydroid не запущен."
+
+msgid "UEvent"
+msgstr "UEvent"
+
+msgid "Waydroid Integration"
+msgstr "Интеграция с Waydroid"
+
+msgid "Waydroid applications"
+msgstr "Приложения Waydroid"
+
+msgid "Waydroid is not installed"
+msgstr "Waydroid не установлен"
+
+msgid "Waydroid properties"
+msgstr "Свойства Waydroid"
+
+msgid "Waydroid status"
+msgstr "Состояние Waydroid"
+
+msgid "When launching Waydroid with GAPPS for the first time, you will be notified that the device is not certified for Google Play Protect. To self certify your device, paste the Android ID in the field on the website. Then, give the Google services some minutes to reflect the change and restart Waydroid."
+msgstr "При первом запуске Waydroid с GAPPS появится сообщение, что устройство не сертифицировано для Google Play Защиты. Чтобы сертифицировать его самостоятельно, вставьте Android ID в поле на сайте. Затем подождите несколько минут, пока сервисы Google учтут изменение, и перезапустите Waydroid."
+
+msgid "You must select a local file"
+msgstr "Нужно выбрать локальный файл"
+
+msgid ""
+"Downloading Android and vendor images.\n"
+"It can take a few minutes."
+msgstr ""
+"Загрузка образов Android и производителя.\n"
+"Это может занять несколько минут."
+
+msgid ""
+"Waydroid is resetting.\n"
+"It can take a few seconds."
+msgstr ""
+"Waydroid сбрасывается.\n"
+"Это может занять несколько секунд."
+
+msgid ""
+"Waydroid session is starting.\n"
+"It can take a few seconds."
+msgstr ""
+"Сеанс Waydroid запускается.\n"
+"Это может занять несколько секунд."
+
+msgid ""
+"Fetching your Android ID.\n"
+"It can take a few seconds."
+msgstr ""
+"Получение Android ID.\n"
+"Это может занять несколько секунд."
+

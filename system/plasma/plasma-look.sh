@@ -20,6 +20,8 @@ $K menuFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K toolBarFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K smallestReadableFont "$F,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K fixed "Noto Sans Mono,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+# Заголовок окна (kdeglobals [WM] activeFont): жирный того же семейства
+kwriteconfig6 --file kdeglobals --group WM --key activeFont "$F,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"
 # Приложения GTK: то же семейство и размер, что у Plasma (раньше от Phosh
 # осталось Adwaita Sans 14, шрифты в приложениях были разнобойными).
 # Hack в системе нет, fontconfig подставлял вместо него Noto Sans.
