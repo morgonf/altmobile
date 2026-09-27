@@ -2,6 +2,8 @@
 # Upstream-правило iio-sensor-proxy включает только ssc-light и ssc-compass;
 # акселерометр (автоповорот) и приближение добавляем, как в postmarketOS.
 SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp*", ENV{IIO_SENSOR_PROXY_TYPE}+="ssc-accel ssc-proximity"
-# Ориентация акселерометра BMI160 на плате 6T (правило pmOS для fajita).
-# Проверить поворотом: monitor-sensor.
-SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp*", ENV{ACCEL_MOUNT_MATRIX}="-1, 0, 0; 0, 1, 0; 0, 0, -1"
+# Ориентация акселерометра BMI160 на плате 6T. Правило pmOS для fajita
+# (-1,0,0; 0,1,0; 0,0,-1) при нашем реестре переворачивало экран вверх
+# ногами (27.09.2026), ось Y перевёрнута. С этой матрицей пользователь
+# проверил все положения: вертикально, набок влево и вправо.
+SUBSYSTEM=="misc", KERNEL=="fastrpc-sdsp*", ENV{ACCEL_MOUNT_MATRIX}="-1, 0, 0; 0, -1, 0; 0, 0, -1"
