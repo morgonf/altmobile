@@ -8,7 +8,9 @@ set -e
 # сети, громкости, экрана и Bluetooth в интерфейсе.
 apt-get install -y plasma-mobile plasma6-integration plasma6-breeze \
 	qqc2-breeze-style icon-theme-breeze plasma-keyboard maliit-keyboard \
-	powerdevil plasma-nm plasma-pa kscreen bluedevil xdg-desktop-portal-kde
+	powerdevil plasma-nm plasma-pa kscreen bluedevil xdg-desktop-portal-kde \
+	plasma-settings qmlkonsole kalk calindori krecorder koko spectacle
+install -m 644 /home/altlinux/echo/private-tmp.conf /etc/tmpfiles.d/private-tmp.conf
 # Мастер первого запуска Plasma Mobile не нужен: телефон уже настроен, а его
 # шаг мобильной связи без конца перезапускал подключение mts (2575 раз за
 # несколько минут), и окно запроса секрета мигало, не давая ничего ввести.

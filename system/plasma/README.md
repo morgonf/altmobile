@@ -67,3 +67,30 @@ PIN-кода и спросить секрет. Вводить в такое ок
 видел и получал. Лечится перезапуском оболочки
 (`systemctl --user restart plasma-plasmashell.service`), после отключения
 мастера повториться не должно.
+
+## Браузеры
+
+- **Chromium 154** работает, назначен браузером по умолчанию.
+- **Angelfish** (QtWebEngine 6.11.2) и **Epiphany** (WebKitGTK 2.54): падает
+  процесс отрисовки, `QtWebEngineProcess` по 25..40 раз за 20 секунд даже на
+  `about:blank`. Не помогают `--disable-gpu`, отключение песочницы, отключение
+  JIT (`--js-flags=--jitless`, `JSC_useJIT=false`), отключение DMA-BUF у
+  WebKit. Место падения в `libQt6WebEngineCore.so.6`, смещение `0x1fd756c`
+  от начала кода, `ldrb w2, [x2]` по указателю `0xfeef80808083`. Отладочных
+  символов QtWebEngine в Sisyphus нет. Страница памяти ядра 4 КБ.
+- Попутно найдено несоответствие в Sisyphus: `libxslt-1.1.43-alt1` собран со
+  старой `libxml2.so.2` (2.12), а QtWebEngine и WebKit с новой `libxml2.so.16`
+  (2.14), и в процесс загружаются обе. На телефоне libxslt пересобран из
+  `libxslt-1.1.43-alt1.src.rpm` с `libxml2-devel` 2.14.6 (`rpmbuild --rebuild`),
+  падения отрисовки это **не** устранило. Сообщить в Bugzilla ALT всё равно
+  стоит. Вернуть пакет из репозитория: `apt-get install --reinstall libxslt`.
+
+## Прочее
+
+- Масштаб экрана 3 (`kscreen-doctor output.DSI-1.scale.3`), логически 360x780.
+- Установлены `plasma-settings` (настройки Plasma Mobile), `qmlkonsole`,
+  `kalk`, `calindori`, `krecorder`, `koko`, `spectacle`.
+- `/etc/tmpfiles.d/private-tmp.conf` (в `system/`): часы при загрузке
+  показывают август или 1970 год, личная временная папка pam_mktemp
+  выглядела старой и удалялась через 15 минут после загрузки, программы
+  теряли TMPDIR (так не запускался Chromium).
