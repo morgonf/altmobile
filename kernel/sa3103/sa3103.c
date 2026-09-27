@@ -30,8 +30,12 @@
 #define SA3103_CONTROL_ENABLE	0x01
 
 #define SA3103_MAX_POS		4095
-/* Focused at about 1.5-2 m on the IMX519 module: usable fixed focus */
-#define SA3103_DEFAULT_POS	2000
+/*
+ * IMX519 module, measured 28.09.2026: lens at rest below ~1100, infinity
+ * about 1300-1400, 0.5 m about 1700, 10-15 cm about 2000, blurred above
+ * ~2200. 1450 keeps roughly 1 m to infinity sharp as a fixed focus.
+ */
+#define SA3103_DEFAULT_POS	1450
 
 static const char * const sa3103_supply_names[] = {
 	"vdd",
