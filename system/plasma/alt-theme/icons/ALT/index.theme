@@ -1,0 +1,15 @@
+[Icon Theme]
+Name=ALT
+Name[ru]=ALT
+Comment=Breeze with ALT Mobile start-here icon
+Comment[ru]=Breeze со знаком «Альт Мобильный» вместо значка KDE
+Inherits=breeze,hicolor
+DisplayDepth=32
+Directories=places/scalable
+
+[places/scalable]
+Size=22
+MinSize=8
+MaxSize=512
+Context=Places
+Type=Scalable

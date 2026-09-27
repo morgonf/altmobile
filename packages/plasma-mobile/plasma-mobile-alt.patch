@@ -1,0 +1,155 @@
+diff -ruN a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml
+--- a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml	2026-09-27 09:22:55.018539799 -0400
++++ b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml	2026-09-27 09:23:35.456963884 -0400
+@@ -16,9 +16,17 @@
+ 
+     readonly property bool isShowing: height > 0
+ 
++    // ALT Mobile: без явных значений прямоугольник белый, а анимация ниже
++    // запускалась сама при создании. Высота становилась полной, isShowing
++    // оставался истинным до первой смены окна, и строка состояния с панелью
++    // навигации на главном экране брали тёмные цвета окна вместо светлых.
++    color: "transparent"
++    height: 0
++
+     // Smooth animation for colored rectangle
+     NumberAnimation on height {
+         id: heightAnim
++        running: false
+         from: 0
+         to: root.fullHeight
+         duration: 200
+diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml b/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml
+--- a/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml	2026-09-27 09:22:55.590531653 -0400
++++ b/components/mobileshell/qml/navigationpanel/NavigationPanelButton.qml	2026-09-27 09:23:35.456963884 -0400
+@@ -21,6 +21,9 @@
+     height: width
+ 
+     property int shrinkSize: 0
++    // ALT Mobile: значки навигации крупнее штатных (smallMedium), кнопка
++    // «Домой» задаёт свой размер ещё больше
++    property real iconSize: Math.round(Kirigami.Units.iconSizes.smallMedium * 1.25)
+     property alias iconSource: icon.source
+ 
+     MobileShell.HapticsEffect {
+@@ -81,8 +84,8 @@
+         readonly property real side: Math.min(button.width, button.height)
+         anchors.centerIn: parent
+ 
+-        implicitHeight: Kirigami.Units.iconSizes.smallMedium - shrinkSize
+-        implicitWidth: Kirigami.Units.iconSizes.smallMedium - shrinkSize
++        implicitHeight: button.iconSize - shrinkSize
++        implicitWidth: button.iconSize - shrinkSize
+         width: implicitWidth
+         height: implicitHeight
+     }
+diff -ruN a/components/mobileshell/qml/navigationpanel/NavigationPanel.qml b/components/mobileshell/qml/navigationpanel/NavigationPanel.qml
+--- a/components/mobileshell/qml/navigationpanel/NavigationPanel.qml	2026-09-27 09:22:56.078524704 -0400
++++ b/components/mobileshell/qml/navigationpanel/NavigationPanel.qml	2026-09-27 09:23:35.456963884 -0400
+@@ -91,6 +91,7 @@
+         NavigationPanelButton {
+             id: middleButton
+             anchors.centerIn: parent
++            iconSize: Math.round(Kirigami.Units.iconSizes.smallMedium * 1.6)
+             visible: root.middleAction.visible
+             Kirigami.Theme.colorSet: root.foregroundColorGroup
+             Kirigami.Theme.inherit: false
+diff -ruN a/components/mobileshell/qml/statusbar/StatusBar.qml b/components/mobileshell/qml/statusbar/StatusBar.qml
+--- a/components/mobileshell/qml/statusbar/StatusBar.qml	2026-09-27 09:22:57.293507400 -0400
++++ b/components/mobileshell/qml/statusbar/StatusBar.qml	2026-09-27 09:23:35.456963884 -0400
+@@ -113,18 +113,12 @@
+                     textPixelSize: root.textPixelSize
+                 }
+ 
+-                // spacing in the middle
+-                Item {
+-                    Layout.fillWidth: true
+-                }
+-
+-                // system indicators
+-                // using Layout.fillHeight here seems to cause polish loops, instead just define the height of the row
++                // ALT Mobile: сигнал сети и Bluetooth слева, рядом с часами.
++                // Справа остаются Wi-Fi, звук и батарея, середина свободна
++                // под вырез фронтальной камеры OnePlus 6T.
+                 RowLayout {
+-                    id: indicators
+-                    Layout.leftMargin: Kirigami.Units.smallSpacing // applets have different spacing needs
++                    Layout.leftMargin: root.elementSpacing * 2
+                     Layout.maximumHeight: mainRow.rowHeight
+-
+                     spacing: root.elementSpacing
+ 
+                     MobileShell.SignalStrengthIndicator {
+@@ -138,6 +132,22 @@
+                         implicitHeight: mainRow.rowHeight
+                         Layout.preferredWidth: height
+                     }
++                }
++
++                // spacing in the middle
++                Item {
++                    Layout.fillWidth: true
++                }
++
++                // system indicators
++                // using Layout.fillHeight here seems to cause polish loops, instead just define the height of the row
++                RowLayout {
++                    id: indicators
++                    Layout.leftMargin: Kirigami.Units.smallSpacing // applets have different spacing needs
++                    Layout.maximumHeight: mainRow.rowHeight
++
++                    spacing: root.elementSpacing
++
+                     MobileShell.InternetIndicator {
+                         id: internetIndicatorItem
+                         implicitHeight: mainRow.rowHeight
+diff -ruN a/containments/homescreens/folio/qml/FolioHomeScreen.qml b/containments/homescreens/folio/qml/FolioHomeScreen.qml
+--- a/containments/homescreens/folio/qml/FolioHomeScreen.qml	2026-09-27 09:22:56.753515090 -0400
++++ b/containments/homescreens/folio/qml/FolioHomeScreen.qml	2026-09-27 09:23:35.456963884 -0400
+@@ -346,8 +346,9 @@
+                     visible: opacity > 0
+ 
+                     // one is ignored as anchors are set
+-                    height: Kirigami.Units.gridUnit * 6
+-                    width: Kirigami.Units.gridUnit * 6
++                    // ALT Mobile: на 20 % меньше штатных 6 единиц
++                    height: Kirigami.Units.gridUnit * 4.8
++                    width: Kirigami.Units.gridUnit * 4.8
+ 
+                     anchors.topMargin: root.topMargin
+                     anchors.bottomMargin: root.bottomMargin
+diff -ruN a/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml b/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml
+--- a/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml	2026-09-27 09:22:57.818499924 -0400
++++ b/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml	2026-09-27 09:23:49.807759511 -0400
+@@ -26,6 +26,13 @@
+  */
+ FocusScope {
+     id: root
++
++    // ALT Mobile: у переключателя задач нет русского каталога перевода,
++    // при его отсутствии подставляем свою строку
++    function altTr(text, ru) {
++        const t = i18n(text);
++        return t === text && Qt.locale().name.startsWith("ru") ? ru : t;
++    }
+     focus: true
+ 
+     property TaskSwitcherPlugin.MobileTaskSwitcherState state
+@@ -685,7 +692,7 @@
+                 level: 3
+                 wrapMode: Text.Wrap
+                 horizontalAlignment: Text.AlignHCenter
+-                text: i18n("No applications are running.")
++                text: root.altTr("No applications are running.", "Нет запущенных приложений.")
+             }
+         }
+ 
+@@ -814,7 +821,7 @@
+                 icon.name: "edit-clear-history"
+                 font.bold: true
+ 
+-                text: closeRequested ? i18n("Confirm Close All") : i18n("Close All")
++                text: closeRequested ? root.altTr("Confirm Close All", "Подтвердите закрытие всех") : root.altTr("Close All", "Закрыть всё")
+ 
+                 onClicked: {
+                     if (closeRequested) {
