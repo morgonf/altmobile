@@ -1,0 +1,53 @@
+# libcamera 0.7.2 с автофокусом для OnePlus 6T
+
+Пакет ALT libcamera 0.7.2 (конвейер simple, программный ISP) объективом не
+управляет: ни `LensPosition`, ни автофокуса, а для сенсоров 6T (imx519,
+imx376, imx371) нет описаний, и автоэкспозиция считает усиление наугад.
+
+Патчи поверх тега v0.7.2 (28.09.2026):
+
+| Патч | Откуда |
+|---|---|
+| 0001-0006 | ветка `millicam_af_6` Павла Махека, `gitlab.com/tui/libcamera`; авторы Vasiliy Doylov и Pavel Machek: ручной фокус, яркость, выключение и ручная автоэкспозиция, автофокус по контрасту, обнаружение потери фокуса |
+| 0007 | доработки автофокуса из той же ветки (da42da5, 3ac0518, 4312a90, без приложения mcam и отладочных заплаток), перенесены на v0.7.2 |
+| 0008 | описания сенсоров IMX371, IMX376, IMX519: усиление 1024/(1024-код), чёрный уровень 64 при 10 битах |
+
+Что пришлось поменять при переносе на v0.7.2:
+- статистика кадра в v0.7.2 считается в нескольких потоках, у каждого своя
+  копия `SwIspStats`; признак «строка в полосе автофокуса» (`afRow`) стал
+  полем копии, выставляется в `processLine0/2` и в `processFrame` (путь GPU
+  ISP вызывает подсчёт строк напрямую, без него резкость всегда 0);
+- резкость считается по центральной пятой части кадра по обеим осям (в
+  ветке была полоса 3 из 5), перепад зелёного через отсчёт, нормировка на
+  сумму зелёного;
+- `Algorithm::init()` принимает `ValueNode`, а не `YamlObject`;
+- проценты положения переводятся в код мотора с учётом минимума
+  (`min + процент × (max − min)`); без этого суженный диапазон мотора
+  (драйвер sa3103, 1000..2400) не работал бы;
+- убрана отладочная запись резкости в метаданные `AeState`.
+
+Проверено на телефоне: `cam` находит объектив («Camera leans found»),
+поиск идёт сам при старте и при смене сцены (резкость меняется больше
+чем на 30 %), сходится за 60 кадров (около 2 с) к положению, совпавшему с
+ручной калибровкой. Положение задаётся процентом хода мотора
+(`LensPosition` 0..100, не диоптрии, как в стандарте libcamera),
+`AfTrigger` запускает поиск заново.
+
+Сборка на телефоне (зависимости: libyaml-devel libgnutls-devel
+python3-module-ply python3-module-jinja2 python3-module-yaml
+libevent-devel libjpeg-devel libudev-devel):
+
+    git clone https://git.libcamera.org/libcamera/libcamera.git && cd libcamera
+    git checkout v0.7.2 && git am /путь/packages/libcamera/0*.patch
+    meson setup build --prefix=/usr --libdir=lib64 -Dpipelines=simple \
+        -Dipas=simple -Dcam=enabled -Dgstreamer=disabled -Dv4l2=false \
+        -Dqcam=disabled -Dlc-compliance=disabled -Dtest=false \
+        -Ddocumentation=disabled -Dpycamera=disabled -Dbuildtype=release
+    ninja -C build -j4    # со сторожем температуры scripts/build-thermal-guard.sh
+
+Установка `install.sh` (от root, оригиналы в `.orig`), откат
+`uninstall.sh`. IPA подписан ключом этой сборки, поэтому библиотека и
+`ipa_soft_simple.so` ставятся только вместе.
+
+Не сделано: plasma-camera пишет «Камера недоступна» (проверить при
+включённом экране), PipeWire держит старую библиотеку до перезапуска.

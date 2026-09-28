@@ -31,6 +31,14 @@
 
 #define SA3103_MAX_POS		4095
 /*
+ * The focus control exposes only the useful travel of the IMX519 module:
+ * below ~1100 the lens rests on its end stop, above ~2200 nothing is in
+ * focus. A narrower range makes libcamera's percent-based autofocus sweep
+ * spend its steps where the focus actually changes.
+ */
+#define SA3103_FOCUS_MIN	1000
+#define SA3103_FOCUS_MAX	2400
+/*
  * IMX519 module, measured 28.09.2026: lens at rest below ~1100, infinity
  * about 1300-1400, 0.5 m about 1700, 10-15 cm about 2000, blurred above
  * ~2200. 1450 keeps roughly 1 m to infinity sharp as a fixed focus.
@@ -172,7 +180,8 @@ static int sa3103_probe(struct i2c_client *client)
 
 	v4l2_ctrl_handler_init(&sa->ctrls, 1);
 	sa->focus = v4l2_ctrl_new_std(&sa->ctrls, &sa3103_ctrl_ops, V4L2_CID_FOCUS_ABSOLUTE,
-				      0, SA3103_MAX_POS, 1, SA3103_DEFAULT_POS);
+				      SA3103_FOCUS_MIN, SA3103_FOCUS_MAX, 1,
+				      SA3103_DEFAULT_POS);
 	if (sa->ctrls.error) {
 		ret = sa->ctrls.error;
 		goto err_ctrls;

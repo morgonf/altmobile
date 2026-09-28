@@ -1,0 +1,63 @@
+From 9b769003e52b1b6c0e24a4b8c40f41bd31eaabb4 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sun, 27 Sep 2026 19:57:47 -0400
+Subject: [PATCH 8/8] ipa: libipa: camera_sensor_helper: Add IMX371, IMX376 and
+ IMX519
+
+Sensors of the OnePlus 6 and 6T (sdm845). Sony 10-bit analogue gain
+1024 / (1024 - code), black level 64 at 10 bits, as for the IMX477 and
+the Raspberry Pi IMX519 helper.
+---
+ src/ipa/libipa/camera_sensor_helper.cpp | 36 +++++++++++++++++++++++++
+ 1 file changed, 36 insertions(+)
+
+diff --git a/src/ipa/libipa/camera_sensor_helper.cpp b/src/ipa/libipa/camera_sensor_helper.cpp
+index 9457d62..d77f2c9 100644
+--- a/src/ipa/libipa/camera_sensor_helper.cpp
++++ b/src/ipa/libipa/camera_sensor_helper.cpp
+@@ -642,6 +642,42 @@ public:
+ };
+ REGISTER_CAMERA_SENSOR_HELPER("imx477", CameraSensorHelperImx477)
+ 
++class CameraSensorHelperImx371 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx371()
++	{
++		/* 10-bit Sony analogue gain, black level 64 at 10 bits */
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx371", CameraSensorHelperImx371)
++
++class CameraSensorHelperImx376 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx376()
++	{
++		/* 10-bit Sony analogue gain, black level 64 at 10 bits */
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx376", CameraSensorHelperImx376)
++
++class CameraSensorHelperImx519 : public CameraSensorHelper
++{
++public:
++	CameraSensorHelperImx519()
++	{
++		/* 10-bit Sony analogue gain, black level 64 at 10 bits */
++		blackLevel_ = 4096;
++		gain_ = AnalogueGainLinear{ 0, 1024, -1, 1024 };
++	}
++};
++REGISTER_CAMERA_SENSOR_HELPER("imx519", CameraSensorHelperImx519)
++
+ class CameraSensorHelperImx678 : public CameraSensorHelper
+ {
+ public:
+-- 
+2.50.1
+
