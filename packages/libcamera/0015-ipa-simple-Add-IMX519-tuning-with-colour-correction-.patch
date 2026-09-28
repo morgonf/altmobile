@@ -1,0 +1,79 @@
+From f668741575e381b29f4dac4e89765a8ea54c8403 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:46:16 -0400
+Subject: [PATCH 15/15] ipa: simple: Add IMX519 tuning with colour correction
+ matrices
+
+Matrices from the Raspberry Pi IMX519 tuning (BSD-2-Clause), interpolated
+by the colour temperature estimated by Awb.
+---
+ src/ipa/simple/data/imx519.yaml | 44 +++++++++++++++++++++++++++++++++
+ src/ipa/simple/data/meson.build |  1 +
+ 2 files changed, 45 insertions(+)
+ create mode 100644 src/ipa/simple/data/imx519.yaml
+
+diff --git a/src/ipa/simple/data/imx519.yaml b/src/ipa/simple/data/imx519.yaml
+new file mode 100644
+index 0000000..727ebfd
+--- /dev/null
++++ b/src/ipa/simple/data/imx519.yaml
+@@ -0,0 +1,44 @@
++# SPDX-License-Identifier: BSD-2-Clause
++#
++# IMX519 (OnePlus 6 and 6T rear camera). Colour correction matrices from
++# the Raspberry Pi tuning for the IMX519 (src/ipa/rpi/vc4/data/imx519.json,
++# BSD-2-Clause, Arducam), interpolated by the colour temperature that Awb
++# estimates. Same sensor, a different module: close, not calibrated.
++# Needs the white balance without clipped pixels (patch 0014), otherwise
++# it only amplifies the colour cast.
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++  - Awb:
++  - Ccm:
++      ccms:
++        - ct: 2890
++          ccm: [ 1.3675, -0.1845, -0.1831,
++                 -0.3236, 1.4483, -0.1247,
++                 -0.0041, -0.6994, 1.7035 ]
++        - ct: 2920
++          ccm: [ 1.267, 0.0162, -0.2833,
++                 -0.2852, 1.3893, -0.1042,
++                 -0.0485, -0.8221, 1.8707 ]
++        - ct: 3550
++          ccm: [ 1.4284, -0.2723, -0.156,
++                 -0.2875, 1.4107, -0.1232,
++                 -0.0181, -0.5485, 1.5666 ]
++        - ct: 4500
++          ccm: [ 1.3633, -0.1957, -0.1676,
++                 -0.2525, 1.5225, -0.2699,
++                 -0.0158, -0.5315, 1.5473 ]
++        - ct: 5700
++          ccm: [ 1.4921, -0.3725, -0.1196,
++                 -0.2149, 1.4001, -0.1851,
++                 -0.0378, -0.3878, 1.4256 ]
++        - ct: 7900
++          ccm: [ 1.3485, -0.0542, -0.2942,
++                 -0.2218, 1.7768, -0.555,
++                 -0.074, -0.5534, 1.6274 ]
++  - Adjust:
++  - Agc:
++  - Af:
++...
+diff --git a/src/ipa/simple/data/meson.build b/src/ipa/simple/data/meson.build
+index 92795ee..c89c492 100644
+--- a/src/ipa/simple/data/meson.build
++++ b/src/ipa/simple/data/meson.build
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: CC0-1.0
+ 
+ conf_files = files([
++    'imx519.yaml',
+     'uncalibrated.yaml',
+ ])
+ 
+-- 
+2.50.1
+

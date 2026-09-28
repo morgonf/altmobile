@@ -1,7 +1,7 @@
 From 8e7d90468ccbce2d871b76ba0c203ff8fc4ac1ed Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:00:57 -0400
-Subject: [PATCH 10/13] software_isp: autofocus regions, modes and state
+Subject: [PATCH 10/15] software_isp: autofocus regions, modes and state
 
 - statistics: sharpness and green sum on a 5x5 grid of the frame;
 - AfWindows with AfMetering=Windows select grid cells (in pixel array

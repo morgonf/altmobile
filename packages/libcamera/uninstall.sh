@@ -8,3 +8,4 @@ for b in $O/*; do
 done
 ln -sf libcamera.so.0.7.2 /usr/lib64/libcamera.so.0.7
 ln -sf libcamera-base.so.0.7.2 /usr/lib64/libcamera-base.so.0.7
+rm -f /usr/share/libcamera/ipa/simple/imx519.yaml
