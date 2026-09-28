@@ -1,7 +1,7 @@
 From 6f12bcf9355fdd0f2104e63ba8244bbe750dbe9d Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:53:07 -0400
-Subject: [PATCH 01/10] Viewfinder: at most 2400 pixels wide (binned mode on
+Subject: [PATCH 01/11] Viewfinder: at most 2400 pixels wide (binned mode on
  the OnePlus 6T)
 
 ---
@@ -47,7 +47,7 @@ index 65a6b37..a4c8ea4 100644
 From 86fe400760e5a696084c6e38b3591daf847d23a6 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:54 -0400
-Subject: [PATCH 02/10] Tap to focus: AF window, AE/AF lock, focus ring and
+Subject: [PATCH 02/11] Tap to focus: AF window, AE/AF lock, focus ring and
  exposure slider
 
 ---
@@ -547,7 +547,7 @@ index f2e92c7..b676079 100644
 From c2302fc28920f5d99f0de3b352a747430d30b880 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:25:17 -0400
-Subject: [PATCH 03/10] Focus ring: white until the new search starts
+Subject: [PATCH 03/11] Focus ring: white until the new search starts
 
 ---
  src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
@@ -600,7 +600,7 @@ index 9c3e6f3..cc90ef6 100644
 From 837403a5cd4b9815176a3d6de1d2d2dec7470ead Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:35:14 -0400
-Subject: [PATCH 04/10] Shutter waits for the autofocus search to end (at most
+Subject: [PATCH 04/11] Shutter waits for the autofocus search to end (at most
  1.5 s)
 
 ---
@@ -670,7 +670,7 @@ index 79509ce..d87431f 100644
 From e8c1b3a49c6407d47a290009c071340ae60f7f7e Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:37:55 -0400
-Subject: [PATCH 05/10] Viewfinder: half the full size (binned mode) instead of
+Subject: [PATCH 05/11] Viewfinder: half the full size (binned mode) instead of
  a cropped standard size
 
 ---
@@ -711,7 +711,7 @@ index 64aca6f..d8a6b52 100644
 From a6f604b48fa848606b00b26ae2572be72d3f0257 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:51:04 -0400
-Subject: [PATCH 06/10] Viewfinder: bin only sensors wider than 3200 pixels
+Subject: [PATCH 06/11] Viewfinder: bin only sensors wider than 3200 pixels
 
 The 5 MP IMX376 halved to 1288x970, where the GPU debayer fails and the
 application quit.
@@ -746,7 +746,7 @@ index d8a6b52..1ea737e 100644
 From 957252b02e539f636fd6d3e040e0d324b1a3f595 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 16:48:20 -0400
-Subject: [PATCH 07/10] Digital zoom: pinch and 1x/2x/5x buttons, photos
+Subject: [PATCH 07/11] Digital zoom: pinch and 1x/2x/5x buttons, photos
  cropped to match
 
 The viewfinder is scaled around its centre and clipped to the picture,
@@ -1104,7 +1104,7 @@ index 2c27541..b1857c9 100644
 From dffe98f39c6e4cbd57979ca5670a1be97f169d93 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:25:16 -0400
-Subject: [PATCH 08/10] Photos at the full sensor size, JPEG quality 92
+Subject: [PATCH 08/11] Photos at the full sensor size, JPEG quality 92
 
 The viewfinder runs at the 2x2 binned size. On the shutter the stream is
 restarted at full size, a few frames let exposure and white balance
@@ -1389,7 +1389,7 @@ index 595f9b7..55d8c3a 100644
 From 139824f85fccf7873328db06ab4ccc9d4b500bc9 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:51:05 -0400
-Subject: [PATCH 09/10] Night mode: a burst of 12 frames aligned and merged
+Subject: [PATCH 09/11] Night mode: a burst of 12 frames aligned and merged
 
 The moon button in the header switches it on (photo mode only). The
 shutter then takes 12 frames from the binned viewfinder stream with the
@@ -2241,7 +2241,7 @@ index b1857c9..b8b45bc 100644
 From 6eb481b411e7c21a01a98f2fe1a15cbf388b32ce Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 18:13:49 -0400
-Subject: [PATCH 10/10] NightMerge: MIT license, as ALT Mobile
+Subject: [PATCH 10/11] NightMerge: MIT license, as ALT Mobile
 
 ---
  src/plasmacamera/nightmerge.cpp | 2 +-
@@ -2270,6 +2270,646 @@ index 64fccb7..89fae23 100644
  
  #pragma once
  
+-- 
+2.50.1
+
+
+From a0bcfa3b8807350d36659cbee8cadf773c0a6118 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 18:35:44 -0400
+Subject: [PATCH 11/11] Flash: off, automatic and on, with autofocus assist
+
+A button in the header cycles the flash of the rear cameras (the flash_*
+LED class interface, writable through an ALT Mobile udev rule). Auto
+fires at 4x analogue gain or more. The shutter first waits for short
+frames with the torch on and runs a focus search (autofocus assist),
+then strobes both LEDs at 0.75 A each, lets AE follow the flash light
+and takes the frame once the exposure has settled, at most 1 s into the
+1.28 s strobe. The night mode hint and progress bar show meanwhile.
+---
+ src/CMakeLists.txt                            |   1 +
+ .../ui/camera/CameraExtraControls.qml         |  31 ++++
+ src/contents/ui/camera/CameraPage.qml         |   3 +
+ src/plasmacamera.cpp                          |  26 +++
+ src/plasmacamera.h                            |  11 ++
+ src/plasmacamera/flash.cpp                    |  83 +++++++++
+ src/plasmacamera/flash.h                      |  33 ++++
+ src/plasmacamera/worker.cpp                   | 174 +++++++++++++++++-
+ src/plasmacamera/worker.h                     |  36 ++++
+ 9 files changed, 396 insertions(+), 2 deletions(-)
+ create mode 100644 src/plasmacamera/flash.cpp
+ create mode 100644 src/plasmacamera/flash.h
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 92a29fd..4c05e37 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -9,6 +9,7 @@ set(plasma-camera_SRCS
+     plasmacamera.cpp
+     plasmacameramanager.cpp
+     plasmacamera/converter.cpp
++    plasmacamera/flash.cpp
+     plasmacamera/image.cpp
+     plasmacamera/nightmerge.cpp
+     plasmacamera/path.cpp
+diff --git a/src/contents/ui/camera/CameraExtraControls.qml b/src/contents/ui/camera/CameraExtraControls.qml
+index 8bff6fb..1895c84 100644
+--- a/src/contents/ui/camera/CameraExtraControls.qml
++++ b/src/contents/ui/camera/CameraExtraControls.qml
+@@ -18,10 +18,13 @@ Rectangle {
+     required property bool exposureValueEnabled
+     required property bool nightModeEnabled
+     required property bool nightModeShown
++    required property int flashMode
++    required property bool flashShown
+ 
+     signal audioEnabledChangeRequested(enabled: bool)
+     signal exposureValueRequested(value: real)
+     signal nightModeChangeRequested(enabled: bool)
++    signal flashModeChangeRequested(mode: int)
+ 
+     height: controlsLayout.implicitHeight
+     color: Qt.rgba(0, 0, 0, 0.3)
+@@ -59,6 +62,34 @@ Rectangle {
+                 QQC2.ToolTip.text: text
+             }
+ 
++            // Flash (ALT Mobile): off, automatic, on; a tap goes to the next
++            QQC2.ToolButton {
++                id: flashButton
++                icon.name: root.flashMode === 0 ? 'flashlight-off-symbolic' : 'flash-symbolic'
++                icon.color: root.flashMode === 2 ? Kirigami.Theme.highlightColor : 'white'
++                text: root.flashMode === 0 ? i18n("Flash off")
++                    : root.flashMode === 1 ? i18n("Automatic flash")
++                    : i18n("Flash on")
++                display: QQC2.ToolButton.IconOnly
++                visible: root.flashShown
++                onClicked: root.flashModeChangeRequested((root.flashMode + 1) % 3)
++
++                // "A" for the automatic mode, as in Google Camera
++                QQC2.Label {
++                    anchors.right: parent.right
++                    anchors.bottom: parent.bottom
++                    anchors.margins: Kirigami.Units.smallSpacing
++                    visible: root.flashMode === 1
++                    text: "A"
++                    color: 'white'
++                    font.bold: true
++                    font.pointSize: Kirigami.Theme.smallFont.pointSize
++                }
++
++                QQC2.ToolTip.visible: down
++                QQC2.ToolTip.text: text
++            }
++
+             // Night mode (ALT Mobile): a burst merged into one photo
+             QQC2.ToolButton {
+                 id: nightModeButton
+diff --git a/src/contents/ui/camera/CameraPage.qml b/src/contents/ui/camera/CameraPage.qml
+index d8757fe..e35037d 100644
+--- a/src/contents/ui/camera/CameraPage.qml
++++ b/src/contents/ui/camera/CameraPage.qml
+@@ -129,9 +129,12 @@ Kirigami.Page {
+             exposureValueEnabled: root.camera.exposureValueAvailable
+             nightModeEnabled: root.camera.nightMode
+             nightModeShown: root.captureMode === CameraPage.CaptureMode.Photo
++            flashMode: root.camera.flashMode
++            flashShown: root.captureMode === CameraPage.CaptureMode.Photo && root.camera.flashAvailable
+ 
+             onExposureValueRequested: (value) => root.camera.exposureValue = value;
+             onNightModeChangeRequested: (enabled) => root.camera.nightMode = enabled;
++            onFlashModeChangeRequested: (mode) => root.camera.flashMode = mode;
+             onAudioEnabledChangeRequested: (enabled) => root.captureSession.audioRecordingEnabled = enabled;
+         }
+ 
+diff --git a/src/plasmacamera.cpp b/src/plasmacamera.cpp
+index f731c85..ce0a445 100644
+--- a/src/plasmacamera.cpp
++++ b/src/plasmacamera.cpp
+@@ -64,6 +64,12 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+             Q_EMIT captureProgressChanged();
+         }
+     });
++    connect(m_cameraWorker, &Worker::flashAvailableChanged, this, [this](bool available) {
++        if (m_flashAvailable != available) {
++            m_flashAvailable = available;
++            Q_EMIT flashAvailableChanged();
++        }
++    });
+     connect(m_cameraWorker, &Worker::stillCaptureProgress, this, [this](int done, int total) {
+         m_captureProgress = total > 0 ? static_cast<qreal>(done) / total : -1;
+         Q_EMIT captureProgressChanged();
+@@ -282,6 +288,26 @@ qreal PlasmaCamera::captureProgress() const
+     return m_captureProgress;
+ }
+ 
++int PlasmaCamera::flashMode() const
++{
++    return m_flashMode;
++}
++
++void PlasmaCamera::setFlashMode(const int mode)
++{
++    if (m_flashMode == mode || mode < 0 || mode > 2) {
++        return;
++    }
++    m_flashMode = mode;
++    QMetaObject::invokeMethod(m_cameraWorker, "setFlashMode", Qt::QueuedConnection, Q_ARG(int, mode));
++    Q_EMIT flashModeChanged();
++}
++
++bool PlasmaCamera::flashAvailable() const
++{
++    return m_flashAvailable;
++}
++
+ bool PlasmaCamera::busy() const
+ {
+     return m_busy;
+diff --git a/src/plasmacamera.h b/src/plasmacamera.h
+index b34d868..4c9c0f7 100644
+--- a/src/plasmacamera.h
++++ b/src/plasmacamera.h
+@@ -56,6 +56,10 @@ class PlasmaCamera : public QObject
+     // captureProgress is 0..1 while the burst runs, -1 otherwise.
+     Q_PROPERTY(bool nightMode READ nightMode WRITE setNightMode NOTIFY nightModeChanged)
+     Q_PROPERTY(qreal captureProgress READ captureProgress NOTIFY captureProgressChanged)
++    // Flash: 0 off, 1 automatic (in the dark), 2 on; flashAvailable for the
++    // current camera (rear cameras with a usable flash LED)
++    Q_PROPERTY(int flashMode READ flashMode WRITE setFlashMode NOTIFY flashModeChanged)
++    Q_PROPERTY(bool flashAvailable READ flashAvailable NOTIFY flashAvailableChanged)
+     Q_PROPERTY(QString cameraDevice READ cameraDevice WRITE setCameraDevice NOTIFY cameraDeviceChanged)
+     Q_PROPERTY(QCameraFormat cameraFormat READ cameraFormat WRITE setCameraFormat NOTIFY cameraFormatChanged)
+ 
+@@ -188,6 +192,9 @@ public:
+     bool nightMode() const;
+     void setNightMode(bool enabled);
+     qreal captureProgress() const;
++    int flashMode() const;
++    void setFlashMode(int mode);
++    bool flashAvailable() const;
+ 
+ Q_SIGNALS:
+     void errorChanged();
+@@ -200,6 +207,8 @@ Q_SIGNALS:
+     void busyChanged();
+     void nightModeChanged();
+     void captureProgressChanged();
++    void flashModeChanged();
++    void flashAvailableChanged();
+ 
+     // Photos
+     /*
+@@ -320,6 +329,8 @@ private:
+ 
+     bool m_nightMode = false;
+     qreal m_captureProgress = -1;
++    int m_flashMode = 0;
++    bool m_flashAvailable = false;
+ 
+     // The current state of the camera.
+     State m_state = State::None;
+diff --git a/src/plasmacamera/flash.cpp b/src/plasmacamera/flash.cpp
+new file mode 100644
+index 0000000..2240ed5
+--- /dev/null
++++ b/src/plasmacamera/flash.cpp
+@@ -0,0 +1,83 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: MIT
++
++#include "flash.h"
++
++#include <QDebug>
++#include <QDir>
++#include <QFile>
++#include <QFileInfo>
++
++#include <algorithm>
++
++namespace
++{
++bool writeValue(const QString &path, qint64 value)
++{
++    QFile file(path);
++    if (!file.open(QIODevice::WriteOnly)) {
++        return false;
++    }
++    return file.write(QByteArray::number(value)) > 0;
++}
++
++qint64 readValue(const QString &path)
++{
++    QFile file(path);
++    if (!file.open(QIODevice::ReadOnly)) {
++        return -1;
++    }
++    return file.readAll().trimmed().toLongLong();
++}
++}
++
++Flash::Flash()
++{
++    const QDir leds(QStringLiteral("/sys/class/leds"));
++    for (const QString &name : leds.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
++        const QString dir = leds.filePath(name);
++        if (name.endsWith(QLatin1String(":flash")) && QFileInfo(dir + QStringLiteral("/flash_strobe")).isWritable()) {
++            m_leds << dir;
++        }
++    }
++    qDebug() << "Flash LEDs:" << m_leds;
++}
++
++bool Flash::available() const
++{
++    return !m_leds.isEmpty();
++}
++
++bool Flash::fire(const int currentMicroamp, const int timeoutMicroseconds)
++{
++    bool ok = !m_leds.isEmpty();
++    for (const QString &led : std::as_const(m_leds)) {
++        const qint64 maxCurrent = readValue(led + QStringLiteral("/max_flash_brightness"));
++        const qint64 maxTimeout = readValue(led + QStringLiteral("/max_flash_timeout"));
++        // A strobe left from an earlier photo stays "1" after its timeout
++        writeValue(led + QStringLiteral("/flash_strobe"), 0);
++        ok &= writeValue(led + QStringLiteral("/flash_brightness"),
++                         maxCurrent > 0 ? std::min<qint64>(currentMicroamp, maxCurrent) : currentMicroamp);
++        ok &= writeValue(led + QStringLiteral("/flash_timeout"),
++                         maxTimeout > 0 ? std::min<qint64>(timeoutMicroseconds, maxTimeout) : timeoutMicroseconds);
++    }
++    for (const QString &led : std::as_const(m_leds)) {
++        ok &= writeValue(led + QStringLiteral("/flash_strobe"), 1);
++    }
++    return ok;
++}
++
++void Flash::torch(const bool on)
++{
++    for (const QString &led : std::as_const(m_leds)) {
++        const qint64 maxBrightness = readValue(led + QStringLiteral("/max_brightness"));
++        writeValue(led + QStringLiteral("/brightness"), on ? std::max<qint64>(maxBrightness, 1) : 0);
++    }
++}
++
++void Flash::off()
++{
++    for (const QString &led : std::as_const(m_leds)) {
++        writeValue(led + QStringLiteral("/flash_strobe"), 0);
++    }
++}
+diff --git a/src/plasmacamera/flash.h b/src/plasmacamera/flash.h
+new file mode 100644
+index 0000000..d974d3d
+--- /dev/null
++++ b/src/plasmacamera/flash.h
+@@ -0,0 +1,33 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: MIT
++
++#pragma once
++
++#include <QStringList>
++
++/*!
++ * Camera flash through the LED class flash interface in sysfs
++ * (/sys/class/leds/<name>:flash, e.g. the white and yellow LEDs of the
++ * OnePlus 6T). A strobe switches itself off after flash_timeout even if
++ * the application stops, so it is safer than the torch mode.
++ * The flash_* files must be writable (udev rule of ALT Mobile).
++ */
++class Flash
++{
++public:
++    Flash();
++
++    // Whether there is a flash LED whose strobe can be written
++    bool available() const;
++
++    // Strobe all flash LEDs with current (uA per LED) for at most timeout (us)
++    bool fire(int currentMicroamp, int timeoutMicroseconds);
++    void off();
++
++    // Torch mode (brightness 0..max_brightness) of all flash LEDs, as the
++    // autofocus assist light
++    void torch(bool on);
++
++private:
++    QStringList m_leds; // /sys/class/leds/<name>
++};
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index 9085a98..b7003cf 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -3,6 +3,9 @@
+ 
+ #include "worker.h"
+ 
++#include <algorithm>
++#include <cmath>
++
+ static const QMap<libcamera::PixelFormat, QImage::Format> NATIVE_FORMATS{
+     {libcamera::formats::ABGR8888, QImage::Format_RGBX8888},
+     {libcamera::formats::XBGR8888, QImage::Format_RGBX8888},
+@@ -89,10 +92,135 @@ void Worker::setNightMode(const bool enabled)
+     m_nightMode = enabled;
+ }
+ 
++void Worker::setFlashMode(const int mode)
++{
++    m_flashMode = mode;
++}
++
++bool Worker::flashWanted() const
++{
++    // Auto: the AGC is at 4x analogue gain or more, the scene is dark
++    constexpr float kFlashAutoGain = 4.0f;
++    return m_cameraHasFlash && (m_flashMode == 2 || (m_flashMode == 1 && m_lastGain >= kFlashAutoGain));
++}
++
++void Worker::startFlashCapture()
++{
++    // In the dark the frames last up to 1/4 s and the queued requests still
++    // ask for that: first wait for short frames, so that AE can follow the
++    // flash within the strobe
++    m_flashPhase = FlashPhase::Prepare;
++    m_flashTimer.start();
++
++    // In the dark continuous AF has nothing to focus on: light the scene
++    // with the torch and search once (autofocus assist)
++    m_flashAfAssist = m_camera->controls().count(&libcamera::controls::AfTrigger) > 0;
++    // Triggered once the frames are short, the search is quicker then
++    m_flashAfTriggerPending = false;
++    m_flashAfTriggered = false;
++    m_flashAfScanning = false;
++    m_flashAfDone = !m_flashAfAssist;
++    if (m_flashAfAssist) {
++        m_flash.torch(true);
++    }
++    // The preparation takes seconds in the dark: show it as progress
++    // (focus, then flash), with the "hold still" hint of the night mode
++    Q_EMIT stillCaptureProgress(0, 2);
++    setMode(CaptureMode::StillImage);
++}
++
++void Worker::handleFlashFrame()
++{
++    // Short frames are there (or it takes too long): strobe
++    constexpr int kShortFrameUs = 35000;
++    constexpr qint64 kPrepareMaxMs = 4000;
++    // Both LEDs (white and yellow on the OnePlus 6T give a neutral light),
++    // 0.75 A each; the strobe lasts at most 1.28 s and goes off by itself
++    constexpr int kFlashCurrentUa = 750000;
++    constexpr int kFlashTimeoutUs = 1280000;
++    // Exposure settled: three frames within 8 %, after AE reacted to the
++    // flash (the first frames still carry the exposure from before), or
++    // after kSettleQuietMs if the flash changes nothing; in any case well
++    // within the strobe
++    constexpr qint64 kSettleMinMs = 300;
++    constexpr qint64 kSettleQuietMs = 650;
++    constexpr qint64 kSettleMaxMs = 1000;
++    constexpr double kSettledRatio = 1.08;
++
++    if (m_flashPhase == FlashPhase::Prepare) {
++        if (m_flashAfAssist && !m_flashAfTriggered && m_frameExposureUs <= kShortFrameUs) {
++            m_flashAfTriggerPending = true;
++            m_flashAfTriggered = true;
++        }
++        // The search shows as Scanning first, then Focused or Failed; frames
++        // queued before the trigger still report the old state
++        if (m_flashAfTriggered && m_frameAfState == libcamera::controls::AfStateScanning) {
++            m_flashAfScanning = true;
++        } else if (m_flashAfScanning) {
++            m_flashAfDone = true;
++        }
++        if ((m_frameExposureUs > kShortFrameUs || !m_flashAfDone) && m_flashTimer.elapsed() < kPrepareMaxMs) {
++            return;
++        }
++        if (m_flashAfAssist) {
++            m_flash.torch(false);
++        }
++        if (!m_flash.fire(kFlashCurrentUa, kFlashTimeoutUs)) {
++            qWarning() << "Flash failed, taking the photo without it";
++            m_flash.torch(false);
++            m_flash.off();
++            m_flashPhase = FlashPhase::None;
++            return; // the plain photo path takes the next frame
++        }
++        Q_EMIT stillCaptureProgress(1, 2);
++        m_flashPhase = FlashPhase::Settle;
++        m_flashExposures.clear();
++        m_flashStartExposure = static_cast<double>(m_frameExposureUs) * m_frameGain;
++        m_flashReacted = false;
++        m_flashTimer.restart();
++        return;
++    }
++
++    const double exposure = static_cast<double>(m_frameExposureUs) * m_frameGain;
++    if (m_flashStartExposure > 0 && std::abs(exposure / m_flashStartExposure - 1.0) > kSettledRatio - 1.0) {
++        m_flashReacted = true;
++    }
++    m_flashExposures.append(exposure);
++    while (m_flashExposures.size() > 3) {
++        m_flashExposures.removeFirst();
++    }
++    const auto [lo, hi] = std::minmax_element(m_flashExposures.begin(), m_flashExposures.end());
++    const bool settled = m_flashExposures.size() == 3 && *lo > 0 && *hi / *lo < kSettledRatio;
++    const qint64 elapsed = m_flashTimer.elapsed();
++    if (!((settled && m_flashReacted && elapsed >= kSettleMinMs) || (settled && elapsed >= kSettleQuietMs)
++          || elapsed >= kSettleMaxMs)) {
++        return;
++    }
++
++    qDebug() << "Flash photo, AF assist" << (m_flashAfDone ? "done" : "timed out") << ", after" << elapsed << "ms, exposure" << m_frameExposureUs << "us gain" << m_frameGain
++             << (settled ? "settled" : "not settled");
++    {
++        const QMutexLocker lock(&m_stillCaptureFramesMutex);
++        m_stillCaptureFrames.enqueue(m_image.copy());
++    }
++    m_flash.off();
++    m_flashPhase = FlashPhase::None;
++    setMode(CaptureMode::ViewFinder);
++    Q_EMIT stillCaptureFrames(m_stillCaptureFrames);
++}
++
+ void Worker::capture()
+ {
+     m_stillCaptureFrames.clear();
+ 
++    // Flash photo (before night mode: the flash wins). Taken from the
++    // viewfinder stream: restarting at full size would not fit into the
++    // strobe.
++    if (m_camera && flashWanted()) {
++        startFlashCapture();
++        return;
++    }
++
+     // Night mode: a burst from the viewfinder stream, merged afterwards by
+     // PlasmaCameraManager. The binned viewfinder mode gathers more light per
+     // pixel and runs twice as fast as the full size. Exposure is held for
+@@ -241,6 +369,21 @@ void Worker::requestNextFrame()
+         request->controls().set(libcamera::controls::FrameDurationLimits, {kMinFrameUs, maxFrameUs});
+     }
+ 
++    // Flash photo: short frames for a quick AE, and the lens stays where it
++    // is (the flash light changes the sharpness, continuous AF would search)
++    if (m_flashPhase != FlashPhase::None) {
++        if (m_camera->controls().count(&libcamera::controls::FrameDurationLimits)) {
++            request->controls().set(libcamera::controls::FrameDurationLimits, {INT64_C(33333), INT64_C(33333)});
++        }
++        if (m_camera->controls().count(&libcamera::controls::AfMode)) {
++            request->controls().set(libcamera::controls::AfMode, static_cast<int32_t>(libcamera::controls::AfModeAuto));
++        }
++        if (m_flashAfTriggerPending) {
++            request->controls().set(libcamera::controls::AfTrigger, static_cast<int32_t>(libcamera::controls::AfTriggerStart));
++            m_flashAfTriggerPending = false;
++        }
++    }
++
+     // Hold the exposure during a night burst, give it back afterwards
+     if (m_burst) {
+         request->controls().set(libcamera::controls::AeEnable, false);
+@@ -264,6 +407,11 @@ void Worker::requestComplete(libcamera::Request *request)
+         return;
+     }
+ 
++    // Gain of the frame, for the automatic flash
++    if (const auto gain = request->metadata().get(libcamera::controls::AnalogueGain)) {
++        m_lastGain = *gain;
++    }
++
+     // Report focus state changes (emitted from the libcamera thread, the
+     // connection to PlasmaCamera is queued)
+     if (const auto afState = request->metadata().get(libcamera::controls::AfState)) {
+@@ -312,8 +460,12 @@ void Worker::processRequestDataAndEmit()
+         return;
+     }
+ 
+-    // Night mode burst: collect deep copies, the viewfinder keeps running
+-    if (m_burst && m_mode == CaptureMode::StillImage && !m_image.isNull()) {
++    // Flash photo: AE adapts to the flash light meanwhile (short frames, at
++    // most 35 % per step every second frame), then one frame
++    if (m_flashPhase != FlashPhase::None && m_mode == CaptureMode::StillImage && !m_image.isNull()) {
++        handleFlashFrame();
++    } else if (m_burst && m_mode == CaptureMode::StillImage && !m_image.isNull()) {
++        // Night mode burst: collect deep copies, the viewfinder keeps running
+         if (m_stillSkipFrames > 0) {
+             m_stillSkipFrames--;
+         } else {
+@@ -367,6 +519,11 @@ void Worker::processRequestData()
+     libcamera::FrameBuffer *buffer = request->buffers().at(m_stream);
+     Image *image = m_mappedBuffers[buffer].get();
+ 
++    // Exposure of this frame, for the flash photo
++    m_frameExposureUs = request->metadata().get(libcamera::controls::ExposureTime).value_or(0);
++    m_frameGain = request->metadata().get(libcamera::controls::AnalogueGain).value_or(1.0f);
++    m_frameAfState = request->metadata().get(libcamera::controls::AfState).value_or(0);
++
+     // Load frame into m_image
+     size_t size = buffer->metadata().planes()[0].bytesused;
+     if (getNativeFormats().contains(m_format)) {
+@@ -410,6 +567,14 @@ bool Worker::startStream(const bool fullSize)
+     }
+     m_fullSizeStream = fullSize;
+ 
++    // The flash sits next to the rear cameras
++    const auto location = m_camera->properties().get(libcamera::properties::Location);
++    const bool hasFlash = m_flash.available() && location != libcamera::properties::CameraLocationFront;
++    if (hasFlash != m_cameraHasFlash) {
++        m_cameraHasFlash = hasFlash;
++        Q_EMIT flashAvailableChanged(hasFlash);
++    }
++
+     // Connect signal for when a frame request is complete
+     m_camera->requestCompleted.connect(this, &Worker::requestComplete);
+ 
+@@ -452,6 +617,11 @@ void Worker::stopStream()
+ {
+     m_framePollTimer->stop();
+     m_burst = false;
++    if (m_flashPhase != FlashPhase::None) {
++        m_flash.torch(false);
++        m_flash.off();
++        m_flashPhase = FlashPhase::None;
++    }
+     m_fullSizeStream = false;
+     m_lastFrame = QImage();
+ 
+diff --git a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+index a05ee3c..4490eb8 100644
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -5,6 +5,7 @@
+ 
+ #include <QTimer>
+ #include <QDebug>
++#include <QElapsedTimer>
+ #include <QImage>
+ #include <QQueue>
+ #include <QMutex>
+@@ -17,6 +18,7 @@
+ #include <libcamera/libcamera.h>
+ #include <libcamera/framebuffer.h>
+ 
++#include "flash.h"
+ #include "converter.h"
+ #include "image.h"
+ #include "settings.h"
+@@ -54,6 +56,7 @@ Q_SIGNALS:
+     void afStateChanged(int afState); // libcamera AfState from frame metadata, on change
+     void stillCaptureFrames(const QQueue<QImage> &frames); // connect to this to get captures
+     void stillCaptureProgress(int done, int total); // night mode burst
++    void flashAvailableChanged(bool available); // the current camera has a flash
+ 
+ public Q_SLOTS:
+     // Camera
+@@ -77,6 +80,9 @@ public Q_SLOTS:
+     // Night mode: the shutter takes a burst for NightMerge
+     void setNightMode(bool enabled);
+ 
++    // Flash: 0 off, 1 automatic (in the dark), 2 on
++    void setFlashMode(int mode);
++
+ private Q_SLOTS:
+     void setError(int libcameraError);
+     void setError(const QString &errorString);
+@@ -169,6 +175,36 @@ private:
+     int m_burstTarget = 0;
+     bool m_aeHeld = false; // AeEnable was switched off for the burst
+ 
++    // Flash photo: short frames first, then the strobe, AE adapts to the
++    // flash light, a frame is taken once the exposure stops changing
++    enum class FlashPhase {
++        None,
++        Prepare, // waiting for short frames
++        Settle, // strobe on, waiting for the exposure to settle
++    };
++    void startFlashCapture();
++    void handleFlashFrame();
++    bool flashWanted() const;
++    Flash m_flash;
++    int m_flashMode = 0;
++    bool m_cameraHasFlash = false; // rear camera and a usable flash LED
++    FlashPhase m_flashPhase = FlashPhase::None;
++    QElapsedTimer m_flashTimer;
++    QList<double> m_flashExposures; // exposure time x gain of the last frames
++    double m_flashStartExposure = 0; // at the strobe
++    // Autofocus assist: torch on and a focus search before the strobe
++    bool m_flashAfAssist = false;
++    bool m_flashAfTriggerPending = false;
++    bool m_flashAfTriggered = false;
++    bool m_flashAfScanning = false; // the search has started
++    bool m_flashAfDone = false;
++    int m_frameAfState = 0; // AfState of the frame in m_image
++    bool m_flashReacted = false; // AE has changed the exposure since
++    // Exposure of the frame in m_image, from its metadata
++    int m_frameExposureUs = 0;
++    float m_frameGain = 1.0f;
++    std::atomic<float> m_lastGain{1.0f}; // from frame metadata, for auto flash
++
+     libcamera::Stream *m_stream{};
+     libcamera::FrameBufferAllocator *m_allocator{};
+     std::map<libcamera::FrameBuffer *, std::unique_ptr<Image>> m_mappedBuffers;
 -- 
 2.50.1
 

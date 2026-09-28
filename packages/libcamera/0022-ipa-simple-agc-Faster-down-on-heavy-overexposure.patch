@@ -1,0 +1,44 @@
+From b7b576ad642d989936035575e74f50ff80067620 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 18:24:38 -0400
+Subject: [PATCH 22/22] ipa: simple: agc: Faster down on heavy overexposure
+
+A saturated histogram (a flash firing) no longer tells how far off the
+exposure is, and 35 % per step took too long to come down within a
+flash strobe. Above a mean sample value of 4 of 5 the exposure goes
+down by 60 % per step.
+---
+ src/ipa/simple/algorithms/agc.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index add6cad..28c594a 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -67,6 +67,14 @@ static constexpr float kExpProportionalGain = 0.15;
+  */
+ static constexpr float kExpMaxStep = 0.35;
+ 
++/*
++ * Mean sample value above which the frame is heavily overexposed, e.g. when
++ * a flash fires: the histogram saturates, the error no longer tells how far
++ * off the exposure is, so it goes down by kExpOverStep at once.
++ */
++static constexpr float kExposureOver = 4.0;
++static constexpr float kExpOverStep = 0.6;
++
+ /*
+  * Longest frame by default: in the dark the AGC lengthens the frame (and the
+  * exposure) up to 1/15 s once the gain is at its maximum. Applications raise
+@@ -164,6 +172,8 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	 */
+ 	float step = std::clamp(static_cast<float>(error) * kExpProportionalGain,
+ 				-kExpMaxStep, kExpMaxStep);
++	if (exposureMSV > kExposureOver)
++		step = -kExpOverStep;
+ 	float factor = 1.0f + step;
+ 
+ 	/*
+-- 
+2.50.1
+

@@ -1,7 +1,7 @@
 From 379f830f0a1bc8d46ce0f198306daccf2c3da9d6 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:10:29 -0400
-Subject: [PATCH 18/21] software_isp: Remosaic full size Quad Bayer frames
+Subject: [PATCH 18/22] software_isp: Remosaic full size Quad Bayer frames
  (IMX371)
 
 The IMX371 has a Quad Bayer colour filter. Its binned mode is an

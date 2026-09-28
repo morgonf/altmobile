@@ -1,7 +1,7 @@
 From 7c4b99922585a3e88e2f5917497e18ed3773842d Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:56:16 -0400
-Subject: [PATCH 21/21] ipa: simple: af: Keep the lens when switching back to
+Subject: [PATCH 21/22] ipa: simple: af: Keep the lens when switching back to
  continuous focus
 
 Switching from Auto or Manual to Continuous started a new sweep from

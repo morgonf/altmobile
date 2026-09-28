@@ -1,7 +1,7 @@
 From 48e20d6dbeb22d478ade3e75561713493c9415d5 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:15:52 -0400
-Subject: [PATCH 19/21] ipa: simple: af: Keep the lens position across
+Subject: [PATCH 19/22] ipa: simple: af: Keep the lens position across
  reconfiguration
 
 An application switching to full size for a photo reconfigures the

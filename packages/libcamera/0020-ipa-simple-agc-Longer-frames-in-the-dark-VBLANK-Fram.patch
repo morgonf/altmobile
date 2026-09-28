@@ -1,7 +1,7 @@
 From 1ddc967a49644d886beea8339801a87f36e6a32d Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:47:36 -0400
-Subject: [PATCH 20/21] ipa: simple: agc: Longer frames in the dark (VBLANK,
+Subject: [PATCH 20/22] ipa: simple: agc: Longer frames in the dark (VBLANK,
  FrameDurationLimits)
 
 The exposure was limited to the default frame (1/30 s on the OnePlus 6T

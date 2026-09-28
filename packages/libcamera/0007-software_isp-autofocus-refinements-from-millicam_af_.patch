@@ -1,7 +1,7 @@
 From 3c25f2b730b8f1ec9040ddd57c82d7380f1cabeb Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Sun, 27 Sep 2026 19:49:15 -0400
-Subject: [PATCH 07/21] software_isp: autofocus refinements from millicam_af_6
+Subject: [PATCH 07/22] software_isp: autofocus refinements from millicam_af_6
  (da42da5, 3ac0518, 4312a90)
 
 af.cpp and af.h taken from the branch tip. Centre-only sharpness adapted

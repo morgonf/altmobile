@@ -1,7 +1,7 @@
 From 7b33ba6bc828bb2ff2dc54a7e27d1b3c57d80c73 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:05 -0400
-Subject: [PATCH 11/21] software_isp: ExposureValue as EV compensation, AE lock
+Subject: [PATCH 11/22] software_isp: ExposureValue as EV compensation, AE lock
  keeps exposure
 
 ExposureValue is the exposure compensation in stops (-2..2, default 0)
