@@ -11,9 +11,12 @@ DST=/usr/local/share/applications
 # Настраивают Phosh или GNOME
 PHOSH="org.alt.Tweaks org.altlinux.Tuner org.altlinux.Foldy rygel-preferences"
 # Дубли, у которых оставлена версия KDE: Kalk, KClock, KWeather,
-# QMLKonsole, Calindori, KRecorder, Koko
+# QMLKonsole, Calindori, KRecorder, Koko. Snapshot (камера GNOME) заменён
+# plasma-camera: через PipeWire он открывает камеры параллельно, а на 6T
+# они работают только по одной (общий csid0), и поток не запускается
 DUPES="org.gnome.Calculator org.gnome.clocks org.gnome.Weather org.gnome.Console
-org.gnome.Calendar app.drey.Vocalis org.gnome.Loupe"
+org.gnome.Calendar app.drey.Vocalis org.gnome.Loupe
+org.gnome.Snapshot"
 mkdir -p $DST
 for id in $PHOSH $DUPES; do
 	f=$SRC/$id.desktop
