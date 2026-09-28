@@ -80,3 +80,15 @@ msgstr "Качество записи видео"
 
 msgid "Video recording resolution"
 msgstr "Разрешение записи видео"
+
+msgid "Night mode is on"
+msgstr "Ночной режим включён"
+
+msgid "Night mode is off"
+msgstr "Ночной режим выключен"
+
+msgid "Hold the phone still"
+msgstr "Не двигайте телефон"
+
+msgid "Processing…"
+msgstr "Обработка…"

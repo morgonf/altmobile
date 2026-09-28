@@ -1,0 +1,226 @@
+From 7f044ab89e9f588aa4907bbd3ba71c9ea2b3b879 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:47:36 -0400
+Subject: [PATCH] ipa: simple: agc: Longer frames in the dark (VBLANK,
+ FrameDurationLimits)
+
+The exposure was limited to the default frame (1/30 s on the OnePlus 6T
+binned modes). With the gain at its maximum the AGC now lengthens the
+frame through VBLANK, up to 1/15 s by default or the longest
+FrameDurationLimits an application asks for (night mode). The simple
+pipeline writes VBLANK before the exposure, whose range depends on it.
+---
+ src/ipa/simple/algorithms/agc.cpp        | 48 +++++++++++++++++++++---
+ src/ipa/simple/ipa_context.h             | 10 +++++
+ src/ipa/simple/soft_simple.cpp           | 12 ++++++
+ src/libcamera/pipeline/simple/simple.cpp |  6 +++
+ 4 files changed, 71 insertions(+), 5 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 2b7066e..add6cad 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -19,6 +19,8 @@ namespace libcamera {
+ 
+ LOG_DEFINE_CATEGORY(IPASoftExposure)
+ 
++using namespace std::literals::chrono_literals;
++
+ namespace ipa::soft::algorithms {
+ 
+ /*
+@@ -65,6 +67,13 @@ static constexpr float kExpProportionalGain = 0.15;
+  */
+ static constexpr float kExpMaxStep = 0.35;
+ 
++/*
++ * Longest frame by default: in the dark the AGC lengthens the frame (and the
++ * exposure) up to 1/15 s once the gain is at its maximum. Applications raise
++ * it with FrameDurationLimits, e.g. for a night mode.
++ */
++static constexpr utils::Duration kDefaultMaxFrameDuration = 66667us;
++
+ Agc::Agc()
+ {
+ }
+@@ -81,6 +90,9 @@ int Agc::init(IPAContext &context, const ValueNode &tuningData)
+ 	context.ctrlMap[&controls::Brightness] = ControlInfo(0.0f, 2.0f, 1.0f);
+ 	/* Exposure compensation in stops, as defined by libcamera */
+ 	context.ctrlMap[&controls::ExposureValue] = ControlInfo(-2.0f, 2.0f, 0.0f);
++	context.ctrlMap[&controls::FrameDurationLimits] =
++		ControlInfo(INT64_C(1000), INT64_C(1000000),
++			    static_cast<int64_t>(kDefaultMaxFrameDuration.get<std::micro>()));
+ 
+ 	return 0;
+ }
+@@ -90,6 +102,8 @@ int Agc::configure(IPAContext &context,
+ {
+ 	context.activeState.knobs.brightness = std::optional<double>();
+ 	context.activeState.knobs.ae_enabled = std::optional<bool>();
++	context.activeState.agc.maxFrameDuration = kDefaultMaxFrameDuration;
++	context.activeState.agc.vblank = context.configuration.agc.vblankDef;
+ 
+ 	auto &agc = context.configuration.agc;
+ 	if (maxAnalogueGain_ > 0.0 && agc.againMax > maxAnalogueGain_) {
+@@ -121,6 +135,12 @@ void Agc::queueRequest(typename Module::Context &context,
+ 		context.activeState.knobs.exposure_value = exposure_value.value();
+ 		LOG(IPASoftExposure, Debug) << "Setting exposure value to " << exposure_value.value();
+ 	}
++	const auto &frameDurations = controls.get(controls::FrameDurationLimits);
++	if (frameDurations) {
++		/* Only the longest frame matters here, in microseconds */
++		context.activeState.agc.maxFrameDuration =
++			std::chrono::microseconds((*frameDurations)[1]);
++	}
+ }
+ 
+ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV)
+@@ -165,18 +185,34 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	exposure = nextExposure;
+ 	again = total / exposure;
+ 
+-	exposure = std::clamp(exposure, context.configuration.agc.exposureMin,
+-			      context.configuration.agc.exposureMax);
+-	again = std::clamp(again, context.configuration.agc.againMin,
+-			   context.configuration.agc.againMax);
++	/*
++	 * Gain at its maximum and still too dark: lengthen the frame, up to
++	 * maxFrameDuration and to what VBLANK allows.
++	 */
++	int32_t longMax = agc.exposureMax;
++	if (agc.hasVblank && agc.lineDuration > utils::Duration(0)) {
++		const auto lines = static_cast<int64_t>(context.activeState.agc.maxFrameDuration / agc.lineDuration);
++		longMax = static_cast<int32_t>(std::clamp<int64_t>(lines, agc.exposureMax,
++								   static_cast<int64_t>(agc.exposureMax) + agc.vblankMax - agc.vblankDef));
++	}
++	if (again > agc.againMax && longMax > exposure) {
++		exposure = std::clamp(static_cast<int32_t>(total / agc.againMax), exposure, longMax);
++		again = total / exposure;
++	}
++
++	exposure = std::clamp(exposure, agc.exposureMin, longMax);
++	again = std::clamp(again, agc.againMin, agc.againMax);
++	int32_t &vblank = frameContext.sensor.vblank;
++	vblank = agc.hasVblank ? agc.vblankDef + std::max(0, exposure - agc.exposureMax) : 0;
+ 
+ 	context.activeState.agc.exposure = exposure;
+ 	context.activeState.agc.again = again;
++	context.activeState.agc.vblank = vblank;
+ 
+ 	LOG(IPASoftExposure, Debug)
+ 		<< "exposureMSV " << exposureMSV
+ 		<< " error " << error << " factor " << factor
+-		<< " exp " << exposure << " again " << again;
++		<< " exp " << exposure << " again " << again << " vblank " << vblank;
+ }
+ 
+ void Agc::process(IPAContext &context,
+@@ -206,6 +242,7 @@ void Agc::process(IPAContext &context,
+ 		 */
+ 		context.activeState.agc.exposure = frameContext.sensor.exposure;
+ 		context.activeState.agc.again = frameContext.sensor.gain;
++		context.activeState.agc.vblank = frameContext.sensor.vblank;
+ 		context.activeState.agc.valid = true;
+ 	}
+ 
+@@ -216,6 +253,7 @@ void Agc::process(IPAContext &context,
+ 		 */
+ 		frameContext.sensor.exposure = context.activeState.agc.exposure;
+ 		frameContext.sensor.gain = context.activeState.agc.again;
++		frameContext.sensor.vblank = context.activeState.agc.vblank;
+ 		return;
+ 	}
+ 
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 301b645..39d7043 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -29,6 +29,12 @@ struct IPASessionConfiguration {
+ 		int32_t exposureMin, exposureMax;
+ 		double againMin, againMax, again10, againMinStep;
+ 		utils::Duration lineDuration;
++		/*
++		 * Frame length control: exposureMax is the limit at vblankDef,
++		 * each line of vertical blanking more allows one line more.
++		 */
++		bool hasVblank;
++		int32_t vblankDef, vblankMax;
+ 	} agc;
+ 	struct {
+ 		std::optional<uint8_t> level;
+@@ -50,7 +56,10 @@ struct IPAActiveState {
+ 	struct {
+ 		int32_t exposure;
+ 		double again;
++		int32_t vblank;
+ 		bool valid;
++		/* Longest frame the AGC may use in the dark (FrameDurationLimits) */
++		utils::Duration maxFrameDuration;
+ 	} agc;
+ 
+ 	struct {
+@@ -94,6 +103,7 @@ struct IPAFrameContext : public FrameContext {
+ 	struct {
+ 		int32_t exposure;
+ 		double gain;
++		int32_t vblank;
+ 	} sensor;
+ 
+ 	struct {
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index dcf746c..e749315 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -228,6 +228,13 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ 		context_.sensorInfo.minLineLength * 1.0s / context_.sensorInfo.pixelRate;
+ 	context_.configuration.agc.exposureMin = exposureInfo.min().get<int32_t>();
+ 	context_.configuration.agc.exposureMax = exposureInfo.max().get<int32_t>();
++	const auto vblankInfo = sensorInfoMap_.find(V4L2_CID_VBLANK);
++	context_.configuration.agc.hasVblank = vblankInfo != sensorInfoMap_.end();
++	if (context_.configuration.agc.hasVblank) {
++		/* The default is the value the mode was just configured with */
++		context_.configuration.agc.vblankDef = vblankInfo->second.def().get<int32_t>();
++		context_.configuration.agc.vblankMax = vblankInfo->second.max().get<int32_t>();
++	}
+ 	if (!context_.configuration.agc.exposureMin) {
+ 		LOG(IPASoft, Warning) << "Minimum exposure is zero, that can't be linear";
+ 		context_.configuration.agc.exposureMin = 1;
+@@ -318,6 +325,9 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+ 	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
+ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
++	frameContext.sensor.vblank = sensorControls.contains(V4L2_CID_VBLANK)
++		? sensorControls.get(V4L2_CID_VBLANK).get<int32_t>()
++		: context_.configuration.agc.vblankDef;
+ 
+ 	ControlList metadata(controls::controls);
+ 	for (const auto &algo : algorithms())
+@@ -337,6 +347,8 @@ void IPASoftSimple::processStats(const uint32_t frame,
+ 	ctrls.set(V4L2_CID_EXPOSURE, frameContext.sensor.exposure);
+ 	ctrls.set(V4L2_CID_ANALOGUE_GAIN,
+ 		  static_cast<int32_t>(camHelper_ ? camHelper_->gainCode(againNew) : againNew));
++	if (context_.configuration.agc.hasVblank)
++		ctrls.set(V4L2_CID_VBLANK, frameContext.sensor.vblank);
+ 
+ 	ControlList lens_ctrls(lensInfoMap_);
+ 	lens_ctrls.set(V4L2_CID_FOCUS_ABSOLUTE, frameContext.lens.focus_pos);
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 8959d24..5d4f817 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -573,6 +573,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+ 		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
+ 		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
+ 	};
++	/*
++	 * The frame length, for exposures longer than the default frame. It is
++	 * written before the exposure, whose range depends on it.
++	 */
++	if (sensor_->controls().count(V4L2_CID_VBLANK))
++		params[V4L2_CID_VBLANK] = { delays.vblankDelay, true };
+ 	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
+ 
+ 	LOG(SimplePipeline, Debug)
+-- 
+2.50.1
+
