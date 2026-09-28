@@ -1,0 +1,596 @@
+From 8e7d90468ccbce2d871b76ba0c203ff8fc4ac1ed Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:00:57 -0400
+Subject: [PATCH 10/13] software_isp: autofocus regions, modes and state
+
+- statistics: sharpness and green sum on a 5x5 grid of the frame;
+- AfWindows with AfMetering=Windows select grid cells (in pixel array
+  coordinates, mapped through the sensor analogue crop), the central
+  cell otherwise;
+- AfMode Manual/Auto/Continuous, AfTrigger Start/Cancel as in the
+  libcamera definitions (the branch used 1 to start);
+- AfState reported in metadata, Failed for a flat region.
+---
+ .../internal/software_isp/swisp_stats.h       |  22 +-
+ .../internal/software_isp/swstats_cpu.h       |   6 +-
+ src/ipa/simple/algorithms/af.cpp              | 221 +++++++++++++-----
+ src/ipa/simple/algorithms/af.h                |  14 +-
+ src/ipa/simple/ipa_context.h                  |   4 +
+ src/libcamera/software_isp/swstats_cpu.cpp    |  40 +++-
+ 6 files changed, 228 insertions(+), 79 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swisp_stats.h b/include/libcamera/internal/software_isp/swisp_stats.h
+index d1589a6..dae0515 100644
+--- a/include/libcamera/internal/software_isp/swisp_stats.h
++++ b/include/libcamera/internal/software_isp/swisp_stats.h
+@@ -44,16 +44,32 @@ struct SwIspStats {
+ 	 */
+ 	Histogram yHistogram;
+ 	/**
+-	 * \brief Holds the sharpness of an image
++	 * \brief Holds the sharpness of the central autofocus cell
++	 *
++	 * Sharpness normalised by the green sum of the same cell, kept for
++	 * users of the single-value statistic.
+ 	 */
+ 	uint64_t sharpness;
+ 	/**
+-	 * \brief The line being processed lies in the autofocus band
++	 * \brief Size of the autofocus grid, cells per side
++	 */
++	static constexpr unsigned int kAfGrid = 5;
++	/**
++	 * \brief Raw sharpness (squared green differences) per grid cell
++	 */
++	std::array<uint64_t, kAfGrid * kAfGrid> afSharpness;
++	/**
++	 * \brief Green sum per grid cell, to normalise sharpness and to meter
++	 *        brightness of a region
++	 */
++	std::array<uint64_t, kAfGrid * kAfGrid> afGreen;
++	/**
++	 * \brief Grid row of the line being processed
+ 	 *
+ 	 * Set per line by SwStatsCpu before the line statistics function runs;
+ 	 * every statistics buffer belongs to one thread, so no locking is needed.
+ 	 */
+-	bool afRow;
++	unsigned int afRow;
+ };
+ 
+ } /* namespace libcamera */
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index b2caf08..cf58485 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -67,8 +67,7 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		/* Autofocus sharpness is taken from the central fifth of the window */
+-		stats_[statsBufferIndex].afRow = (5 * (y - window_.y)) / window_.height == 2;
++		stats_[statsBufferIndex].afRow = (SwIspStats::kAfGrid * (y - window_.y)) / window_.height;
+ 		(this->*stats0_)(src, stats_[statsBufferIndex]);
+ 	}
+ 
+@@ -81,8 +80,7 @@ public:
+ 		    y >= (window_.y + window_.height))
+ 			return;
+ 
+-		/* Autofocus sharpness is taken from the central fifth of the window */
+-		stats_[statsBufferIndex].afRow = (5 * (y - window_.y)) / window_.height == 2;
++		stats_[statsBufferIndex].afRow = (SwIspStats::kAfGrid * (y - window_.y)) / window_.height;
+ 		(this->*stats2_)(src, stats_[statsBufferIndex]);
+ 	}
+ 
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 6cf10a8..29281d3 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -1,17 +1,24 @@
+ /* SPDX-License-Identifier: LGPL-2.1-or-later */
+ /*
+  * Copyright (C) 2025 Vasiliy Doylov <nekodevelopper@gmail.com>
++ * Copyright (C) 2026 morgonf
+  *
+- * Auto focus
++ * Contrast autofocus for the software ISP
+  */
+ 
+ #include "af.h"
+ 
++#include <algorithm>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
++#include <libcamera/base/span.h>
+ #include "libcamera/base/utils.h"
+ 
++#include <libcamera/geometry.h>
++
++#include "libcamera/internal/software_isp/swisp_stats.h"
++
+ #include "control_ids.h"
+ 
+ namespace libcamera {
+@@ -20,6 +27,30 @@ LOG_DEFINE_CATEGORY(IPASoftAutoFocus)
+ 
+ namespace ipa::soft::algorithms {
+ 
++/*
++ * The lens travel is handled in percent (LensPosition 0..100, mapped onto
++ * the V4L2 focus control range). Contrast is measured on a 5x5 grid of the
++ * frame (SwIspStats::afSharpness), over the cells selected by AfWindows or
++ * over the central cell by default.
++ *
++ * A search has two passes: coarse with kCoarseStep over the whole travel,
++ * then fine with kFineStep within kFineSpan of the best coarse position.
++ * Only frames with fresh statistics count, and one statistics period is
++ * skipped after a lens jump. In continuous mode focus is considered lost
++ * when the sharpness differs from the focused value by more than kLostRatio
++ * for kLostCount statistics in a row.
++ */
++static constexpr double kCoarseStep = 8.0;
++static constexpr double kFineStep = 2.0;
++static constexpr double kFineSpan = 8.0;
++static constexpr double kLostRatio = 0.4;
++static constexpr unsigned int kLostCount = 3;
++/* Below this normalised sharpness the region is flat: report failure */
++static constexpr uint64_t kFlatSharpness = 2;
++
++static constexpr unsigned int kGrid = SwIspStats::kAfGrid;
++static constexpr uint32_t kCentreMask = 1u << (kGrid * kGrid / 2);
++
+ Af::Af()
+ {
+ }
+@@ -28,61 +59,108 @@ int Af::init(IPAContext &context,
+ 	     [[maybe_unused]] const ValueNode &tuningData)
+ {
+ 	context.ctrlMap[&controls::LensPosition] = ControlInfo(0.0f, 100.0f, 50.0f);
+-	context.ctrlMap[&controls::AfTrigger] = ControlInfo(0, 1, 0);
++	context.ctrlMap[&controls::AfTrigger] = ControlInfo(controls::AfTriggerValues);
++	context.ctrlMap[&controls::AfMode] = ControlInfo(controls::AfModeValues,
++							 ControlValue(static_cast<int32_t>(controls::AfModeContinuous)));
++	context.ctrlMap[&controls::AfMetering] = ControlInfo(controls::AfMeteringValues);
++	context.ctrlMap[&controls::AfWindows] = ControlInfo(Rectangle{}, Rectangle(65535, 65535, 65535, 65535), Rectangle{});
+ 	return 0;
+ }
+ 
+ int Af::configure(IPAContext &context,
+ 		  [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+-	context.activeState.knobs.focus_sweep = std::optional<bool>();
+-	context.activeState.knobs.focus_pos = std::optional<double>();
+-	context.activeState.knobs.focus_sweep = false;
+-	context.activeState.knobs.focus_pos = 0;
++	auto &k = context.activeState.knobs;
++
++	k.focus_sweep = false;
++	k.focus_pos = 0;
++	k.afMode = controls::AfModeContinuous;
++	k.afState = controls::AfStateIdle;
++	k.afMask = kCentreMask;
+ 	context.configuration.focus.skip = 1;
+ 	context.configuration.focus.lost = 0;
++	context.configuration.focus.sharpness_max = 0;
++	metering_ = controls::AfMeteringAuto;
++	windowMask_ = kCentreMask;
+ 	return 0;
+ }
+ 
+-void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
++/* Grid cells covered by rectangles given in pixel array coordinates */
++uint32_t Af::windowsToMask(const IPAContext &context, Span<const Rectangle> windows) const
++{
++	const Rectangle &crop = context.sensorInfo.analogCrop;
++	uint32_t mask = 0;
++
++	if (crop.width == 0 || crop.height == 0)
++		return kCentreMask;
++
++	for (const Rectangle &r : windows) {
++		auto cell = [](int64_t v, int64_t origin, uint64_t size) {
++			return static_cast<int>(std::clamp<int64_t>((v - origin) * kGrid / static_cast<int64_t>(size),
++								    0, kGrid - 1));
++		};
++		const int x0 = cell(r.x, crop.x, crop.width);
++		const int x1 = cell(r.x + r.width - 1, crop.x, crop.width);
++		const int y0 = cell(r.y, crop.y, crop.height);
++		const int y1 = cell(r.y + r.height - 1, crop.y, crop.height);
++		for (int y = y0; y <= y1; y++)
++			for (int x = x0; x <= x1; x++)
++				mask |= 1u << (y * kGrid + x);
++	}
++
++	return mask ? mask : kCentreMask;
++}
++
++void Af::queueRequest(typename Module::Context &context,
+ 		      [[maybe_unused]] const uint32_t frame,
+ 		      [[maybe_unused]] typename Module::FrameContext &frameContext,
+ 		      const ControlList &controls)
+ {
+-	const auto &focus_pos = controls.get(controls::LensPosition);
+-	const auto &af_trigger = controls.get(controls::AfTrigger);
+-	if (focus_pos.has_value()) {
+-		context.activeState.knobs.focus_pos = focus_pos;
+-		context.configuration.focus.skip = 1;
+-		LOG(IPASoftAutoFocus, Debug) << "Setting focus position to " << focus_pos.value();
+-	}
+-	if (af_trigger.has_value()) {
+-		context.activeState.knobs.focus_sweep = af_trigger.value() == 1;
+-		if(context.activeState.knobs.focus_sweep){
++	auto &k = context.activeState.knobs;
++
++	const auto &mode = controls.get(controls::AfMode);
++	if (mode && *mode != k.afMode) {
++		k.afMode = *mode;
++		if (k.afMode == controls::AfModeManual || k.afMode == controls::AfModeAuto) {
++			k.focus_sweep = false;
++			k.afState = controls::AfStateIdle;
++		} else if (k.afMode == controls::AfModeContinuous && !*k.focus_sweep) {
+ 			restart(context);
+ 		}
+ 	}
+ 
+-}
++	const auto &metering = controls.get(controls::AfMetering);
++	if (metering)
++		metering_ = *metering;
++	const auto &windows = controls.get(controls::AfWindows);
++	if (windows)
++		windowMask_ = windowsToMask(context, *windows);
++	const uint32_t mask = metering_ == controls::AfMeteringWindows ? windowMask_ : kCentreMask;
++	if (mask != k.afMask) {
++		k.afMask = mask;
++		/* New region in continuous mode: search again */
++		if (k.afMode == controls::AfModeContinuous)
++			restart(context);
++	}
+ 
+-/*
+- * Contrast autofocus in two passes over the lens travel, in percent:
+- * a coarse pass with kCoarseStep over the whole range, then a fine pass
+- * with kFineStep around the best coarse position. Only frames with fresh
+- * statistics count (the software ISP does not compute them every frame),
+- * and one statistics period is skipped after a big lens jump.
+- *
+- * Focus is considered lost when the sharpness differs from the focused
+- * value by more than kLostRatio for kLostCount statistics in a row; a
+- * single outlier (hand shake, flicker) does not restart the search.
+- */
+-static constexpr double kCoarseStep = 8.0;
+-static constexpr double kFineStep = 2.0;
+-static constexpr double kFineSpan = 8.0;
+-static constexpr double kLostRatio = 0.4;
+-static constexpr unsigned int kLostCount = 3;
++	const auto &pos = controls.get(controls::LensPosition);
++	if (pos && k.afMode == controls::AfModeManual) {
++		k.focus_pos = std::clamp<double>(*pos, 0.0, 100.0);
++		LOG(IPASoftAutoFocus, Debug) << "Setting focus position to " << *pos;
++	}
++
++	const auto &trigger = controls.get(controls::AfTrigger);
++	if (trigger && k.afMode != controls::AfModeManual) {
++		if (*trigger == controls::AfTriggerStart) {
++			restart(context);
++		} else if (*trigger == controls::AfTriggerCancel && *k.focus_sweep) {
++			k.focus_sweep = false;
++			k.afState = controls::AfStateIdle;
++		}
++	}
++}
+ 
+-void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAFrameContext &frameContext, [[maybe_unused]] double exposureMSV)
++void Af::updateFocus(IPAContext &context, IPAFrameContext &frameContext)
+ {
+ 	/* Percent of the lens travel, offset by the control minimum */
+ 	frameContext.lens.focus_pos = context.configuration.focus.focus_min +
+@@ -90,13 +168,12 @@ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAF
+ 				      (context.configuration.focus.focus_max - context.configuration.focus.focus_min);
+ }
+ 
+-static int steps;
+-
+ void Af::restart(IPAContext &context)
+ {
+ 	auto &f = context.configuration.focus;
++	auto &k = context.activeState.knobs;
+ 
+-	steps = 0;
++	steps_ = 0;
+ 	f.phase = 0;
+ 	f.lost = 0;
+ 	f.focus_max_pos = 0;
+@@ -105,16 +182,34 @@ void Af::restart(IPAContext &context)
+ 	f.stop = 100;
+ 	f.step = kCoarseStep;
+ 	f.skip = 1;
+-	context.activeState.knobs.focus_pos = 0;
+-	context.activeState.knobs.focus_sweep = true;
+-	LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
++	k.focus_pos = 0;
++	k.focus_sweep = true;
++	k.afState = controls::AfStateScanning;
++	LOG(IPASoftAutoFocus, Debug) << "Starting focus sweep, cells 0x" << std::hex << k.afMask;
++}
++
++/* Normalised sharpness over the selected cells */
++uint64_t Af::regionSharpness(const IPAContext &context, const SwIspStats *stats) const
++{
++	const uint32_t mask = context.activeState.knobs.afMask;
++	uint64_t sharp = 0, green = 0;
++
++	for (unsigned int i = 0; i < kGrid * kGrid; i++) {
++		if (!(mask & (1u << i)))
++			continue;
++		sharp += stats->afSharpness[i];
++		green += stats->afGreen[i];
++	}
++
++	return green ? 1000 * sharp / green : 0;
+ }
+ 
+ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
+ {
+ 	auto &f = context.configuration.focus;
++	auto &k = context.activeState.knobs;
+ 
+-	steps++;
++	steps_++;
+ 	/* The lens needs a moment to settle after a jump */
+ 	if (f.skip != 0) {
+ 		f.skip--;
+@@ -122,13 +217,15 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	}
+ 
+ 	if (!sweep) {
++		if (k.afMode != controls::AfModeContinuous)
++			return;
+ 		/* A flat scene (no sharpness at all) gives nothing to refocus on */
+ 		const double dev = f.sharpness_max
+ 			? static_cast<double>(utils::abs_diff(sharp, f.sharpness_max)) / f.sharpness_max
+-			: (sharp ? 1.0 : 0.0);
++			: (sharp > kFlatSharpness ? 1.0 : 0.0);
+ 		f.lost = dev > kLostRatio ? f.lost + 1 : 0;
+ 		if (f.lost >= kLostCount) {
+-			LOG(IPASoftAutoFocus, Info) << "Focus lost: " << sharp << " vs " << f.sharpness_max;
++			LOG(IPASoftAutoFocus, Debug) << "Focus lost: " << sharp << " vs " << f.sharpness_max;
+ 			restart(context);
+ 		}
+ 		return;
+@@ -151,8 +248,6 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 		f.skip = 1;
+ 		f.sharpness_max = 0;
+ 		focus_pos = f.start;
+-		LOG(IPASoftAutoFocus, Debug) << "Coarse pass done, fine pass "
+-					     << f.start << ".." << f.stop;
+ 		return;
+ 	}
+ 
+@@ -161,28 +256,28 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	f.lost = 0;
+ 	f.skip = 1;
+ 	focus_pos = f.focus_max_pos;
+-	LOG(IPASoftAutoFocus, Info) << "Sweep end. Best focus: " << f.focus_max_pos
+-				    << " steps " << steps;
++	k.afState = f.sharpness_max > kFlatSharpness ? controls::AfStateFocused
++						     : controls::AfStateFailed;
++	LOG(IPASoftAutoFocus, Debug) << "Sweep end. Best focus: " << f.focus_max_pos
++				     << " sharpness " << f.sharpness_max << " steps " << steps_;
+ }
+ 
+-void Af::process([[maybe_unused]] IPAContext &context,
++void Af::process(IPAContext &context,
+ 		 [[maybe_unused]] const uint32_t frame,
+-		 [[maybe_unused]] IPAFrameContext &frameContext,
+-		 [[maybe_unused]] const SwIspStats *stats,
+-		 [[maybe_unused]] ControlList &metadata)
++		 IPAFrameContext &frameContext,
++		 const SwIspStats *stats,
++		 ControlList &metadata)
+ {
++	auto &k = context.activeState.knobs;
++
+ 	/* Statistics are computed only for some frames */
+-	if (stats->valid) {
+-		LOG(IPASoftAutoFocus, Debug) << "frame " << frame << " sharpness " << stats->sharpness
+-					     << " pos " << context.activeState.knobs.focus_pos.value()
+-					     << " sweep " << context.activeState.knobs.focus_sweep.value();
+-		step(context,
+-		     context.activeState.knobs.focus_pos.value(),
+-		     stats->sharpness,
+-		     context.activeState.knobs.focus_sweep.value());
+-	}
+-	updateFocus(context, frameContext, 0);
+-	metadata.set(controls::LensPosition, context.activeState.knobs.focus_pos.value());
++	if (stats->valid && k.afMode != controls::AfModeManual)
++		step(context, k.focus_pos.value(), regionSharpness(context, stats),
++		     k.focus_sweep.value());
++
++	updateFocus(context, frameContext);
++	metadata.set(controls::LensPosition, static_cast<float>(k.focus_pos.value()));
++	metadata.set(controls::AfState, k.afState);
+ }
+ 
+ REGISTER_IPA_ALGORITHM(Af, "Af")
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index 46c4afd..3fd7db1 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -7,6 +7,10 @@
+ 
+ #pragma once
+ 
++#include <libcamera/base/span.h>
++
++#include <libcamera/geometry.h>
++
+ #include "algorithm.h"
+ 
+ namespace libcamera {
+@@ -32,9 +36,15 @@ public:
+ 		     ControlList &metadata) override;
+ 
+ private:
+-	void updateFocus(IPAContext &context, IPAFrameContext &frameContext, double focus);
+-	void step(IPAContext &context, double& focus_pos, uint64_t sharp, bool& sweep);
++	void updateFocus(IPAContext &context, IPAFrameContext &frameContext);
++	void step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep);
+ 	void restart(IPAContext &context);
++	uint32_t windowsToMask(const IPAContext &context, Span<const Rectangle> windows) const;
++	uint64_t regionSharpness(const IPAContext &context, const SwIspStats *stats) const;
++
++	int32_t metering_ = 0;
++	uint32_t windowMask_ = 0;
++	unsigned int steps_ = 0;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index 2172bff..301b645 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -79,6 +79,10 @@ struct IPAActiveState {
+ 		std::optional<double> exposure_value;
+ 		/* 0..100 range, 50.0 = normal */
+ 		std::optional<double> focus_pos;
++		/* AfMode, AfState (libcamera enums) and cells of the AF grid */
++		int32_t afMode;
++		int32_t afState;
++		uint32_t afMask;
+ 		/* 0..1 range, 0 = normal */
+ 		std::optional<bool> focus_sweep;
+ 	} knobs;
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index eaccd32..c7b419a 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -11,6 +11,8 @@
+ 
+ #include "libcamera/internal/software_isp/swstats_cpu.h"
+ 
++#include <algorithm>
++
+ #include <libcamera/base/log.h>
+ 
+ #include <libcamera/stream.h>
+@@ -180,7 +182,11 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	uint64_t sumB = 0;                \
+ 	/* green two samples back, for sharpness */ \
+ 	pixel_t g0 = 0, g1 = 0;           \
+-	uint64_t sharpness = 0;
++	unsigned int afCol;               \
++	/* x runs in pixels, or in bytes for packed formats */ \
++	unsigned int afSpan = window_.width; \
++	uint64_t afSharp[SwIspStats::kAfGrid] = {}; \
++	uint64_t afGreen[SwIspStats::kAfGrid] = {};
+ 
+ #define SWSTATS_ACCUMULATE_LINE_STATS(div) \
+ 	sumR += r;                         \
+@@ -191,8 +197,10 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	yVal += g * kGreenYMul;            \
+ 	yVal += b * kBlueYMul;             \
+ 	stats.yHistogram[yVal * SwIspStats::kYHistogramSize / (256 * 256 * (div))]++; \
+-	if (stats.afRow && g0 != 0 && (5 * x) / window_.width == 2) \
+-		sharpness += (g - g0) * (g - g0); \
++	afCol = std::min((SwIspStats::kAfGrid * x) / afSpan, SwIspStats::kAfGrid - 1); \
++	afGreen[afCol] += g;               \
++	if (g0 != 0)                       \
++		afSharp[afCol] += (g - g0) * (g - g0); \
+ 	g0 = g1;                           \
+ 	g1 = g;
+ 
+@@ -200,7 +208,10 @@ static constexpr unsigned int kBlueYMul = 29; /* 0.114 * 256 */
+ 	stats.sum_.r() += sumR;     \
+ 	stats.sum_.g() += sumG;     \
+ 	stats.sum_.b() += sumB;     \
+-	stats.sharpness += sumG ? 1000 * sharpness / sumG : 0;
++	for (unsigned int c = 0; c < SwIspStats::kAfGrid; c++) { \
++		stats.afSharpness[stats.afRow * SwIspStats::kAfGrid + c] += afSharp[c]; \
++		stats.afGreen[stats.afRow * SwIspStats::kAfGrid + c] += afGreen[c]; \
++	}
+ 
+ void SwStatsCpu::statsBGGR8Line0(const uint8_t *src[], SwIspStats &stats)
+ {
+@@ -289,6 +300,7 @@ void SwStatsCpu::statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		std::swap(src0, src1);
+ 
+ 	SWSTATS_START_LINE_STATS(uint8_t)
++	afSpan = widthInBytes;
+ 
+ 	/* x += 5 sample every other 2x2 block */
+ 	for (unsigned int x = 0; x < widthInBytes; x += 5) {
+@@ -315,6 +327,7 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 		std::swap(src0, src1);
+ 
+ 	SWSTATS_START_LINE_STATS(uint8_t)
++	afSpan = widthInBytes;
+ 
+ 	/* x += 5 sample every other 2x2 block */
+ 	for (unsigned int x = 0; x < widthInBytes; x += 5) {
+@@ -338,6 +351,7 @@ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const unsigned int widthInBytes = window_.width * 3 / 2;
+ 
+ 	SWSTATS_START_LINE_STATS(uint8_t)
++	afSpan = widthInBytes;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -364,6 +378,7 @@ void SwStatsCpu::statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	const unsigned int widthInBytes = window_.width * 3 / 2;
+ 
+ 	SWSTATS_START_LINE_STATS(uint8_t)
++	afSpan = widthInBytes;
+ 
+ 	if (swapLines_)
+ 		std::swap(src0, src1);
+@@ -400,6 +415,8 @@ void SwStatsCpu::startFrame(uint32_t frame)
+ 	for (auto &s : stats_) {
+ 		s.sum_ = RGB<uint64_t>({ 0, 0, 0 });
+ 		s.sharpness = 0;
++		s.afSharpness.fill(0);
++		s.afGreen.fill(0);
+ 		s.yHistogram.fill(0);
+ 	}
+ }
+@@ -417,15 +434,24 @@ void SwStatsCpu::finishFrame(uint32_t frame, uint32_t bufferId)
+ 
+ 	if (valid) {
+ 		sharedStats_->sum_ = RGB<uint64_t>({ 0, 0, 0 });
+-		sharedStats_->sharpness = 0;
++		sharedStats_->afSharpness.fill(0);
++		sharedStats_->afGreen.fill(0);
+ 		sharedStats_->yHistogram.fill(0);
+ 		for (const auto &s : stats_) {
+ 			sharedStats_->sum_ += s.sum_;
+-			sharedStats_->sharpness += s.sharpness;
++			for (unsigned int i = 0; i < s.afSharpness.size(); i++) {
++				sharedStats_->afSharpness[i] += s.afSharpness[i];
++				sharedStats_->afGreen[i] += s.afGreen[i];
++			}
+ 			for (unsigned int j = 0; j < SwIspStats::kYHistogramSize; j++)
+ 				sharedStats_->yHistogram[j] += s.yHistogram[j];
+ 		}
+ 
++		const unsigned int centre = SwIspStats::kAfGrid * SwIspStats::kAfGrid / 2;
++		sharedStats_->sharpness = sharedStats_->afGreen[centre]
++			? 1000 * sharedStats_->afSharpness[centre] / sharedStats_->afGreen[centre]
++			: 0;
++
+ 		sharedStats_->sum_ >>= sumShift_;
+ 	}
+ 
+@@ -601,7 +627,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+ 		linePointers[1] = src;
+ 		linePointers[2] = src + stride_;
+ 		/* y is relative to the window here */
+-		stats_[0].afRow = (5 * y) / window_.height == 2;
++		stats_[0].afRow = (SwIspStats::kAfGrid * y) / window_.height;
+ 		(this->*stats0_)(linePointers, stats_[0]);
+ 		src += stride_ * 2;
+ 	}
+-- 
+2.50.1
+

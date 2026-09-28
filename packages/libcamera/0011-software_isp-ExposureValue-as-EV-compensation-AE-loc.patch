@@ -1,0 +1,54 @@
+From 5027bb605ff04abfca4f709161c33ec9bf276521 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:15:05 -0400
+Subject: [PATCH 11/13] software_isp: ExposureValue as EV compensation, AE lock
+ keeps exposure
+
+ExposureValue is the exposure compensation in stops (-2..2, default 0)
+as libcamera defines it; the branch used it as a fraction of the manual
+exposure range. With AeEnable off exposure and gain are held.
+---
+ src/ipa/simple/algorithms/agc.cpp | 13 +++++++++----
+ 1 file changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 5b50ff1..057f190 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -74,7 +74,8 @@ int Agc::init(IPAContext &context,
+ {
+ 	context.ctrlMap[&controls::AeEnable] = ControlInfo(false, true, true);
+ 	context.ctrlMap[&controls::Brightness] = ControlInfo(0.0f, 2.0f, 1.0f);
+-	context.ctrlMap[&controls::ExposureValue] = ControlInfo(0.0f, 0.5f, 1.0f);
++	/* Exposure compensation in stops, as defined by libcamera */
++	context.ctrlMap[&controls::ExposureValue] = ControlInfo(-2.0f, 2.0f, 0.0f);
+ 
+ 	return 0;
+ }
+@@ -115,7 +116,9 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 	int32_t &exposure = frameContext.sensor.exposure;
+ 	double &again = frameContext.sensor.gain;
+ 	const auto brightness = context.activeState.knobs.brightness.value_or(1.0);
+-	exposureMSV /= brightness;
++	const auto ev = context.activeState.knobs.exposure_value.value_or(0.0);
++	/* Brighter target for positive compensation: the scene looks darker */
++	exposureMSV /= brightness * std::exp2(ev);
+ 
+ 	double error = kExposureOptimal - exposureMSV;
+ 
+@@ -179,8 +182,10 @@ void Agc::process(IPAContext &context,
+ {
+ 	const auto ae_enable = context.activeState.knobs.ae_enabled.value_or(true);
+ 
+-	if (!ae_enable)
+-		frameContext.sensor.exposure = (int32_t)( context.activeState.knobs.exposure_value.value_or(0.5) * (context.configuration.agc.exposureMax - context.configuration.agc.exposureMin));
++	/*
++	 * With AE disabled (AE lock) exposure and gain stay where they are:
++	 * frameContext.sensor holds the values the sensor runs with.
++	 */
+ 	utils::Duration exposureTime =
+ 		context.configuration.agc.lineDuration * frameContext.sensor.exposure;
+ 	metadata.set(controls::ExposureTime, exposureTime.get<std::micro>());
+-- 
+2.50.1
+

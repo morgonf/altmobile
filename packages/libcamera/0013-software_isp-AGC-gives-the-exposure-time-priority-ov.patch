@@ -1,0 +1,70 @@
+From 2c6906549733c36f84f6f20b89c5652357ce9661 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:32:53 -0400
+Subject: [PATCH 13/13] software_isp: AGC gives the exposure time priority over
+ the gain
+
+The total exposure is scaled and given to the exposure time up to its
+maximum, the analogue gain takes the rest; a high gain left from a
+previous scene no longer stays with a short exposure time.
+---
+ src/ipa/simple/algorithms/agc.cpp | 43 +++++++++++++------------------
+ 1 file changed, 18 insertions(+), 25 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 59176d1..c925723 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -134,31 +134,24 @@ void Agc::updateExposure(IPAContext &context, IPAFrameContext &frameContext, dou
+ 				-kExpMaxStep, kExpMaxStep);
+ 	float factor = 1.0f + step;
+ 
+-	if (factor > 1.0f) {
+-		/* Scene too dark: increase exposure first, then gain. */
+-		if (exposure < context.configuration.agc.exposureMax) {
+-			int32_t next = static_cast<int32_t>(exposure * factor);
+-			exposure = std::max(next, exposure + 1);
+-		} else {
+-			double next = again * factor;
+-			if (next - again < context.configuration.agc.againMinStep)
+-				again += context.configuration.agc.againMinStep;
+-			else
+-				again = next;
+-		}
+-	} else {
+-		/* Scene too bright: decrease gain first, then exposure. */
+-		if (again > context.configuration.agc.again10) {
+-			double next = again * factor;
+-			if (again - next < context.configuration.agc.againMinStep)
+-				again -= context.configuration.agc.againMinStep;
+-			else
+-				again = next;
+-		} else {
+-			int32_t next = static_cast<int32_t>(exposure * factor);
+-			exposure = std::min(next, exposure - 1);
+-		}
+-	}
++	/*
++	 * ALT Mobile: scale the total exposure (time x gain) and give it to the
++	 * exposure time first, up to its maximum, and only the rest to the
++	 * analogue gain. Raising only the time left a high gain from an earlier
++	 * scene in place, and the picture stayed noisy.
++	 */
++	const auto &agc = context.configuration.agc;
++	const double total = std::max(static_cast<double>(exposure) * again * factor,
++				      static_cast<double>(agc.exposureMin) * agc.againMin);
++	int32_t nextExposure = static_cast<int32_t>(total / agc.againMin);
++	nextExposure = std::clamp(nextExposure, agc.exposureMin, agc.exposureMax);
++	/* Keep moving by at least one line when the exposure time decides */
++	if (factor > 1.0f && nextExposure == exposure && exposure < agc.exposureMax)
++		nextExposure = exposure + 1;
++	else if (factor < 1.0f && nextExposure == exposure && exposure > agc.exposureMin)
++		nextExposure = exposure - 1;
++	exposure = nextExposure;
++	again = total / exposure;
+ 
+ 	exposure = std::clamp(exposure, context.configuration.agc.exposureMin,
+ 			      context.configuration.agc.exposureMax);
+-- 
+2.50.1
+

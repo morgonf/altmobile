@@ -1,0 +1,82 @@
+# Дополнение к русскому каталогу plasma-camera 2.1.1 (в пакете ALT каталог
+# старше программы: не переведены настройки, сообщения о микрофоне и
+# кодировщике) и строка фиксации фокуса из нашего патча.
+# morgonf, 2026.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Devin Lin"
+msgstr "Devin Lin"
+
+msgid "Exposure"
+msgstr "Экспозиция"
+
+msgid "Exposure Value"
+msgstr "Поправка экспозиции"
+
+msgid "Filename pattern"
+msgstr "Шаблон имени файла"
+
+msgid "Focus and exposure locked"
+msgstr "Фокус и экспозиция зафиксированы"
+
+msgid "High quality"
+msgstr "Высокое качество"
+
+msgid "Low quality"
+msgstr "Низкое качество"
+
+msgid "Microphone is disabled"
+msgstr "Микрофон выключен"
+
+msgid "Microphone is enabled"
+msgstr "Микрофон включён"
+
+msgid "Normal quality"
+msgstr "Обычное качество"
+
+msgid "Output filename pattern"
+msgstr "Шаблон имени сохраняемого файла"
+
+msgid "Output path"
+msgstr "Папка для сохранения"
+
+msgid "Select Camera"
+msgstr "Выбрать камеру"
+
+msgid "Settings"
+msgstr "Параметры"
+
+msgid "The video encoder is struggling to keep up. Try lowering your recording settings to improve performance."
+msgstr "Кодировщик видео не успевает. Попробуйте снизить качество или разрешение записи."
+
+msgid "Very high quality"
+msgstr "Очень высокое качество"
+
+msgid "Very low quality"
+msgstr "Очень низкое качество"
+
+msgid "Video Recording Codec"
+msgstr "Кодек записи видео"
+
+msgid "Video Recording Framerate"
+msgstr "Частота кадров видео"
+
+msgid "Video Recording Quality"
+msgstr "Качество записи видео"
+
+msgid "Video Recording Resolution"
+msgstr "Разрешение записи видео"
+
+msgid "Video recording codec"
+msgstr "Кодек записи видео"
+
+msgid "Video recording frame rate"
+msgstr "Частота кадров видео"
+
+msgid "Video recording quality"
+msgstr "Качество записи видео"
+
+msgid "Video recording resolution"
+msgstr "Разрешение записи видео"

@@ -1,0 +1,277 @@
+From a3a9bd98f4c92effd70d60a1e84545213a60d93d Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 00:47:46 -0400
+Subject: [PATCH 09/13] software_isp: faster, calmer autofocus and faster AGC
+
+- autofocus acts only on frames with fresh statistics; two passes,
+  coarse 8 % then fine 2 % within 8 % of the best coarse position;
+  focus is lost only after 3 statistics in a row differ by more than
+  40 % (a single outlier used to restart the search);
+- statistics every second frame instead of every fourth;
+- AGC proportional gain 0.15 (was 0.04), maximum step 35 %.
+---
+ .../internal/software_isp/swstats_cpu.h       |   2 +-
+ src/ipa/simple/algorithms/af.cpp              | 133 +++++++++++-------
+ src/ipa/simple/algorithms/af.h                |   2 +-
+ src/ipa/simple/algorithms/agc.cpp             |   8 +-
+ src/ipa/simple/ipa_context.h                  |   4 +
+ 5 files changed, 94 insertions(+), 55 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index 7423ed2..b2caf08 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -44,7 +44,7 @@ public:
+ 	 * Run stats once every 4 frames to ensure any previous
+ 	 * exposure changes have been applied.
+ 	 */
+-	static constexpr uint32_t kStatPerNumFrames = 4;
++	static constexpr uint32_t kStatPerNumFrames = 2;
+ 
+ 	bool isValid() const { return sharedStats_.fd().isValid(); }
+ 
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 7112c86..6cf10a8 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -39,7 +39,8 @@ int Af::configure(IPAContext &context,
+ 	context.activeState.knobs.focus_pos = std::optional<double>();
+ 	context.activeState.knobs.focus_sweep = false;
+ 	context.activeState.knobs.focus_pos = 0;
+-	context.configuration.focus.skip = 10;
++	context.configuration.focus.skip = 1;
++	context.configuration.focus.lost = 0;
+ 	return 0;
+ }
+ 
+@@ -52,7 +53,7 @@ void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
+ 	const auto &af_trigger = controls.get(controls::AfTrigger);
+ 	if (focus_pos.has_value()) {
+ 		context.activeState.knobs.focus_pos = focus_pos;
+-		context.configuration.focus.skip = 10;
++		context.configuration.focus.skip = 1;
+ 		LOG(IPASoftAutoFocus, Debug) << "Setting focus position to " << focus_pos.value();
+ 	}
+ 	if (af_trigger.has_value()) {
+@@ -64,13 +65,22 @@ void Af::queueRequest([[maybe_unused]] typename Module::Context &context,
+ 
+ }
+ 
+-  /*
+-    megapixels:
+-
+-    if sharpness goes to >2* best or <0.6* best, we restart
+-
+-    we step by 10. if sharpness goes to <0.8* or we go to the end of range, we return to the best point (-10)
+-  */
++/*
++ * Contrast autofocus in two passes over the lens travel, in percent:
++ * a coarse pass with kCoarseStep over the whole range, then a fine pass
++ * with kFineStep around the best coarse position. Only frames with fresh
++ * statistics count (the software ISP does not compute them every frame),
++ * and one statistics period is skipped after a big lens jump.
++ *
++ * Focus is considered lost when the sharpness differs from the focused
++ * value by more than kLostRatio for kLostCount statistics in a row; a
++ * single outlier (hand shake, flicker) does not restart the search.
++ */
++static constexpr double kCoarseStep = 8.0;
++static constexpr double kFineStep = 2.0;
++static constexpr double kFineSpan = 8.0;
++static constexpr double kLostRatio = 0.4;
++static constexpr unsigned int kLostCount = 3;
+ 
+ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAFrameContext &frameContext, [[maybe_unused]] double exposureMSV)
+ {
+@@ -82,59 +92,77 @@ void Af::updateFocus([[maybe_unused]] IPAContext &context, [[maybe_unused]] IPAF
+ 
+ static int steps;
+ 
+-void Af::restart(IPAContext &context) {
++void Af::restart(IPAContext &context)
++{
++	auto &f = context.configuration.focus;
++
+ 	steps = 0;
+-	context.configuration.focus.focus_max_pos = 0;
+-	context.configuration.focus.sharpness_max = 0;
+-	context.configuration.focus.start = 0;
+-	context.configuration.focus.stop = 100;
+-	context.configuration.focus.step = 2;
+-	context.configuration.focus.skip = 10;
++	f.phase = 0;
++	f.lost = 0;
++	f.focus_max_pos = 0;
++	f.sharpness_max = 0;
++	f.start = 0;
++	f.stop = 100;
++	f.step = kCoarseStep;
++	f.skip = 1;
+ 	context.activeState.knobs.focus_pos = 0;
+ 	context.activeState.knobs.focus_sweep = true;
+ 	LOG(IPASoftAutoFocus, Info) << "Starting focus sweep";
+ }
+ 
+-void Af::step(IPAContext &context, double& focus_pos, uint64_t sharp, bool& sweep){
+-	steps ++;
+-	// Even for sweep, we need some time to move to new lens position
+-	if(context.configuration.focus.skip != 0){
+-		context.configuration.focus.skip --;
++void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
++{
++	auto &f = context.configuration.focus;
++
++	steps++;
++	/* The lens needs a moment to settle after a jump */
++	if (f.skip != 0) {
++		f.skip--;
+ 		return;
+ 	}
+-	if(!sweep){
+-		if(utils::abs_diff(sharp, context.configuration.focus.sharpness_max) > context.configuration.focus.sharpness_max*0.3){
+-			LOG(IPASoftAutoFocus, Info) << "Focus lost :( -- " << sharp << " " << context.configuration.focus.sharpness_max;
++
++	if (!sweep) {
++		/* A flat scene (no sharpness at all) gives nothing to refocus on */
++		const double dev = f.sharpness_max
++			? static_cast<double>(utils::abs_diff(sharp, f.sharpness_max)) / f.sharpness_max
++			: (sharp ? 1.0 : 0.0);
++		f.lost = dev > kLostRatio ? f.lost + 1 : 0;
++		if (f.lost >= kLostCount) {
++			LOG(IPASoftAutoFocus, Info) << "Focus lost: " << sharp << " vs " << f.sharpness_max;
+ 			restart(context);
+ 		}
+-		return;			
++		return;
+ 	}
+-	if (sharp > context.configuration.focus.sharpness_max) {
+-		context.configuration.focus.sharpness_max = sharp;
+-		context.configuration.focus.focus_max_pos = focus_pos;
++
++	if (sharp > f.sharpness_max) {
++		f.sharpness_max = sharp;
++		f.focus_max_pos = focus_pos;
+ 	}
+-	focus_pos += context.configuration.focus.step;	
+-	if (focus_pos > context.configuration.focus.start && focus_pos < context.configuration.focus.stop)
++
++	focus_pos += f.step;
++	if (focus_pos <= f.stop)
+ 		return;
+ 
+-	int spread = 5;
+-	context.configuration.focus.start = std::clamp(context.configuration.focus.focus_max_pos - context.configuration.focus.step*spread, 0.0, 100.0);
+-	context.configuration.focus.stop = std::clamp(context.configuration.focus.focus_max_pos +  context.configuration.focus.step*spread, 0.0, 100.0);
+-	LOG(IPASoftAutoFocus, Info) << "Best focus on step " <<context.configuration.focus.step << " (" << context.configuration.focus.start << ".." << context.configuration.focus.stop << "): " << focus_pos << " value " << context.configuration.focus.sharpness_max;
+-	focus_pos = context.configuration.focus.start;
+-	context.configuration.focus.step /= 10; // HERE
+-	context.configuration.focus.skip = 10; // We need lens to settle after big move
+-	if (context.configuration.focus.step > 0.2){
+-		// We want to search for maximum at smaller step, forget maximum from prev step
+-		context.configuration.focus.sharpness_max = 0;
++	if (f.phase == 0) {
++		f.phase = 1;
++		f.start = std::clamp(f.focus_max_pos - kFineSpan, 0.0, 100.0);
++		f.stop = std::clamp(f.focus_max_pos + kFineSpan, 0.0, 100.0);
++		f.step = kFineStep;
++		f.skip = 1;
++		f.sharpness_max = 0;
++		focus_pos = f.start;
++		LOG(IPASoftAutoFocus, Debug) << "Coarse pass done, fine pass "
++					     << f.start << ".." << f.stop;
+ 		return;
+ 	}
+ 
+-	//We are done
++	/* Done: keep sharpness_max to detect a scene change */
+ 	sweep = false;
+-	LOG(IPASoftAutoFocus, Info) << "Sweep end. Best focus: " << context.configuration.focus.focus_max_pos << " steps " << steps;
+-	// We want to keep context.configuration.focus.sharpness_max, to detect when scene changes (aka focus lost)
+-	focus_pos = context.configuration.focus.focus_max_pos;
++	f.lost = 0;
++	f.skip = 1;
++	focus_pos = f.focus_max_pos;
++	LOG(IPASoftAutoFocus, Info) << "Sweep end. Best focus: " << f.focus_max_pos
++				    << " steps " << steps;
+ }
+ 
+ void Af::process([[maybe_unused]] IPAContext &context,
+@@ -143,13 +171,16 @@ void Af::process([[maybe_unused]] IPAContext &context,
+ 		 [[maybe_unused]] const SwIspStats *stats,
+ 		 [[maybe_unused]] ControlList &metadata)
+ {
+-	LOG(IPASoftAutoFocus, Debug) << "frame " << frame << " sharpness " << stats->sharpness
+-				     << " pos " << context.activeState.knobs.focus_pos.value()
+-				     << " sweep " << context.activeState.knobs.focus_sweep.value();
+-	step(context, 
+-		context.activeState.knobs.focus_pos.value(),
+-       		stats->sharpness,
+-		context.activeState.knobs.focus_sweep.value());
++	/* Statistics are computed only for some frames */
++	if (stats->valid) {
++		LOG(IPASoftAutoFocus, Debug) << "frame " << frame << " sharpness " << stats->sharpness
++					     << " pos " << context.activeState.knobs.focus_pos.value()
++					     << " sweep " << context.activeState.knobs.focus_sweep.value();
++		step(context,
++		     context.activeState.knobs.focus_pos.value(),
++		     stats->sharpness,
++		     context.activeState.knobs.focus_sweep.value());
++	}
+ 	updateFocus(context, frameContext, 0);
+ 	metadata.set(controls::LensPosition, context.activeState.knobs.focus_pos.value());
+ }
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index 3da42fa..46c4afd 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -33,7 +33,7 @@ public:
+ 
+ private:
+ 	void updateFocus(IPAContext &context, IPAFrameContext &frameContext, double focus);
+-        void step(IPAContext &context, double& focus_pos, uint64_t sharp, bool& sweep);
++	void step(IPAContext &context, double& focus_pos, uint64_t sharp, bool& sweep);
+ 	void restart(IPAContext &context);
+ };
+ 
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index a5331d9..5b50ff1 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -53,13 +53,17 @@ static constexpr float kExposureSatisfactory = 0.2;
+  * This replaces the fixed 10% bang-bang step with a proportional correction
+  * that converges smoothly and avoids overshooting near the target.
+  */
+-static constexpr float kExpProportionalGain = 0.04;
++/*
++ * ALT Mobile: 0.15 instead of 0.04. With statistics every second frame and
++ * the software ISP at 11-22 fps, 0.04 took 5-7 s to leave a dark scene.
++ */
++static constexpr float kExpProportionalGain = 0.15;
+ 
+ /*
+  * Maximum multiplicative step per frame, to bound the correction when the
+  * scene changes dramatically.
+  */
+-static constexpr float kExpMaxStep = 0.15;
++static constexpr float kExpMaxStep = 0.35;
+ 
+ Agc::Agc()
+ {
+diff --git a/src/ipa/simple/ipa_context.h b/src/ipa/simple/ipa_context.h
+index f58af7c..2172bff 100644
+--- a/src/ipa/simple/ipa_context.h
++++ b/src/ipa/simple/ipa_context.h
+@@ -39,6 +39,10 @@ struct IPASessionConfiguration {
+ 		uint64_t sharpness_max;
+ 		double start, stop, step;
+ 		uint32_t skip;
++		/* 0: coarse pass, 1: fine pass */
++		unsigned int phase;
++		/* consecutive statistics that disagree with the focused sharpness */
++		unsigned int lost;
+ 	} focus;
+ };
+ 
+-- 
+2.50.1
+

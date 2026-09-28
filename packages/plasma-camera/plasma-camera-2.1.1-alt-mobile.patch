@@ -1,0 +1,598 @@
+From afa5b57259b6996e85c8e96b859dc532b13e2ef0 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 00:53:07 -0400
+Subject: [PATCH 1/3] Viewfinder: at most 2400 pixels wide (binned mode on the
+ OnePlus 6T)
+
+---
+ src/plasmacamera/worker.cpp | 21 +++++++++++++++++++++
+ 1 file changed, 21 insertions(+)
+
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index 65a6b37..a4c8ea4 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -465,6 +465,27 @@ void Worker::configure()
+     // TODO: allow user to override config
+     //  - https://git.libcamera.org/libcamera/libcamera.git/tree/src/apps/qcam/main_window.cpp#n399
+ 
++    // ALT Mobile: the default is the full sensor (16 MP on the OnePlus 6T).
++    // With the software ISP that gives 11 fps at best, and photos are taken
++    // from this stream, so take the largest size not wider than 2400 pixels
++    // (the 2x2 binned 2328x1748 mode on the IMX519): twice the frame rate
++    // and less noise in the dark.
++    constexpr unsigned int kMaxViewfinderWidth = 2400;
++    if (streamConfig.size.width > kMaxViewfinderWidth) {
++        libcamera::Size best;
++        for (const libcamera::Size &size : streamConfig.formats().sizes(streamConfig.pixelFormat)) {
++            if (size.width <= kMaxViewfinderWidth && size.width * size.height > best.width * best.height) {
++                best = size;
++            }
++        }
++        if (best.isNull()) {
++            // Only a range is advertised: scale down keeping the aspect ratio
++            const unsigned int w = kMaxViewfinderWidth & ~7u;
++            best = libcamera::Size(w, (streamConfig.size.height * w / streamConfig.size.width) & ~1u);
++        }
++        streamConfig.size = best;
++    }
++
+     qDebug() << "Viewfinder configuration is: " << streamConfig.toString();
+ 
+     // Validate config
+-- 
+2.50.1
+
+
+From 8ea1f24455ed1340480d5c19bf0ec68c0cb44851 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:15:54 -0400
+Subject: [PATCH 2/3] Tap to focus: AF window, AE/AF lock, focus ring and
+ exposure slider
+
+---
+ src/contents/ui/camera/Viewfinder.qml | 156 +++++++++++++++++++++++++-
+ src/plasmacamera.cpp                  |  78 +++++++++++++
+ src/plasmacamera.h                    |  19 ++++
+ src/plasmacamera/settings.cpp         |  53 +++++++++
+ src/plasmacamera/settings.h           |  13 +++
+ src/plasmacamera/worker.cpp           |   8 ++
+ src/plasmacamera/worker.h             |   3 +
+ 7 files changed, 329 insertions(+), 1 deletion(-)
+
+diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
+index 405c20e..c5fd4df 100644
+--- a/src/contents/ui/camera/Viewfinder.qml
++++ b/src/contents/ui/camera/Viewfinder.qml
+@@ -2,6 +2,7 @@
+ // SPDX-FileCopyrightText: 2018 Jonah Brüchert <jbb@kaidan.im>
+ // SPDX-FileCopyrightText: 2025 Andrew Wang
+ // SPDX-FileCopyrightText: 2025 Devin Lin <devin@kde.org>
++// SPDX-FileCopyrightText: 2026 morgonf
+ // SPDX-License-Identifier: BSD-3-Clause
+ 
+ import QtQuick
+@@ -35,4 +36,157 @@ Rectangle {
+         width: parent.width
+         height: parent.height
+     }
+-}
+\ No newline at end of file
++
++    // Tap to focus (Google Camera style): a tap focuses and meters on the
++    // point, a long press also locks focus and exposure (AE/AF lock).
++    MouseArea {
++        id: focusArea
++
++        readonly property rect frame: viewfinder.contentRect
++
++        x: frame.x
++        y: frame.y
++        width: frame.width
++        height: frame.height
++        enabled: root.camera.available && root.camera.focusRegionAvailable
++
++        function focusAt(mx, my, lock) {
++            root.camera.focusAt(mx / width, my / height, lock);
++            focusRing.show(mx, my, lock);
++        }
++
++        onClicked: (mouse) => {
++            // A tap outside the ring releases a lock
++            if (root.camera.focusLocked && !focusRing.contains(mapToItem(focusRing, mouse.x, mouse.y))) {
++                root.camera.resetFocus();
++            }
++            focusAt(mouse.x, mouse.y, false);
++        }
++        onPressAndHold: (mouse) => focusAt(mouse.x, mouse.y, true)
++    }
++
++    Item {
++        id: focusRing
++
++        readonly property int afState: root.camera.afState
++        property bool locked: false
++
++        width: Kirigami.Units.gridUnit * 4
++        height: width
++        visible: opacity > 0
++        opacity: 0
++
++        function show(mx, my, lock) {
++            x = focusArea.x + mx - width / 2;
++            y = focusArea.y + my - height / 2;
++            locked = lock;
++            exposureSlider.value = root.camera.exposureValue;
++            opacity = 1;
++            hideTimer.restart();
++            revertTimer.stop();
++        }
++
++        Behavior on opacity {
++            NumberAnimation { duration: Kirigami.Units.longDuration }
++        }
++
++        Rectangle {
++            id: circle
++
++            anchors.centerIn: parent
++            width: parent.width
++            height: width
++            radius: width / 2
++            color: "transparent"
++            border.width: 2
++            border.color: focusRing.afState === 2 ? Kirigami.Theme.highlightColor
++                        : focusRing.afState === 3 ? Kirigami.Theme.negativeTextColor
++                        : "white"
++
++            // Pulse while searching
++            SequentialAnimation on scale {
++                running: focusRing.visible && focusRing.afState === 1
++                loops: Animation.Infinite
++                alwaysRunToEnd: true
++                NumberAnimation { from: 1.0; to: 0.85; duration: 350; easing.type: Easing.InOutQuad }
++                NumberAnimation { from: 0.85; to: 1.0; duration: 350; easing.type: Easing.InOutQuad }
++            }
++        }
++
++        Kirigami.Icon {
++            anchors.centerIn: parent
++            width: Kirigami.Units.iconSizes.small
++            height: width
++            visible: focusRing.locked
++            source: "object-locked"
++            color: "white"
++            isMask: true
++        }
++
++        // Exposure compensation next to the ring
++        QQC2.Slider {
++            id: exposureSlider
++
++            anchors.left: parent.right
++            anchors.leftMargin: Kirigami.Units.smallSpacing
++            anchors.verticalCenter: parent.verticalCenter
++            height: Kirigami.Units.gridUnit * 7
++            orientation: Qt.Vertical
++            visible: root.camera.exposureValueAvailable
++            from: -2
++            to: 2
++            stepSize: 0.25
++            onMoved: {
++                root.camera.exposureValue = value;
++                hideTimer.restart();
++            }
++        }
++
++        Kirigami.Icon {
++            anchors.horizontalCenter: exposureSlider.horizontalCenter
++            anchors.bottom: exposureSlider.top
++            width: Kirigami.Units.iconSizes.small
++            height: width
++            visible: exposureSlider.visible
++            source: "brightness-high"
++            color: "white"
++            isMask: true
++        }
++    }
++
++    // Lock label, as in Google Camera
++    QQC2.Label {
++        anchors.horizontalCenter: parent.horizontalCenter
++        y: focusArea.y + Kirigami.Units.gridUnit * 4
++        visible: root.camera.focusLocked
++        text: i18n("Focus and exposure locked")
++        color: "white"
++        padding: Kirigami.Units.smallSpacing
++        background: Rectangle {
++            color: Qt.rgba(0, 0, 0, 0.5)
++            radius: height / 2
++        }
++    }
++
++    // Hide the ring a while after focusing; an unlocked tap region falls back
++    // to continuous focus on the centre
++    Timer {
++        id: hideTimer
++        interval: 5000
++        onTriggered: {
++            if (!focusRing.locked) {
++                focusRing.opacity = 0;
++                revertTimer.restart();
++            }
++        }
++    }
++    Timer {
++        id: revertTimer
++        interval: 3000
++        onTriggered: {
++            if (!root.camera.focusLocked) {
++                root.camera.resetFocus();
++            }
++        }
++    }
++}
+diff --git a/src/plasmacamera.cpp b/src/plasmacamera.cpp
+index 412cb28..3be3662 100644
+--- a/src/plasmacamera.cpp
++++ b/src/plasmacamera.cpp
+@@ -2,6 +2,7 @@
+ // SPDX-FileCopyrightText: 2025 Devin Lin <devin@kde.org>
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include <algorithm>
+ #include <map>
+ #include <unistd.h>
+ #include <sys/mman.h>
+@@ -65,6 +66,12 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+ 
+     // send new settings to the camera worker
+     connect(this, &PlasmaCamera::settingsChanged, m_cameraWorker, &Worker::setSettings);
++    connect(m_cameraWorker, &Worker::afStateChanged, this, [this](int afState) {
++        if (m_afState != afState) {
++            m_afState = afState;
++            Q_EMIT afStateChanged(afState);
++        }
++    }, Qt::QueuedConnection);
+ 
+     m_cameraThread->start();
+ }
+@@ -374,6 +381,69 @@ void PlasmaCamera::setExposureValue(const float exposureValue)
+     }
+ }
+ 
++void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
++{
++    if (!m_settings.canSetAfWindow() || m_activeArea.isNull()) {
++        return;
++    }
++
++    // Undo the viewfinder transform: mirroring, then the clockwise rotation
++    if (m_mirrorOutput) {
++        u = 1.0 - u;
++    }
++    qreal sx = u, sy = v;
++    switch (m_softwareRotationDegrees) {
++    case 90:
++        sx = v;
++        sy = 1.0 - u;
++        break;
++    case 180:
++        sx = 1.0 - u;
++        sy = 1.0 - v;
++        break;
++    case 270:
++        sx = 1.0 - v;
++        sy = u;
++        break;
++    }
++    sx = std::clamp(sx, 0.0, 1.0);
++    sy = std::clamp(sy, 0.0, 1.0);
++
++    // A window of a fifth of the frame around the point
++    const unsigned int w = m_activeArea.width / 5;
++    const unsigned int h = m_activeArea.height / 5;
++    const int x = std::clamp<int>(m_activeArea.x + static_cast<int>(sx * m_activeArea.width) - static_cast<int>(w / 2),
++                                  m_activeArea.x, m_activeArea.x + static_cast<int>(m_activeArea.width - w));
++    const int y = std::clamp<int>(m_activeArea.y + static_cast<int>(sy * m_activeArea.height) - static_cast<int>(h / 2),
++                                  m_activeArea.y, m_activeArea.y + static_cast<int>(m_activeArea.height - h));
++
++    m_settings.setFocusRegion(libcamera::Rectangle(x, y, w, h), lock);
++    Q_EMIT settingsChanged(m_settings);
++    // The worker got its copy with the trigger; later updates must not resend it
++    m_settings.clearFocusTrigger();
++}
++
++void PlasmaCamera::resetFocus()
++{
++    m_settings.clearFocusRegion();
++    Q_EMIT settingsChanged(m_settings);
++}
++
++bool PlasmaCamera::focusRegionAvailable() const
++{
++    return m_settings.canSetAfWindow();
++}
++
++int PlasmaCamera::afState() const
++{
++    return m_afState;
++}
++
++bool PlasmaCamera::focusLocked() const
++{
++    return m_settings.focusLocked();
++}
++
+ void PlasmaCamera::resetExposureValue()
+ {
+     m_settings.unSetExposureValue();
+@@ -625,6 +695,14 @@ bool PlasmaCamera::acquire()
+         break;
+     }
+ 
++    // Pixel array area the AF windows refer to
++    const auto activeAreas = m_camera->properties().get(libcamera::properties::PixelArrayActiveAreas);
++    if (activeAreas && !activeAreas->empty()) {
++        m_activeArea = (*activeAreas)[0];
++    } else if (const auto size = m_camera->properties().get(libcamera::properties::PixelArraySize)) {
++        m_activeArea = libcamera::Rectangle(*size);
++    }
++
+     // Find whether the camera output needs to be mirrored (ex. selife cam)
+     std::optional<int> location = m_camera->properties().get(libcamera::properties::Location);
+     m_mirrorOutput = location.value_or(libcamera::properties::CameraLocationExternal) == libcamera::properties::CameraLocationFront;
+diff --git a/src/plasmacamera.h b/src/plasmacamera.h
+index 55b394c..a8ba3c6 100644
+--- a/src/plasmacamera.h
++++ b/src/plasmacamera.h
+@@ -62,6 +62,10 @@ class PlasmaCamera : public QObject
+     // Q_PROPERTY(int iso READ iso WRITE setIso RESET resetIso NOTIFY settingsChanged)
+     // Q_PROPERTY(int exposureTime READ exposureTime WRITE setExposureTime RESET resetExposureTime NOTIFY settingsChanged)
+     Q_PROPERTY(bool exposureValueAvailable READ exposureValueAvailable NOTIFY settingsChanged)
++    // Tap to focus: libcamera AfState (0 idle, 1 scanning, 2 focused, 3 failed)
++    Q_PROPERTY(bool focusRegionAvailable READ focusRegionAvailable NOTIFY settingsChanged)
++    Q_PROPERTY(int afState READ afState NOTIFY afStateChanged)
++    Q_PROPERTY(bool focusLocked READ focusLocked NOTIFY settingsChanged)
+     Q_PROPERTY(float exposureValue READ exposureValue WRITE setExposureValue RESET resetExposureValue NOTIFY settingsChanged)
+ 
+     // White balance
+@@ -92,6 +96,18 @@ public:
+      */
+     Q_INVOKABLE bool switchToNextCamera();
+ 
++    /**
++     * Focus on the point (u, v) of the frame as shown in the viewfinder,
++     * both in 0..1 (after the software rotation and mirroring). With lock,
++     * focus and exposure are held until resetFocus() (AE/AF lock).
++     */
++    Q_INVOKABLE void focusAt(qreal u, qreal v, bool lock);
++    /** Back to continuous focus on the centre with automatic exposure */
++    Q_INVOKABLE void resetFocus();
++    bool focusRegionAvailable() const;
++    int afState() const;
++    bool focusLocked() const;
++
+     /*!
+      * Starts the camera thread if not already started. This starts the viewfinder
+      * for generating previews.
+@@ -188,6 +204,7 @@ Q_SIGNALS:
+ 
+     // Settings
+     void settingsChanged(const Settings &settings);
++    void afStateChanged(int afState);
+     void fpsChanged(float fps);
+ 
+ public Q_SLOTS:
+@@ -280,6 +297,8 @@ private:
+ 
+     // Whether the camera output should be mirrored
+     bool m_mirrorOutput = false;
++    libcamera::Rectangle m_activeArea;
++    int m_afState = 0;
+ 
+     Settings m_settings;
+ 
+diff --git a/src/plasmacamera/settings.cpp b/src/plasmacamera/settings.cpp
+index 5cdb68e..5033595 100644
+--- a/src/plasmacamera/settings.cpp
++++ b/src/plasmacamera/settings.cpp
+@@ -117,6 +117,20 @@ void Settings::set(libcamera::ControlList &controlMap)
+         controlMap.set(libcamera::controls::ExposureTime, m_exposureTime);
+     }
+ 
++    if (m_afWindowAvailable) {
++        controlMap.set(libcamera::controls::AfMode,
++                       static_cast<int32_t>(m_afLock ? libcamera::controls::AfModeAuto : libcamera::controls::AfModeContinuous));
++        controlMap.set(libcamera::controls::AfMetering,
++                       static_cast<int32_t>(m_afRegionSet ? libcamera::controls::AfMeteringWindows : libcamera::controls::AfMeteringAuto));
++        if (m_afRegionSet) {
++            controlMap.set(libcamera::controls::AfWindows, libcamera::Span<const libcamera::Rectangle>(&m_afRegion, 1));
++        }
++        if (m_afTriggerPending) {
++            controlMap.set(libcamera::controls::AfTrigger, static_cast<int32_t>(libcamera::controls::AfTriggerStart));
++            m_afTriggerPending = false;
++        }
++    }
++
+     // TODO: implement the rest of the settings
+ }
+ 
+@@ -250,6 +264,45 @@ void Settings::unSetAfWindow()
+     m_afWindow = false;
+ }
+ 
++void Settings::setFocusRegion(const libcamera::Rectangle &region, bool lock)
++{
++    m_afRegion = region;
++    m_afRegionSet = true;
++    m_afLock = lock;
++    m_afTriggerPending = true;
++    // Google Camera style AE/AF lock: exposure stays as it is
++    if (m_aeEnableAvailable) {
++        m_aeEnableUseDefault = !lock;
++        m_aeEnable = !lock;
++    }
++}
++
++void Settings::clearFocusRegion()
++{
++    m_afRegionSet = false;
++    m_afLock = false;
++    m_afTriggerPending = false;
++    if (m_aeEnableAvailable) {
++        m_aeEnableUseDefault = true;
++        m_aeEnable = m_aeEnableDefault;
++    }
++}
++
++bool Settings::focusRegionSet() const
++{
++    return m_afRegionSet;
++}
++
++bool Settings::focusLocked() const
++{
++    return m_afLock;
++}
++
++void Settings::clearFocusTrigger()
++{
++    m_afTriggerPending = false;
++}
++
+ QSize Settings::getAfWindow() const
+ {
+     if (m_afWindowUseDefault) {
+diff --git a/src/plasmacamera/settings.h b/src/plasmacamera/settings.h
+index e09a764..5942641 100644
+--- a/src/plasmacamera/settings.h
++++ b/src/plasmacamera/settings.h
+@@ -63,6 +63,15 @@ public:
+     void unSetAfWindow();
+     QSize getAfWindow() const;
+ 
++    // Focus on a region (tap to focus), in pixel array coordinates.
++    // With lock the lens holds after one search and auto exposure stops.
++    void setFocusRegion(const libcamera::Rectangle &region, bool lock);
++    void clearFocusRegion();
++    bool focusRegionSet() const;
++    bool focusLocked() const;
++    // The AF trigger is sent once, in the first request after a change
++    void clearFocusTrigger();
++
+ 
+     // White Balance (WB) Settings
+     /*
+@@ -176,6 +185,10 @@ private:
+      * - AfState
+      */
+     QSize m_afWindowTarget;
++    libcamera::Rectangle m_afRegion;
++    bool m_afRegionSet = false;
++    bool m_afLock = false;
++    bool m_afTriggerPending = false;
+     bool m_afWindow = false;
+     bool m_afWindowUseDefault = true;
+     bool m_afWindowAvailable = false;
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index a4c8ea4..64aca6f 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -180,6 +180,14 @@ void Worker::requestComplete(libcamera::Request *request)
+         return;
+     }
+ 
++    // Report focus state changes (emitted from the libcamera thread, the
++    // connection to PlasmaCamera is queued)
++    if (const auto afState = request->metadata().get(libcamera::controls::AfState)) {
++        if (m_lastAfState.exchange(*afState) != *afState) {
++            Q_EMIT afStateChanged(*afState);
++        }
++    }
++
+     {
+         // Add finished request to queue to be processed
+         const QMutexLocker lock(&m_doneMutex);
+diff --git a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+index f2e92c7..b676079 100644
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -12,6 +12,7 @@
+ #include <QMetaType>
+ #include <QCameraFormat>
+ 
++#include <atomic>
+ #include <memory>
+ #include <libcamera/libcamera.h>
+ #include <libcamera/framebuffer.h>
+@@ -50,6 +51,7 @@ Q_SIGNALS:
+     //		- might not work properly for QQueue unless copy constructor is done recursively
+     //		- it looks like slots with queued connection might work really nicely?
+     void viewFinderFrame(const QImage &frame); // connect to this to get new frames
++    void afStateChanged(int afState); // libcamera AfState from frame metadata, on change
+     void stillCaptureFrames(const QQueue<QImage> &frames); // connect to this to get captures
+ 
+ public Q_SLOTS:
+@@ -161,4 +163,5 @@ private:
+     QMutex m_freeMutex;
+ 
+     Settings m_settings;
++    std::atomic<int> m_lastAfState{-1};
+ };
+-- 
+2.50.1
+
+
+From ac851033703f308c4de0382d3404e9cd29ce5be2 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:25:17 -0400
+Subject: [PATCH 3/3] Focus ring: white until the new search starts
+
+---
+ src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
+index c5fd4df..bdee597 100644
+--- a/src/contents/ui/camera/Viewfinder.qml
++++ b/src/contents/ui/camera/Viewfinder.qml
+@@ -70,6 +70,10 @@ Rectangle {
+ 
+         readonly property int afState: root.camera.afState
+         property bool locked: false
++        // Until the new search starts the camera still reports the old state
++        property bool waiting: false
++
++        onAfStateChanged: if (afState === 1) waiting = false
+ 
+         width: Kirigami.Units.gridUnit * 4
+         height: width
+@@ -80,6 +84,7 @@ Rectangle {
+             x = focusArea.x + mx - width / 2;
+             y = focusArea.y + my - height / 2;
+             locked = lock;
++            waiting = true;
+             exposureSlider.value = root.camera.exposureValue;
+             opacity = 1;
+             hideTimer.restart();
+@@ -99,13 +104,14 @@ Rectangle {
+             radius: width / 2
+             color: "transparent"
+             border.width: 2
+-            border.color: focusRing.afState === 2 ? Kirigami.Theme.highlightColor
++            border.color: focusRing.waiting ? "white"
++                        : focusRing.afState === 2 ? Kirigami.Theme.highlightColor
+                         : focusRing.afState === 3 ? Kirigami.Theme.negativeTextColor
+                         : "white"
+ 
+             // Pulse while searching
+             SequentialAnimation on scale {
+-                running: focusRing.visible && focusRing.afState === 1
++                running: focusRing.visible && (focusRing.waiting || focusRing.afState === 1)
+                 loops: Animation.Infinite
+                 alwaysRunToEnd: true
+                 NumberAnimation { from: 1.0; to: 0.85; duration: 350; easing.type: Easing.InOutQuad }
+-- 
+2.50.1
+

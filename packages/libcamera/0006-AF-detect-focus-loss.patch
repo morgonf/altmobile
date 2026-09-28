@@ -1,7 +1,7 @@
 From 9b8d6b42519bcf83adbbf9533c72c76212fcff73 Mon Sep 17 00:00:00 2001
 From: Vasiliy Doylov <nekocwd@mainlining.org>
 Date: Mon, 25 Aug 2025 17:10:47 +0300
-Subject: [PATCH 6/8] AF: detect focus loss
+Subject: [PATCH 06/13] AF: detect focus loss
 
 (cherry picked from commit 4da3fec35a15512d2ceef53396758e04a29d464d)
 ---
