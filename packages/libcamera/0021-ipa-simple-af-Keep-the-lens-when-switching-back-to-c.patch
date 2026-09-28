@@ -1,0 +1,37 @@
+From 7c4b99922585a3e88e2f5917497e18ed3773842d Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:56:16 -0400
+Subject: [PATCH 21/21] ipa: simple: af: Keep the lens when switching back to
+ continuous focus
+
+Switching from Auto or Manual to Continuous started a new sweep from
+position 0. An application holding the lens for a moment (a flash photo)
+then had the focus hunt afterwards. The lens now stays and the reference
+sharpness is measured again; a changed scene still triggers a sweep
+through the focus loss detection.
+---
+ src/ipa/simple/algorithms/af.cpp | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index d109386..7dc0b18 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -134,7 +134,13 @@ void Af::queueRequest(typename Module::Context &context,
+ 			k.focus_sweep = false;
+ 			k.afState = controls::AfStateIdle;
+ 		} else if (k.afMode == controls::AfModeContinuous && !*k.focus_sweep) {
+-			restart(context);
++			/*
++			 * Back to continuous focus, e.g. after a flash photo held
++			 * the lens: keep it and measure the reference sharpness
++			 * again. A scene that changed still triggers a sweep
++			 * through the focus loss detection.
++			 */
++			rebase_ = kRebaseStats;
+ 		}
+ 	}
+ 
+-- 
+2.50.1
+

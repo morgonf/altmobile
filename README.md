@@ -66,4 +66,28 @@ droid-juicer, калибровку читает `tools/acdb.py`.
 - Нет кнопки «Разблокировать SIM» при запертой карте в `kcm_cellular_network`
   (модем не виден модулю).
 
-Коммиты подписаны автором «morgonf».
+## Лицензия
+
+Как и ALT Mobile, репозиторий распространяется под лицензией MIT (файл
+`LICENSE`, автор morgonf): скрипты, настройки, правила, документация и
+новые файлы.
+
+Правки чужих проектов остаются под лицензиями этих проектов, их нельзя
+перевести на MIT:
+
+| Что | Лицензия |
+|---|---|
+| `kernel/src`, `kernel/oot`, `kernel/wcd`, `kernel/*.upstream`, патчи q6voice | GPL-2.0, как ядро Linux |
+| `kernel/imx37x` (правки драйверов imx371 и imx376 из sdm845-mainline) | GPL-2.0 |
+| `kernel/sa3103` (свой драйвер мотора фокуса) | GPL-2.0 или MIT на выбор (`Dual MIT/GPL`, как требует ядро) |
+| `packages/libcamera` | LGPL-2.1-or-later, файлы настройки матриц CC0-1.0 и BSD-2-Clause (матрицы цвета Raspberry Pi) |
+| `packages/plasma-camera` | лицензия plasma-camera (в пакете ALT GPL-3.0-only, в исходниках GPL-2.0-or-later и BSD-3-Clause); новые файлы `nightmerge` и `flash` под MIT |
+| `packages/iio-sensor-proxy`, `packages/gnome-compass` | GPL-3.0, как эти проекты |
+| `packages/plasma-mobile`, `packages/plasma-keyboard`, прочие патчи KDE | лицензии соответствующих проектов KDE (GPL/LGPL) |
+| `system/plasma/alt-theme/*.colors` | LGPL-2.0-or-later (основа Breeze) |
+| `system/plasma/AppletConfiguration.qml` | GPL-2.0-or-later (из Plasma) |
+
+Калибровочные данные производителя (ACDB) и файлы Android в репозиторий
+не входят.
+
+Автор коммитов и правок morgonf.

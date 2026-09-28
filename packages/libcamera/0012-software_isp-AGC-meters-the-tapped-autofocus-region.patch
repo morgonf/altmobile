@@ -1,7 +1,7 @@
-From 9b20abfc2e3c45e65c4308559b2059f7664de0b6 Mon Sep 17 00:00:00 2001
+From 074f8fbc774af3805855b0748740ec1ebc9d6cc8 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:29:33 -0400
-Subject: [PATCH 12/15] software_isp: AGC meters the tapped autofocus region
+Subject: [PATCH 12/21] software_isp: AGC meters the tapped autofocus region
 
 When the application chooses AF windows, the frame MSV is scaled by the
 brightness of the selected grid cells relative to the frame (1/4..4).

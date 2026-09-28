@@ -1,7 +1,7 @@
-From a3a9bd98f4c92effd70d60a1e84545213a60d93d Mon Sep 17 00:00:00 2001
+From 202e3dafadc291d8abe7429c8eb22eff475fcd96 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:47:46 -0400
-Subject: [PATCH 09/15] software_isp: faster, calmer autofocus and faster AGC
+Subject: [PATCH 09/21] software_isp: faster, calmer autofocus and faster AGC
 
 - autofocus acts only on frames with fresh statistics; two passes,
   coarse 8 % then fine 2 % within 8 % of the best coarse position;

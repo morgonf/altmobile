@@ -1,7 +1,7 @@
-From d3c194f55ef28f0329225c57c16eda86f2239190 Mon Sep 17 00:00:00 2001
+From 2ecceb1605f002857d76b320b77efb5f371d3d25 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:40:00 -0400
-Subject: [PATCH 14/15] software_isp: leave near-saturated pixels out of the
+Subject: [PATCH 14/21] software_isp: leave near-saturated pixels out of the
  white balance sums
 
 Clipped pixels have all channels at the maximum and look neutral while

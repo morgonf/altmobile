@@ -1,7 +1,7 @@
-From 2c6906549733c36f84f6f20b89c5652357ce9661 Mon Sep 17 00:00:00 2001
+From 73369ef8214c6ef0fcd780625532fd7a0ba75529 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:32:53 -0400
-Subject: [PATCH 13/15] software_isp: AGC gives the exposure time priority over
+Subject: [PATCH 13/21] software_isp: AGC gives the exposure time priority over
  the gain
 
 The total exposure is scaled and given to the exposure time up to its

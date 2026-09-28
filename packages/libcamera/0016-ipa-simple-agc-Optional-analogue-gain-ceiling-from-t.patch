@@ -1,7 +1,7 @@
-From f217e82edc0b6ac39e66d2e2fd590c1b8c74ca46 Mon Sep 17 00:00:00 2001
+From b0d59d5e2bab9f0760067316388fda7200f19015 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:08:23 -0400
-Subject: [PATCH 16/19] ipa: simple: agc: Optional analogue gain ceiling from
+Subject: [PATCH 16/21] ipa: simple: agc: Optional analogue gain ceiling from
  the tuning file
 
 ---

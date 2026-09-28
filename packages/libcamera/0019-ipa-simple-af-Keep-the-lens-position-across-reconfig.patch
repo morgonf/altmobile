@@ -1,7 +1,7 @@
-From e23b886fcdd7cc1d7fac6ff31c42695cc5585981 Mon Sep 17 00:00:00 2001
+From 48e20d6dbeb22d478ade3e75561713493c9415d5 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:15:52 -0400
-Subject: [PATCH 19/19] ipa: simple: af: Keep the lens position across
+Subject: [PATCH 19/21] ipa: simple: af: Keep the lens position across
  reconfiguration
 
 An application switching to full size for a photo reconfigures the
@@ -14,7 +14,7 @@ position 0 with a new sweep.
  2 files changed, 32 insertions(+), 2 deletions(-)
 
 diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
-index 29281d3..ea7705d 100644
+index fda63a2..d109386 100644
 --- a/src/ipa/simple/algorithms/af.cpp
 +++ b/src/ipa/simple/algorithms/af.cpp
 @@ -45,6 +45,12 @@ static constexpr double kFineStep = 2.0;

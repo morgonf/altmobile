@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0 OR MIT
 /*
  * SA3103 voice coil motor (lens focus actuator).
  *
@@ -256,4 +256,4 @@ module_i2c_driver(sa3103_driver);
 
 MODULE_DESCRIPTION("SA3103 lens voice coil motor driver");
 MODULE_AUTHOR("morgonf");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual MIT/GPL");

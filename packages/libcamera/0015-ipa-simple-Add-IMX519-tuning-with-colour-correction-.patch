@@ -1,7 +1,7 @@
-From f668741575e381b29f4dac4e89765a8ea54c8403 Mon Sep 17 00:00:00 2001
+From d48aa86baab33a710d07b05a8e7368bbcde08dfd Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:46:16 -0400
-Subject: [PATCH 15/15] ipa: simple: Add IMX519 tuning with colour correction
+Subject: [PATCH 15/21] ipa: simple: Add IMX519 tuning with colour correction
  matrices
 
 Matrices from the Raspberry Pi IMX519 tuning (BSD-2-Clause), interpolated

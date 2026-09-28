@@ -1,7 +1,7 @@
-From 9b769003e52b1b6c0e24a4b8c40f41bd31eaabb4 Mon Sep 17 00:00:00 2001
+From f3cde28e19e1982ce649d7334333c54afeb5c540 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Sun, 27 Sep 2026 19:57:47 -0400
-Subject: [PATCH 08/15] ipa: libipa: camera_sensor_helper: Add IMX371, IMX376
+Subject: [PATCH 08/21] ipa: libipa: camera_sensor_helper: Add IMX371, IMX376
  and IMX519
 
 Sensors of the OnePlus 6 and 6T (sdm845). Sony 10-bit analogue gain
