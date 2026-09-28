@@ -1,7 +1,7 @@
 From afa5b57259b6996e85c8e96b859dc532b13e2ef0 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:53:07 -0400
-Subject: [PATCH 1/5] Viewfinder: at most 2400 pixels wide (binned mode on the
+Subject: [PATCH 1/6] Viewfinder: at most 2400 pixels wide (binned mode on the
  OnePlus 6T)
 
 ---
@@ -47,7 +47,7 @@ index 65a6b37..a4c8ea4 100644
 From 8ea1f24455ed1340480d5c19bf0ec68c0cb44851 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:54 -0400
-Subject: [PATCH 2/5] Tap to focus: AF window, AE/AF lock, focus ring and
+Subject: [PATCH 2/6] Tap to focus: AF window, AE/AF lock, focus ring and
  exposure slider
 
 ---
@@ -547,7 +547,7 @@ index f2e92c7..b676079 100644
 From ac851033703f308c4de0382d3404e9cd29ce5be2 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:25:17 -0400
-Subject: [PATCH 3/5] Focus ring: white until the new search starts
+Subject: [PATCH 3/6] Focus ring: white until the new search starts
 
 ---
  src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
@@ -600,7 +600,7 @@ index c5fd4df..bdee597 100644
 From bcb17b3872d3c8282af10fea3a878ba3b620023e Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:35:14 -0400
-Subject: [PATCH 4/5] Shutter waits for the autofocus search to end (at most
+Subject: [PATCH 4/6] Shutter waits for the autofocus search to end (at most
  1.5 s)
 
 ---
@@ -670,7 +670,7 @@ index 79509ce..d87431f 100644
 From 3fb6be09775ff025a1fd050351f0e1faebf9865c Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:37:55 -0400
-Subject: [PATCH 5/5] Viewfinder: half the full size (binned mode) instead of a
+Subject: [PATCH 5/6] Viewfinder: half the full size (binned mode) instead of a
  cropped standard size
 
 ---
@@ -704,6 +704,41 @@ index 64aca6f..d8a6b52 100644
          }
          streamConfig.size = best;
      }
+-- 
+2.50.1
+
+
+From 168e6746cb77faf7443c81dfa827f587165208b6 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 01:51:04 -0400
+Subject: [PATCH 6/6] Viewfinder: bin only sensors wider than 3200 pixels
+
+The 5 MP IMX376 halved to 1288x970, where the GPU debayer fails and the
+application quit.
+---
+ src/plasmacamera/worker.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index d8a6b52..1ea737e 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -475,10 +475,11 @@ void Worker::configure()
+ 
+     // ALT Mobile: the default is the full sensor (16 MP on the OnePlus 6T).
+     // With the software ISP that gives 11 fps at best, and photos are taken
+-    // from this stream, so take the largest size not wider than 2400 pixels
+-    // (the 2x2 binned 2328x1748 mode on the IMX519): twice the frame rate
+-    // and less noise in the dark.
+-    constexpr unsigned int kMaxViewfinderWidth = 2400;
++    // from this stream, so large sensors (wider than 3200 pixels, the 16 MP
++    // IMX519 and IMX371) go to their 2x2 binned mode: twice the frame rate
++    // and less noise in the dark. Smaller ones (the 5 MP IMX376) stay at full
++    // size: halving it gave a size the GPU debayer fails on.
++    constexpr unsigned int kMaxViewfinderWidth = 3200;
+     if (streamConfig.size.width > kMaxViewfinderWidth) {
+         // Half of the full size is the 2x2 binned sensor mode: the whole field
+         // of view at a quarter of the pixels. The software ISP only crops, so
 -- 
 2.50.1
 
