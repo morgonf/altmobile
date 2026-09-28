@@ -1,7 +1,7 @@
 From afa5b57259b6996e85c8e96b859dc532b13e2ef0 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:53:07 -0400
-Subject: [PATCH 1/6] Viewfinder: at most 2400 pixels wide (binned mode on the
+Subject: [PATCH 1/7] Viewfinder: at most 2400 pixels wide (binned mode on the
  OnePlus 6T)
 
 ---
@@ -47,7 +47,7 @@ index 65a6b37..a4c8ea4 100644
 From 8ea1f24455ed1340480d5c19bf0ec68c0cb44851 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:54 -0400
-Subject: [PATCH 2/6] Tap to focus: AF window, AE/AF lock, focus ring and
+Subject: [PATCH 2/7] Tap to focus: AF window, AE/AF lock, focus ring and
  exposure slider
 
 ---
@@ -547,7 +547,7 @@ index f2e92c7..b676079 100644
 From ac851033703f308c4de0382d3404e9cd29ce5be2 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:25:17 -0400
-Subject: [PATCH 3/6] Focus ring: white until the new search starts
+Subject: [PATCH 3/7] Focus ring: white until the new search starts
 
 ---
  src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
@@ -600,7 +600,7 @@ index c5fd4df..bdee597 100644
 From bcb17b3872d3c8282af10fea3a878ba3b620023e Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:35:14 -0400
-Subject: [PATCH 4/6] Shutter waits for the autofocus search to end (at most
+Subject: [PATCH 4/7] Shutter waits for the autofocus search to end (at most
  1.5 s)
 
 ---
@@ -670,7 +670,7 @@ index 79509ce..d87431f 100644
 From 3fb6be09775ff025a1fd050351f0e1faebf9865c Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:37:55 -0400
-Subject: [PATCH 5/6] Viewfinder: half the full size (binned mode) instead of a
+Subject: [PATCH 5/7] Viewfinder: half the full size (binned mode) instead of a
  cropped standard size
 
 ---
@@ -711,7 +711,7 @@ index 64aca6f..d8a6b52 100644
 From 168e6746cb77faf7443c81dfa827f587165208b6 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:51:04 -0400
-Subject: [PATCH 6/6] Viewfinder: bin only sensors wider than 3200 pixels
+Subject: [PATCH 6/7] Viewfinder: bin only sensors wider than 3200 pixels
 
 The 5 MP IMX376 halved to 1288x970, where the GPU debayer fails and the
 application quit.
@@ -739,6 +739,364 @@ index d8a6b52..1ea737e 100644
      if (streamConfig.size.width > kMaxViewfinderWidth) {
          // Half of the full size is the 2x2 binned sensor mode: the whole field
          // of view at a quarter of the pixels. The software ISP only crops, so
+-- 
+2.50.1
+
+
+From 8fda3ba0bc3f17cfd7f2256976393809227a46af Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 16:48:20 -0400
+Subject: [PATCH 7/7] Digital zoom: pinch and 1x/2x/5x buttons, photos cropped
+ to match
+
+The viewfinder is scaled around its centre and clipped to the picture,
+tap to focus maps through the zoom, photos keep the central 1/zoom of the
+frame. Up to 8x, reset on camera switch, off in video mode (video is
+recorded from full frames).
+---
+ src/contents/ui/camera/CameraPage.qml |   3 +
+ src/contents/ui/camera/Viewfinder.qml | 187 ++++++++++++++++++++++----
+ src/plasmacameramanager.cpp           |  24 ++++
+ src/plasmacameramanager.h             |   8 ++
+ 4 files changed, 197 insertions(+), 25 deletions(-)
+
+diff --git a/src/contents/ui/camera/CameraPage.qml b/src/contents/ui/camera/CameraPage.qml
+index 311d6c0..1a052f2 100644
+--- a/src/contents/ui/camera/CameraPage.qml
++++ b/src/contents/ui/camera/CameraPage.qml
+@@ -110,6 +110,9 @@ Kirigami.Page {
+ 
+         camera: root.camera
+         bottomMargin: controlContainer.height
++        // Video is recorded from the full frames, so no zoom there yet
++        zoomEnabled: root.captureMode === CameraPage.CaptureMode.Photo
++        onZoomChanged: root.captureSession.zoom = zoom
+ 
+         // Header controls
+         CameraExtraControls {
+diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
+index bdee597..5183c40 100644
+--- a/src/contents/ui/camera/Viewfinder.qml
++++ b/src/contents/ui/camera/Viewfinder.qml
+@@ -21,6 +21,39 @@ Rectangle {
+ 
+     property alias videoSink: viewfinder.videoSink
+ 
++    // Digital zoom (Google Camera style): pinch or the 1x/2x/5x buttons.
++    // The viewfinder is scaled around its centre, photos are cropped to the
++    // same part by PlasmaCameraManager.zoom.
++    property bool zoomEnabled: true
++    property real zoom: 1
++    readonly property real maximumZoom: 8
++    readonly property var zoomPresets: [1, 2, 5]
++
++    function setZoom(value) {
++        zoomAnimation.stop();
++        zoom = Math.max(1, Math.min(value, maximumZoom));
++    }
++
++    function animateZoom(value) {
++        zoomAnimation.to = value;
++        zoomAnimation.restart();
++    }
++
++    onZoomEnabledChanged: if (!zoomEnabled) setZoom(1)
++
++    NumberAnimation {
++        id: zoomAnimation
++        target: root
++        property: "zoom"
++        duration: Kirigami.Units.longDuration
++        easing.type: Easing.OutCubic
++    }
++
++    Connections {
++        target: root.camera
++        function onCameraDeviceChanged() { root.setZoom(1); }
++    }
++
+     color: "black"
+ 
+     Kirigami.Heading {
+@@ -29,18 +62,9 @@ Rectangle {
+         text: root.camera.available ? "" : i18n("Camera not available")
+     }
+ 
+-    VideoOutput {
+-        id: viewfinder
+-
+-        visible: root.camera.available
+-        width: parent.width
+-        height: parent.height
+-    }
+-
+-    // Tap to focus (Google Camera style): a tap focuses and meters on the
+-    // point, a long press also locks focus and exposure (AE/AF lock).
+-    MouseArea {
+-        id: focusArea
++    // Clips the scaled viewfinder to the picture area
++    Item {
++        id: zoomClip
+ 
+         readonly property rect frame: viewfinder.contentRect
+ 
+@@ -48,21 +72,71 @@ Rectangle {
+         y: frame.y
+         width: frame.width
+         height: frame.height
+-        enabled: root.camera.available && root.camera.focusRegionAvailable
++        clip: root.zoom > 1
++
++        VideoOutput {
++            id: viewfinder
++
++            visible: root.camera.available
++            x: -zoomClip.x
++            y: -zoomClip.y
++            width: root.width
++            height: root.height
+ 
+-        function focusAt(mx, my, lock) {
+-            root.camera.focusAt(mx / width, my / height, lock);
+-            focusRing.show(mx, my, lock);
++            transform: Scale {
++                origin.x: zoomClip.x + zoomClip.width / 2
++                origin.y: zoomClip.y + zoomClip.height / 2
++                xScale: root.zoom
++                yScale: root.zoom
++            }
+         }
++    }
+ 
+-        onClicked: (mouse) => {
+-            // A tap outside the ring releases a lock
+-            if (root.camera.focusLocked && !focusRing.contains(mapToItem(focusRing, mouse.x, mouse.y))) {
+-                root.camera.resetFocus();
++    // Tap to focus (Google Camera style): a tap focuses and meters on the
++    // point, a long press also locks focus and exposure (AE/AF lock).
++    PinchArea {
++        id: pinchArea
++
++        property real startZoom: 1
++
++        x: zoomClip.x
++        y: zoomClip.y
++        width: zoomClip.width
++        height: zoomClip.height
++        // Single taps go to focusArea inside, two fingers zoom
++        pinch.target: null
++        enabled: root.camera.available
++
++        onPinchStarted: startZoom = root.zoom
++        onPinchUpdated: (pinch) => {
++            if (root.zoomEnabled)
++                root.setZoom(startZoom * pinch.scale);
++        }
++        onPinchFinished: zoomLabelTimer.restart()
++
++        MouseArea {
++            id: focusArea
++
++            anchors.fill: parent
++            enabled: root.camera.available && root.camera.focusRegionAvailable
++
++            function focusAt(mx, my, lock) {
++                // Point in the full frame under the zoomed viewfinder
++                const u = 0.5 + (mx / width - 0.5) / root.zoom;
++                const v = 0.5 + (my / height - 0.5) / root.zoom;
++                root.camera.focusAt(u, v, lock);
++                focusRing.show(mx, my, lock);
+             }
+-            focusAt(mouse.x, mouse.y, false);
++
++            onClicked: (mouse) => {
++                // A tap outside the ring releases a lock
++                if (root.camera.focusLocked && !focusRing.contains(mapToItem(focusRing, mouse.x, mouse.y))) {
++                    root.camera.resetFocus();
++                }
++                focusAt(mouse.x, mouse.y, false);
++            }
++            onPressAndHold: (mouse) => focusAt(mouse.x, mouse.y, true)
+         }
+-        onPressAndHold: (mouse) => focusAt(mouse.x, mouse.y, true)
+     }
+ 
+     Item {
+@@ -81,8 +155,8 @@ Rectangle {
+         opacity: 0
+ 
+         function show(mx, my, lock) {
+-            x = focusArea.x + mx - width / 2;
+-            y = focusArea.y + my - height / 2;
++            x = pinchArea.x + mx - width / 2;
++            y = pinchArea.y + my - height / 2;
+             locked = lock;
+             waiting = true;
+             exposureSlider.value = root.camera.exposureValue;
+@@ -160,10 +234,73 @@ Rectangle {
+         }
+     }
+ 
++    // Zoom buttons above the shutter; the active one shows the current value
++    Row {
++        id: zoomButtons
++
++        anchors.horizontalCenter: parent.horizontalCenter
++        anchors.bottom: parent.bottom
++        anchors.bottomMargin: root.bottomMargin + Kirigami.Units.largeSpacing
++        spacing: Kirigami.Units.smallSpacing
++        visible: root.camera.available && root.zoomEnabled
++
++        Repeater {
++            model: root.zoomPresets
++
++            delegate: QQC2.AbstractButton {
++                id: zoomButton
++
++                required property real modelData
++                required property int index
++                readonly property real next: index + 1 < root.zoomPresets.length ? root.zoomPresets[index + 1] : Infinity
++                readonly property bool active: root.zoom >= modelData - 0.01 && root.zoom < next - 0.01
++
++                width: Kirigami.Units.gridUnit * 2.5
++                height: width
++                focusPolicy: Qt.NoFocus
++                onClicked: root.animateZoom(modelData)
++
++                background: Rectangle {
++                    radius: width / 2
++                    color: Qt.rgba(0, 0, 0, zoomButton.active ? 0.6 : 0.35)
++                }
++                contentItem: QQC2.Label {
++                    horizontalAlignment: Text.AlignHCenter
++                    verticalAlignment: Text.AlignVCenter
++                    color: zoomButton.active ? Kirigami.Theme.highlightColor : "white"
++                    font.bold: zoomButton.active
++                    text: {
++                        const z = zoomButton.active ? Math.round(root.zoom * 10) / 10 : zoomButton.modelData;
++                        return z.toLocaleString(Qt.locale(), "f", Number.isInteger(z) ? 0 : 1) + "×";
++                    }
++                }
++            }
++        }
++    }
++
++    // Large zoom value while pinching
++    QQC2.Label {
++        anchors.centerIn: zoomClip
++        visible: pinchArea.pinch.active || zoomLabelTimer.running
++        text: (Math.round(root.zoom * 10) / 10).toLocaleString(Qt.locale(), "f", 1) + "×"
++        color: "white"
++        font.pointSize: Kirigami.Theme.defaultFont.pointSize * 2
++        padding: Kirigami.Units.largeSpacing
++        background: Rectangle {
++            color: Qt.rgba(0, 0, 0, 0.5)
++            radius: height / 2
++        }
++    }
++
++    Timer {
++        id: zoomLabelTimer
++        interval: 700
++    }
++
+     // Lock label, as in Google Camera
+     QQC2.Label {
+         anchors.horizontalCenter: parent.horizontalCenter
+-        y: focusArea.y + Kirigami.Units.gridUnit * 4
++        y: zoomClip.y + Kirigami.Units.gridUnit * 4
+         visible: root.camera.focusLocked
+         text: i18n("Focus and exposure locked")
+         color: "white"
+diff --git a/src/plasmacameramanager.cpp b/src/plasmacameramanager.cpp
+index 7aac316..595f9b7 100644
+--- a/src/plasmacameramanager.cpp
++++ b/src/plasmacameramanager.cpp
+@@ -8,6 +8,7 @@
+ #include "plasmacamera/path.h"
+ #include "plasmacameramanager.h"
+ 
++#include <algorithm>
+ #include <exiv2/exiv2.hpp>
+ #include <memory>
+ 
+@@ -537,6 +538,21 @@ void PlasmaCameraManager::processViewfinderFrame(const QImage &image)
+     m_frameRecorded = false;
+ }
+ 
++qreal PlasmaCameraManager::zoom() const
++{
++    return m_zoom;
++}
++
++void PlasmaCameraManager::setZoom(qreal zoom)
++{
++    zoom = std::max<qreal>(zoom, 1.0);
++    if (qFuzzyCompare(zoom, m_zoom)) {
++        return;
++    }
++    m_zoom = zoom;
++    Q_EMIT zoomChanged();
++}
++
+ void PlasmaCameraManager::processCaptureImage(const QQueue<QImage> &frames)
+ {
+     QDateTime now = QDateTime::currentDateTime();
+@@ -549,6 +565,14 @@ void PlasmaCameraManager::processCaptureImage(const QQueue<QImage> &frames)
+ 
+     QImage image = frames.head();
+ 
++    // Digital zoom, as shown in the viewfinder. The crop is centred, so it
++    // does not matter that it comes before the mirroring and the rotation.
++    if (m_zoom > 1.0) {
++        const int w = qRound(image.width() / m_zoom);
++        const int h = qRound(image.height() / m_zoom);
++        image = image.copy((image.width() - w) / 2, (image.height() - h) / 2, w, h);
++    }
++
+     // Flip image if requested
+     if (m_plasmaCamera->mirrorOutput()) {
+         image = image.mirrored(); // Deprecated, replace with image.flipped() once we are on Qt 6.9
+diff --git a/src/plasmacameramanager.h b/src/plasmacameramanager.h
+index 2c27541..b1857c9 100644
+--- a/src/plasmacameramanager.h
++++ b/src/plasmacameramanager.h
+@@ -47,6 +47,9 @@ class PlasmaCameraManager : public QObject
+     Q_PROPERTY(bool isRecordingVideo READ isRecordingVideo NOTIFY isRecordingVideoChanged)
+     Q_PROPERTY(bool isSavingVideo READ isSavingVideo NOTIFY isSavingVideoChanged)
+ 
++    // Digital zoom: photos keep the central 1/zoom of the frame
++    Q_PROPERTY(qreal zoom READ zoom WRITE setZoom NOTIFY zoomChanged)
++
+ public:
+     explicit PlasmaCameraManager(QObject *parent = nullptr);
+     ~PlasmaCameraManager() override;
+@@ -139,6 +142,9 @@ public:
+     bool isRecordingVideo() const;
+     bool isSavingVideo() const;
+ 
++    qreal zoom() const;
++    void setZoom(qreal zoom);
++
+     /*!
+      * Start a new video recording.
+      */
+@@ -173,6 +179,7 @@ Q_SIGNALS:
+     void audioRecordingEnabledChanged();
+     void isRecordingVideoChanged();
+     void isSavingVideoChanged();
++    void zoomChanged();
+ 
+     void framesDropped();
+ 
+@@ -284,6 +291,7 @@ private:
+     Settings m_settings;
+ 
+     int m_imageCaptureNum = 0;
++    qreal m_zoom = 1.0;
+     QString m_imageCaptureFileName;
+ 
+     bool m_isSavingVideo = false;
 -- 
 2.50.1
 
