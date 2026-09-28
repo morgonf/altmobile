@@ -26,9 +26,9 @@ install -m 644 /home/altlinux/echo/plasma/AppletConfiguration.qml $F
 # запись в [General] он не видит и запускается при каждом входе.
 su altlinux -c "kwriteconfig6 --file plasmamobilerc --group InitialStart --key wizardRun true"
 su altlinux -c "kwriteconfig6 --file plasmamobilerc --group General --key wizardRun --delete"
-# без сна при простое, как было под Phosh
-install -D -m 644 -o altlinux -g altlinux /home/altlinux/echo/plasma/powerdevilrc \
-	/home/altlinux/.config/powerdevilrc
+# Сон при простое по умолчанию PowerDevil. Запрет сна на время разработки
+# (он рвал ssh) снят 29.09.2026: сон и пробуждение проверены rtcwake.
+rm -f /home/altlinux/.config/powerdevilrc
 install -m 644 /home/altlinux/echo/plasma/plasma-mobile.service /etc/systemd/system/
 install -m 755 /home/altlinux/echo/plasma/plasma-mobile-session /usr/local/bin/plasma-mobile-session
 systemctl daemon-reload
