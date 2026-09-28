@@ -1,0 +1,337 @@
+From e46ebf0032089689117d6aab65486e2ac57bb1be Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:10:29 -0400
+Subject: [PATCH 18/19] software_isp: Remosaic full size Quad Bayer frames
+ (IMX371)
+
+The IMX371 has a Quad Bayer colour filter. Its binned mode is an
+ordinary Bayer mosaic, full size frames are not. Swapping pixels 1 and 2
+of every group of four in both directions gives an ordinary RGGB mosaic:
+the GPU debayer reads its samples from the swapped positions and the CPU
+statistics take one pixel of each colour two pixels apart.
+---
+ .../internal/software_isp/software_isp.h      |  3 ++
+ .../internal/software_isp/swstats_cpu.h       |  6 +++
+ src/libcamera/shaders/bayer_1x_packed.frag    | 40 +++++++++++++++++
+ src/libcamera/software_isp/debayer.h          |  7 +++
+ src/libcamera/software_isp/debayer_cpu.cpp    |  5 +++
+ src/libcamera/software_isp/debayer_egl.cpp    |  3 ++
+ src/libcamera/software_isp/software_isp.cpp   | 25 +++++++++++
+ src/libcamera/software_isp/swstats_cpu.cpp    | 44 ++++++++++++++++++-
+ 8 files changed, 132 insertions(+), 1 deletion(-)
+
+diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
+index bf2cfea..263f49c 100644
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -100,6 +100,9 @@ private:
+ 	DebayerParams debayerParams_;
+ 	DmaBufAllocator dmaHeap_;
+ 	bool ccmEnabled_;
++	/* Quad Bayer sensor and its pixel array width, see configure() */
++	bool quadBayerSensor_ = false;
++	unsigned int pixelArrayWidth_ = 0;
+ 
+ 	std::unique_ptr<ipa::soft::IPAProxySoft> ipa_;
+ 	std::deque<FrameBuffer *> queuedInputBuffers_;
+diff --git a/include/libcamera/internal/software_isp/swstats_cpu.h b/include/libcamera/internal/software_isp/swstats_cpu.h
+index cf58485..34d64ff 100644
+--- a/include/libcamera/internal/software_isp/swstats_cpu.h
++++ b/include/libcamera/internal/software_isp/swstats_cpu.h
+@@ -52,6 +52,8 @@ public:
+ 
+ 	const Size &patternSize() { return patternSize_; }
+ 
++	/* Quad Bayer input (RGGB 10-bit packed only), set before configure() */
++	void setQuadBayer(bool quadBayer) { quadBayer_ = quadBayer; }
+ 	int configure(const StreamConfiguration &inputCfg, unsigned int statsBufferCount = 1);
+ 	void setWindow(const Rectangle &window);
+ 	void startFrame(uint32_t frame);
+@@ -100,6 +102,7 @@ private:
+ 	/* Bayer 10 bpp packed */
+ 	void statsBGGR10PLine0(const uint8_t *src[], SwIspStats &stats);
+ 	void statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats);
++	void statsQuadRGGB10PLine0(const uint8_t *src[], SwIspStats &stats);
+ 	/* Bayer 12 bpp packed */
+ 	void statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats);
+ 	void statsGBRG12PLine0(const uint8_t *src[], SwIspStats &stats);
+@@ -112,6 +115,9 @@ private:
+ 	statsProcessFn stats0_;
+ 	statsProcessFn stats2_;
+ 	bool swapLines_;
++	bool quadBayer_ = false;
++	/* Distance in lines between the two lines of a 2x2 sample */
++	unsigned int lineGap_ = 1;
+ 
+ 	unsigned int ySkipMask_;
+ 
+diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
+index 0b641a5..6d621f6 100644
+--- a/src/libcamera/shaders/bayer_1x_packed.frag
++++ b/src/libcamera/shaders/bayer_1x_packed.frag
+@@ -80,6 +80,30 @@ float apply_contrast(float value)
+ 		return 1.0 - 0.5 * pow((1.0 - value) / 0.5, contrastExp);
+ }
+ 
++#if defined(QUAD_BAYER)
++/*
++ * Quad Bayer: every colour covers a 2x2 block of pixels. Swapping pixels 1
++ * and 2 of every group of 4, in both directions, turns the mosaic into an
++ * ordinary Bayer one (the simplest remosaic), so every sample is read from
++ * the swapped position. Only for RAW10P.
++ */
++float quad_map(float p)
++{
++	float m = p - 4.0 * floor(p / 4.0);
++	return (m > 0.5 && m < 1.5) ? p + 1.0 : ((m > 1.5 && m < 2.5) ? p - 1.0 : p);
++}
++
++float quad_fetch(vec2 pixel)
++{
++	pixel = clamp(pixel, vec2(0.0), tex_size - 1.0);
++	float x = quad_map(pixel.x);
++	float y = quad_map(pixel.y);
++	/* RAW10P: 4 pixels in 5 bytes, the 5th holds the LS bits */
++	float byte_x = 5.0 * floor(x / 4.0) + (x - 4.0 * floor(x / 4.0));
++	return texture2D(tex_y, vec2(byte_x, y) * tex_step).r;
++}
++#endif
++
+ void main(void)
+ {
+ 	vec3 rgb;
+@@ -199,6 +223,21 @@ void main(void)
+ 	 *   patterns.z = (A0 + A1 + B0 + B1) / 4.0
+ 	 *   patterns.w = (D0 + D1 + D2 + D3) / 4.0
+ 	 */
++#if defined(QUAD_BAYER)
++	#define qfetch(dx, dy) quad_fetch(center_pixel + vec2(dx, dy))
++
++	float C = qfetch(0.0, 0.0);
++	vec4 patterns = vec4(
++		qfetch(0.0, -1.0),	/* A0: (0,-1) */
++		qfetch(-1.0, 0.0),	/* B0: (-1,0) */
++		qfetch(-1.0, -1.0),	/* D0: (-1,-1) */
++		qfetch(1.0, -1.0));	/* D1: (1,-1) */
++	vec4 temp = vec4(
++		qfetch(0.0, 1.0),	/* A1: (0,1) */
++		qfetch(1.0, 0.0),	/* B1: (1,0) */
++		qfetch(1.0, 1.0),	/* D3: (1,1) */
++		qfetch(-1.0, 1.0));	/* D2: (-1,1) */
++#else
+ 	#define fetch(x, y) texture2D(tex_y, vec2(x, y)).r
+ 
+ 	float C = texture2D(tex_y, center_bytes).r;
+@@ -212,6 +251,7 @@ void main(void)
+ 		fetch(xcoords[1], center_bytes.y),	/* B1: (1,0) */
+ 		fetch(xcoords[1], ycoords[1]),		/* D3: (1,1) */
+ 		fetch(xcoords[0], ycoords[1]));		/* D2: (-1,1) */
++#endif
+ 	patterns = (patterns + temp) * 0.5;
+ 		/* .x = (A0 + A1) / 2.0, .y = (B0 + B1) / 2.0 */
+ 		/* .z = (D0 + D3) / 2.0, .w = (D1 + D2) / 2.0 */
+diff --git a/src/libcamera/software_isp/debayer.h b/src/libcamera/software_isp/debayer.h
+index 28f1b85..9f9b494 100644
+--- a/src/libcamera/software_isp/debayer.h
++++ b/src/libcamera/software_isp/debayer.h
+@@ -56,6 +56,12 @@ public:
+ 
+ 	virtual const SharedFD &getStatsFD() = 0;
+ 
++	/*
++	 * The input is a Quad Bayer mosaic (every colour covers a 2x2 block),
++	 * to be remosaiced into ordinary Bayer. Set before configure().
++	 */
++	void setQuadBayer(bool quadBayer) { quadBayer_ = quadBayer; }
++
+ 	unsigned int frameSize() { return outputConfig_.frameSize; }
+ 
+ 	Signal<FrameBuffer *> inputBufferReady;
+@@ -80,6 +86,7 @@ public:
+ 	PixelFormat inputPixelFormat_;
+ 	PixelFormat outputPixelFormat_;
+ 	bool swapRedBlueGains_;
++	bool quadBayer_ = false;
+ 	Benchmark bench_;
+ 
+ private:
+diff --git a/src/libcamera/software_isp/debayer_cpu.cpp b/src/libcamera/software_isp/debayer_cpu.cpp
+index 49382b4..02c0c6b 100644
+--- a/src/libcamera/software_isp/debayer_cpu.cpp
++++ b/src/libcamera/software_isp/debayer_cpu.cpp
+@@ -643,6 +643,11 @@ int DebayerCpu::configure(const StreamConfiguration &inputCfg,
+ 			  const std::vector<std::reference_wrapper<const StreamConfiguration>> &outputCfgs,
+ 			  bool ccmEnabled)
+ {
++	if (quadBayer_) {
++		LOG(Debayer, Error) << "Quad Bayer input needs the GPU debayer";
++		return -EINVAL;
++	}
++
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+ 		return -EINVAL;
+ 
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 02651fe..8ac8f15 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -231,6 +231,8 @@ int DebayerEGL::initBayerShaders(PixelFormat inputFormat, PixelFormat outputForm
+ 			fragmentShaderData = bayer_1x_packed_frag;
+ 			vertexShaderData = identity_vert;
+ 			shaderStridePixels_ = width_;
++			if (quadBayer_)
++				egl_.pushEnv(shaderEnv, "#define QUAD_BAYER");
+ 		}
+ 		break;
+ 	case libcamera::formats::SBGGR12_CSI2P:
+@@ -291,6 +293,7 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	if (getInputConfig(inputCfg.pixelFormat, inputConfig_) != 0)
+ 		return -EINVAL;
+ 
++	stats_->setQuadBayer(quadBayer_);
+ 	if (stats_->configure(inputCfg) != 0)
+ 		return -EINVAL;
+ 
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index 2e6fc3d..db22060 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -7,10 +7,13 @@
+ 
+ #include "libcamera/internal/software_isp/software_isp.h"
+ 
++#include <algorithm>
++#include <array>
+ #include <memory>
+ #include <optional>
+ #include <stdint.h>
+ #include <string>
++#include <string_view>
+ #include <sys/mman.h>
+ #include <sys/types.h>
+ #include <unistd.h>
+@@ -21,9 +24,11 @@
+ 
+ #include <libcamera/controls.h>
+ #include <libcamera/formats.h>
++#include <libcamera/property_ids.h>
+ #include <libcamera/stream.h>
+ 
+ #include "libcamera/internal/bayer_format.h"
++#include "libcamera/internal/camera_sensor.h"
+ #include "libcamera/internal/framebuffer.h"
+ #include "libcamera/internal/software_isp/debayer_params.h"
+ 
+@@ -99,6 +104,19 @@ SoftwareIsp::SoftwareIsp(PipelineHandler *pipe, const CameraSensor *sensor,
+ 
+ 	const CameraManager &cm = *pipe->cameraManager();
+ 
++	/*
++	 * Sensors with a Quad Bayer colour filter. Their binned modes are an
++	 * ordinary Bayer mosaic, full size frames need remosaicing.
++	 */
++	static const std::array<std::string_view, 1> quadBayerSensors = {
++		"imx371", /* OnePlus 6 and 6T front camera */
++	};
++	quadBayerSensor_ = std::find(quadBayerSensors.begin(), quadBayerSensors.end(),
++				     sensor->model()) != quadBayerSensors.end();
++	const auto pixelArray = sensor->properties().get(properties::PixelArraySize);
++	if (pixelArray)
++		pixelArrayWidth_ = pixelArray->width;
++
+ 	auto stats = std::make_unique<SwStatsCpu>(cm);
+ 	if (!stats->isValid()) {
+ 		LOG(SoftwareIsp, Error) << "Failed to create SwStatsCpu object";
+@@ -292,6 +310,13 @@ int SoftwareIsp::configure(const StreamConfiguration &inputCfg,
+ 	if (ret < 0)
+ 		return ret;
+ 
++	/* Wider than half the array: not binned, still a Quad Bayer mosaic */
++	const bool quadBayer = quadBayerSensor_ &&
++			       inputCfg.size.width > pixelArrayWidth_ / 2;
++	debayer_->setQuadBayer(quadBayer);
++	if (quadBayer)
++		LOG(SoftwareIsp, Info) << "Remosaicing the Quad Bayer input";
++
+ 	ret = debayer_->configure(inputCfg, outputCfgs, ccmEnabled_);
+ 	if (ret < 0)
+ 		return ret;
+diff --git a/src/libcamera/software_isp/swstats_cpu.cpp b/src/libcamera/software_isp/swstats_cpu.cpp
+index 752de16..a38655c 100644
+--- a/src/libcamera/software_isp/swstats_cpu.cpp
++++ b/src/libcamera/software_isp/swstats_cpu.cpp
+@@ -350,6 +350,35 @@ void SwStatsCpu::statsGBRG10PLine0(const uint8_t *src[], SwIspStats &stats)
+ 	SWSTATS_FINISH_LINE_STATS()
+ }
+ 
++/*
++ * Quad Bayer RGGB: every colour covers a 2x2 block, so one pixel of each
++ * colour is two pixels apart. src[2] is two lines below src[1] (lineGap_),
++ * and the second pixel of a pair is two pixels to the right, that is the
++ * byte after next in the 5-byte group of 4 pixels.
++ */
++void SwStatsCpu::statsQuadRGGB10PLine0(const uint8_t *src[], SwIspStats &stats)
++{
++	const uint8_t *src0 = src[1] + window_.x * 5 / 4;
++	const uint8_t *src1 = src[2] + window_.x * 5 / 4;
++	const unsigned int widthInBytes = window_.width * 5 / 4;
++
++	SWSTATS_START_LINE_STATS(uint8_t)
++	afSpan = widthInBytes;
++
++	/* x += 5 sample one pixel of each colour per 4x4 tile */
++	for (unsigned int x = 0; x < widthInBytes; x += 5) {
++		r = src0[x];
++		g = src0[x + 2];
++		g2 = src1[x];
++		b = src1[x + 2];
++		g = (g + g2) / 2;
++		/* Data is already 8 bits, divide by 1 */
++		SWSTATS_ACCUMULATE_LINE_STATS(1)
++	}
++
++	SWSTATS_FINISH_LINE_STATS()
++}
++
+ void SwStatsCpu::statsBGGR12PLine0(const uint8_t *src[], SwIspStats &stats)
+ {
+ 	const uint8_t *src0 = src[1] + window_.x * 3 / 2;
+@@ -515,6 +544,7 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int stat
+ {
+ 	stride_ = inputCfg.stride;
+ 	stats_.resize(statsBufferCount);
++	lineGap_ = 1;
+ 
+ 	BayerFormat bayerFormat =
+ 		BayerFormat::fromPixelFormat(inputCfg.pixelFormat);
+@@ -555,6 +585,18 @@ int SwStatsCpu::configure(const StreamConfiguration &inputCfg, unsigned int stat
+ 		sumShift_ = 0;
+ 		processFrame_ = &SwStatsCpu::processBayerFrame2;
+ 
++		if (quadBayer_) {
++			if (bitDepth != 10 || bayerFormat.order != BayerFormat::RGGB) {
++				LOG(SwStatsCpu, Error)
++					<< "Quad Bayer only supported for RGGB 10-bit packed";
++				return -EINVAL;
++			}
++			stats0_ = &SwStatsCpu::statsQuadRGGB10PLine0;
++			swapLines_ = false;
++			lineGap_ = 2;
++			return 0;
++		}
++
+ 		switch (bayerFormat.order) {
+ 		case BayerFormat::BGGR:
+ 		case BayerFormat::GRBG:
+@@ -634,7 +676,7 @@ void SwStatsCpu::processBayerFrame2(MappedFrameBuffer &in)
+ 
+ 		/* linePointers[0] is not used by any stats0_ functions */
+ 		linePointers[1] = src;
+-		linePointers[2] = src + stride_;
++		linePointers[2] = src + stride_ * lineGap_;
+ 		/* y is relative to the window here */
+ 		stats_[0].afRow = (SwIspStats::kAfGrid * y) / window_.height;
+ 		(this->*stats0_)(linePointers, stats_[0]);
+-- 
+2.50.1
+

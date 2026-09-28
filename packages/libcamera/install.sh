@@ -25,7 +25,10 @@ put $B/src/libcamera/proxy/worker/soft_ipa_proxy /usr/libexec/libcamera/soft_ipa
 put $B/src/apps/cam/cam /usr/bin/cam 755
 # Файл настройки IPA: алгоритм Af в списке (из патча 0001)
 put $B/../src/ipa/simple/data/uncalibrated.yaml /usr/share/libcamera/ipa/simple/uncalibrated.yaml 644
-# Настройка IPA для IMX519 с цветовыми матрицами (патч 0015)
-install -m 644 $B/../src/ipa/simple/data/imx519.yaml /usr/share/libcamera/ipa/simple/imx519.yaml
+# Настройки IPA по матрицам: IMX519 с цветовыми матрицами (патч 0015),
+# IMX371 и IMX376 с потолком усиления 8× (патч 0017)
+for m in imx371 imx376 imx519; do
+	install -m 644 $B/../src/ipa/simple/data/$m.yaml /usr/share/libcamera/ipa/simple/$m.yaml
+done
 ln -sf libcamera.so.0.7.2 $L/libcamera.so.0.7
 ln -sf libcamera-base.so.0.7.2 $L/libcamera-base.so.0.7

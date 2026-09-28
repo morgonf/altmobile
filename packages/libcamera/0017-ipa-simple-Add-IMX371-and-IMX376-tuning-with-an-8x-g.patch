@@ -1,0 +1,76 @@
+From 7b01319e183c3a9448eb7d988920b007ed25108b Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:08:41 -0400
+Subject: [PATCH 17/19] ipa: simple: Add IMX371 and IMX376 tuning with an 8x
+ gain ceiling
+
+---
+ src/ipa/simple/data/imx371.yaml | 17 +++++++++++++++++
+ src/ipa/simple/data/imx376.yaml | 17 +++++++++++++++++
+ src/ipa/simple/data/meson.build |  2 ++
+ 3 files changed, 36 insertions(+)
+ create mode 100644 src/ipa/simple/data/imx371.yaml
+ create mode 100644 src/ipa/simple/data/imx376.yaml
+
+diff --git a/src/ipa/simple/data/imx371.yaml b/src/ipa/simple/data/imx371.yaml
+new file mode 100644
+index 0000000..8a5bfda
+--- /dev/null
++++ b/src/ipa/simple/data/imx371.yaml
+@@ -0,0 +1,17 @@
++# SPDX-License-Identifier: CC0-1.0
++#
++# IMX371 (OnePlus 6T front camera). No colour calibration yet.
++# The analogue gain is capped at 8x: at 16x the read noise is five
++# times that at 1x (measured on the IMX371) and shows as coloured grain,
++# a darker picture looks better.
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++  - Awb:
++  - Adjust:
++  - Agc:
++      maxAnalogueGain: 8.0
++  - Af:
++...
+diff --git a/src/ipa/simple/data/imx376.yaml b/src/ipa/simple/data/imx376.yaml
+new file mode 100644
+index 0000000..cdd3e15
+--- /dev/null
++++ b/src/ipa/simple/data/imx376.yaml
+@@ -0,0 +1,17 @@
++# SPDX-License-Identifier: CC0-1.0
++#
++# IMX376 (OnePlus 6T second rear camera). No colour calibration yet.
++# The analogue gain is capped at 8x: at 16x the read noise is five
++# times that at 1x (measured on the IMX371) and shows as coloured grain,
++# a darker picture looks better.
++%YAML 1.1
++---
++version: 1
++algorithms:
++  - BlackLevel:
++  - Awb:
++  - Adjust:
++  - Agc:
++      maxAnalogueGain: 8.0
++  - Af:
++...
+diff --git a/src/ipa/simple/data/meson.build b/src/ipa/simple/data/meson.build
+index c89c492..20111fc 100644
+--- a/src/ipa/simple/data/meson.build
++++ b/src/ipa/simple/data/meson.build
+@@ -1,6 +1,8 @@
+ # SPDX-License-Identifier: CC0-1.0
+ 
+ conf_files = files([
++    'imx371.yaml',
++    'imx376.yaml',
+     'imx519.yaml',
+     'uncalibrated.yaml',
+ ])
+-- 
+2.50.1
+

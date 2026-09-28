@@ -10,7 +10,7 @@
  #define IMX371_ANA_GAIN_STEP		1
  #define IMX371_ANA_GAIN_DEFAULT		0x0
  
-@@ -81,6 +82,10 @@
+@@ -81,6 +82,18 @@
  #define IMX371_PIXEL_ARRAY_WIDTH	4656U
  #define IMX371_PIXEL_ARRAY_HEIGHT	3496U
  
@@ -18,20 +18,28 @@
 +#define IMX371_BINNED_WIDTH		2328U
 +#define IMX371_BINNED_HEIGHT		1728U
 +
++/*
++ * Full size output: the digital crop skips 20 lines at the top and sends
++ * 3456 lines, not the 3496 of the pixel array. The Quad Bayer mosaic is
++ * left to the ISP (libcamera remosaics it for the IMX371).
++ */
++#define IMX371_FULL_WIDTH		4656U
++#define IMX371_FULL_HEIGHT		3456U
++
  /* CCS regs */
  #define IMX371_REG_PLL_MULT_DRIV                  CCI_REG8(0x0310)
  #define IMX371_REG_IVTPXCK_DIV                    CCI_REG8(0x0301)
-@@ -321,7 +326,105 @@
+@@ -321,6 +334,109 @@
  	{CCI_REG8(0x5617), 0x0A},
  };
  
--static const struct cci_reg_sequence mode_4656x3496_regs[] = {
 +/*
 + * The IMX371 has a Quad Bayer colour filter: every colour covers a 2x2 block
 + * of pixels. Read out at full size without remosaicing, the image looks like
 + * a plain Bayer mosaic with almost no colour. 2x2 binning sums each block and
-+ * gives a normal RGGB Bayer image at 2328x1728 (the full mode with binning
-+ * enabled, output and digital crop halved).
++ * gives a normal RGGB Bayer image at 2328x1728: the full mode with binning
++ * enabled, output and digital crop halved, and the binning weighting and
++ * the 0x3Fxx/0x5F0A settings of the IMX471 binned mode (same sensor family).
 + */
 +static const struct cci_reg_sequence mode_2328x1728_regs[] = {
 +	{CCI_REG8(0x0112), 0x0A},
@@ -55,9 +63,9 @@
 +	{CCI_REG8(0x0387), 0x01},
 +	{CCI_REG8(0x0900), 0x01},
 +	{CCI_REG8(0x0901), 0x22},
-+	{CCI_REG8(0x0902), 0x0A},
-+	{CCI_REG8(0x3F4C), 0x01},
-+	{CCI_REG8(0x3F4D), 0x01},
++	{CCI_REG8(0x0902), 0x08},
++	{CCI_REG8(0x3F4C), 0x81},
++	{CCI_REG8(0x3F4D), 0x81},
 +	{CCI_REG8(0x4254), 0x7F},
 +	{CCI_REG8(0x0401), 0x00},
 +	{CCI_REG8(0x0404), 0x00},
@@ -112,8 +120,8 @@
 +	{CCI_REG8(0x3F14), 0x01},
 +	{CCI_REG8(0x3F17), 0x00},
 +	{CCI_REG8(0x3F3C), 0x01},
-+	{CCI_REG8(0x3F78), 0x00},
-+	{CCI_REG8(0x3F79), 0xB4},
++	{CCI_REG8(0x3F78), 0x01},
++	{CCI_REG8(0x3F79), 0x31},
 +	{CCI_REG8(0x3F7C), 0x00},
 +	{CCI_REG8(0x3F7D), 0x00},
 +	{CCI_REG8(0x0202), 0x03},
@@ -122,13 +130,16 @@
 +	{CCI_REG8(0x0205), 0x00},
 +	{CCI_REG8(0x020E), 0x01},
 +	{CCI_REG8(0x020F), 0x00},
++	/* Quad Bayer binning settings as in the IMX471 driver */
++	{CCI_REG8(0x3FFE), 0x00},
++	{CCI_REG8(0x3FFF), 0x8A},
++	{CCI_REG8(0x5F0A), 0xB6},
 +};
 +
-+static const struct cci_reg_sequence __maybe_unused mode_4656x3496_regs[] = {
+ static const struct cci_reg_sequence mode_4656x3496_regs[] = {
  	{CCI_REG8(0x0112), 0x0A},
  	{CCI_REG8(0x0113), 0x0A},
- 	{CCI_REG8(0x0114), 0x03},
-@@ -494,13 +597,13 @@
+@@ -494,8 +610,25 @@
  /* Mode configs */
  static const struct imx371_mode supported_modes[] = {
  	{
@@ -136,17 +147,27 @@
 -		.height = IMX371_PIXEL_ARRAY_HEIGHT,
 +		.width = IMX371_BINNED_WIDTH,
 +		.height = IMX371_BINNED_HEIGHT,
++		.vts_def = IMX371_VTS_30FPS,
++		.vts_min = IMX371_VTS_30FPS,
++		.reg_list = {
++			.num_of_regs = ARRAY_SIZE(mode_2328x1728_regs),
++			.regs = mode_2328x1728_regs,
++		},
++		.link_freq_index = IMX371_LINK_FREQ_1308MBPS,
++		.crop = {
++			.left = IMX371_PIXEL_ARRAY_LEFT,
++			.top = IMX371_PIXEL_ARRAY_TOP,
++			.width = IMX371_PIXEL_ARRAY_WIDTH,
++			.height = IMX371_PIXEL_ARRAY_HEIGHT,
++		},
++	},
++	{
++		.width = IMX371_FULL_WIDTH,
++		.height = IMX371_FULL_HEIGHT,
  		.vts_def = IMX371_VTS_30FPS,
  		.vts_min = IMX371_VTS_30FPS,
  		.reg_list = {
--			.num_of_regs = ARRAY_SIZE(mode_4656x3496_regs),
--			.regs = mode_4656x3496_regs,
-+			.num_of_regs = ARRAY_SIZE(mode_2328x1728_regs),
-+			.regs = mode_2328x1728_regs,
- 		},
- 		.link_freq_index = IMX371_LINK_FREQ_1308MBPS,
- 		.crop = {
-@@ -815,6 +918,8 @@
+@@ -815,6 +948,8 @@
  			IMX371_VTS_MAX - imx371->cur_mode->height, 1,
  			vblank_def);
  		__v4l2_ctrl_s_ctrl(imx371->vblank, vblank_def);
@@ -155,7 +176,7 @@
  		h_blank =
  			imx371->link_freq_configs[mode->link_freq_index].pixels_per_line
  			 - imx371->cur_mode->width;
-@@ -1154,7 +1259,8 @@
+@@ -1154,7 +1289,8 @@
  	imx371->exposure = v4l2_ctrl_new_std(
  				ctrl_hdlr, &imx371_ctrl_ops,
  				V4L2_CID_EXPOSURE, IMX371_EXPOSURE_MIN,

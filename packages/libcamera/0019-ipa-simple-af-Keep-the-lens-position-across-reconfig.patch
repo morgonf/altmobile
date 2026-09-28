@@ -1,0 +1,104 @@
+From e23b886fcdd7cc1d7fac6ff31c42695cc5585981 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:15:52 -0400
+Subject: [PATCH 19/19] ipa: simple: af: Keep the lens position across
+ reconfiguration
+
+An application switching to full size for a photo reconfigures the
+camera. The lens now stays where it was and the reference sharpness is
+measured again on the first statistics, instead of starting over from
+position 0 with a new sweep.
+---
+ src/ipa/simple/algorithms/af.cpp | 22 ++++++++++++++++++++--
+ src/ipa/simple/algorithms/af.h   | 12 ++++++++++++
+ 2 files changed, 32 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 29281d3..ea7705d 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -45,6 +45,12 @@ static constexpr double kFineStep = 2.0;
+ static constexpr double kFineSpan = 8.0;
+ static constexpr double kLostRatio = 0.4;
+ static constexpr unsigned int kLostCount = 3;
++
++/*
++ * Statistics used to measure the reference sharpness again after a
++ * reconfiguration, the last one counts: exposure settles meanwhile.
++ */
++static constexpr unsigned int kRebaseStats = 3;
+ /* Below this normalised sharpness the region is flat: report failure */
+ static constexpr uint64_t kFlatSharpness = 2;
+ 
+@@ -73,10 +79,13 @@ int Af::configure(IPAContext &context,
+ 	auto &k = context.activeState.knobs;
+ 
+ 	k.focus_sweep = false;
+-	k.focus_pos = 0;
++	k.focus_pos = lastPos_.value_or(0.0);
+ 	k.afMode = controls::AfModeContinuous;
+-	k.afState = controls::AfStateIdle;
++	/* A sweep cut short by the reconfiguration is not resumed */
++	k.afState = lastPos_ && lastState_ != controls::AfStateScanning
++		    ? lastState_ : controls::AfStateIdle;
+ 	k.afMask = kCentreMask;
++	rebase_ = lastPos_ ? kRebaseStats : 0;
+ 	context.configuration.focus.skip = 1;
+ 	context.configuration.focus.lost = 0;
+ 	context.configuration.focus.sharpness_max = 0;
+@@ -219,6 +228,13 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	if (!sweep) {
+ 		if (k.afMode != controls::AfModeContinuous)
+ 			return;
++		/* Kept focus after a reconfiguration: new reference sharpness */
++		if (rebase_) {
++			rebase_--;
++			f.sharpness_max = sharp;
++			f.lost = 0;
++			return;
++		}
+ 		/* A flat scene (no sharpness at all) gives nothing to refocus on */
+ 		const double dev = f.sharpness_max
+ 			? static_cast<double>(utils::abs_diff(sharp, f.sharpness_max)) / f.sharpness_max
+@@ -276,6 +292,8 @@ void Af::process(IPAContext &context,
+ 		     k.focus_sweep.value());
+ 
+ 	updateFocus(context, frameContext);
++	lastPos_ = k.focus_pos.value();
++	lastState_ = k.afState;
+ 	metadata.set(controls::LensPosition, static_cast<float>(k.focus_pos.value()));
+ 	metadata.set(controls::AfState, k.afState);
+ }
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index 3fd7db1..c828dbb 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -7,6 +7,8 @@
+ 
+ #pragma once
+ 
++#include <optional>
++
+ #include <libcamera/base/span.h>
+ 
+ #include <libcamera/geometry.h>
+@@ -45,6 +47,16 @@ private:
+ 	int32_t metering_ = 0;
+ 	uint32_t windowMask_ = 0;
+ 	unsigned int steps_ = 0;
++
++	/*
++	 * Focus kept across configure() of the same camera, e.g. when an
++	 * application switches to full size for a photo: the lens stays and the
++	 * reference sharpness is measured again (rebase_ statistics, while
++	 * exposure settles) instead of a new sweep.
++	 */
++	std::optional<double> lastPos_;
++	int32_t lastState_ = 0;
++	unsigned int rebase_ = 0;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+-- 
+2.50.1
+

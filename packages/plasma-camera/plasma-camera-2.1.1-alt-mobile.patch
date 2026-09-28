@@ -1,7 +1,7 @@
 From afa5b57259b6996e85c8e96b859dc532b13e2ef0 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:53:07 -0400
-Subject: [PATCH 1/7] Viewfinder: at most 2400 pixels wide (binned mode on the
+Subject: [PATCH 1/8] Viewfinder: at most 2400 pixels wide (binned mode on the
  OnePlus 6T)
 
 ---
@@ -47,7 +47,7 @@ index 65a6b37..a4c8ea4 100644
 From 8ea1f24455ed1340480d5c19bf0ec68c0cb44851 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:54 -0400
-Subject: [PATCH 2/7] Tap to focus: AF window, AE/AF lock, focus ring and
+Subject: [PATCH 2/8] Tap to focus: AF window, AE/AF lock, focus ring and
  exposure slider
 
 ---
@@ -547,7 +547,7 @@ index f2e92c7..b676079 100644
 From ac851033703f308c4de0382d3404e9cd29ce5be2 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:25:17 -0400
-Subject: [PATCH 3/7] Focus ring: white until the new search starts
+Subject: [PATCH 3/8] Focus ring: white until the new search starts
 
 ---
  src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
@@ -600,7 +600,7 @@ index c5fd4df..bdee597 100644
 From bcb17b3872d3c8282af10fea3a878ba3b620023e Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:35:14 -0400
-Subject: [PATCH 4/7] Shutter waits for the autofocus search to end (at most
+Subject: [PATCH 4/8] Shutter waits for the autofocus search to end (at most
  1.5 s)
 
 ---
@@ -670,7 +670,7 @@ index 79509ce..d87431f 100644
 From 3fb6be09775ff025a1fd050351f0e1faebf9865c Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:37:55 -0400
-Subject: [PATCH 5/7] Viewfinder: half the full size (binned mode) instead of a
+Subject: [PATCH 5/8] Viewfinder: half the full size (binned mode) instead of a
  cropped standard size
 
 ---
@@ -711,7 +711,7 @@ index 64aca6f..d8a6b52 100644
 From 168e6746cb77faf7443c81dfa827f587165208b6 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:51:04 -0400
-Subject: [PATCH 6/7] Viewfinder: bin only sensors wider than 3200 pixels
+Subject: [PATCH 6/8] Viewfinder: bin only sensors wider than 3200 pixels
 
 The 5 MP IMX376 halved to 1288x970, where the GPU debayer fails and the
 application quit.
@@ -746,7 +746,7 @@ index d8a6b52..1ea737e 100644
 From 8fda3ba0bc3f17cfd7f2256976393809227a46af Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 16:48:20 -0400
-Subject: [PATCH 7/7] Digital zoom: pinch and 1x/2x/5x buttons, photos cropped
+Subject: [PATCH 7/8] Digital zoom: pinch and 1x/2x/5x buttons, photos cropped
  to match
 
 The viewfinder is scaled around its centre and clipped to the picture,
@@ -1097,6 +1097,291 @@ index 2c27541..b1857c9 100644
      QString m_imageCaptureFileName;
  
      bool m_isSavingVideo = false;
+-- 
+2.50.1
+
+
+From faed2fb63ff907df89af351af9b1f43eedf8bd5d Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:25:16 -0400
+Subject: [PATCH 8/8] Photos at the full sensor size, JPEG quality 92
+
+The viewfinder runs at the 2x2 binned size. On the shutter the stream is
+restarted at full size, a few frames let exposure and white balance
+settle, one is taken, and the viewfinder comes back. The viewfinder shows
+a deep copy of the last frame meanwhile. JPEG quality 50 added visible
+blocks to 16 MP photos.
+---
+ src/plasmacamera/worker.cpp | 123 +++++++++++++++++++++++++++++++-----
+ src/plasmacamera/worker.h   |  15 ++++-
+ src/plasmacameramanager.cpp |   3 +-
+ 3 files changed, 123 insertions(+), 18 deletions(-)
+
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index 1ea737e..c5033c1 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -87,9 +87,53 @@ void Worker::unsetCamera()
+ void Worker::capture()
+ {
+     m_stillCaptureFrames.clear();
++
++    if (!m_viewfinderReduced || !m_camera) {
++        setMode(CaptureMode::StillImage);
++        return;
++    }
++
++    // ALT Mobile: the viewfinder runs at the binned size, a photo is taken
++    // at the full sensor size (16 MP). Restart the stream at full size, let
++    // exposure and white balance settle on a few frames, take one, and go
++    // back. The viewfinder keeps a copy of the last frame meanwhile: the
++    // buffers it points into are freed by the restart.
++    if (!m_lastFrame.isNull()) {
++        Q_EMIT viewFinderFrame(m_lastFrame.copy());
++        m_lastFrame = QImage();
++    }
++
++    setMode(CaptureMode::None);
++    stopStream();
++    if (!startStream(true)) {
++        // Fall back to a photo from the viewfinder
++        stopStream();
++        startStream(false);
++        setMode(CaptureMode::ViewFinder);
++        setMode(CaptureMode::StillImage);
++        return;
++    }
++
++    // Statistics come every second frame and AE moves by at most 35 % per
++    // step, the binned and the full mode differ little in brightness
++    constexpr int kStillSettleFrames = 6;
++    m_stillSkipFrames = kStillSettleFrames;
+     setMode(CaptureMode::StillImage);
+ }
+ 
++void Worker::resumeViewFinder()
++{
++    if (!m_fullSizeStream || !m_camera) {
++        return;
++    }
++
++    stopStream();
++    if (!startStream(false)) {
++        return;
++    }
++    setMode(CaptureMode::ViewFinder);
++}
++
+ void Worker::setSettings(const Settings& settings)
+ {
+     m_settings = settings;
+@@ -203,6 +247,31 @@ void Worker::processRequestDataAndEmit()
+     // Populates m_image
+     processRequestData();
+ 
++    // Full size photo: skip the settling frames, take one, go back to the
++    // viewfinder. None of these frames reach the viewfinder (it shows a copy
++    // of the last one), they point into buffers freed by the restart.
++    if (m_fullSizeStream) {
++        if (m_mode != CaptureMode::StillImage || m_image.isNull()) {
++            return;
++        }
++        if (m_stillSkipFrames > 0) {
++            m_stillSkipFrames--;
++            return;
++        }
++
++        {
++            const QMutexLocker lock(&m_stillCaptureFramesMutex);
++            m_stillCaptureFrames.enqueue(m_image.copy());
++        }
++        m_image = QImage();
++        setMode(CaptureMode::None);
++        Q_EMIT stillCaptureFrames(m_stillCaptureFrames);
++
++        // Not from within the frame handling
++        QMetaObject::invokeMethod(this, &Worker::resumeViewFinder, Qt::QueuedConnection);
++        return;
++    }
++
+     // Implement photo capture
+     if (m_mode == CaptureMode::StillImage) {
+         const QMutexLocker lock(&m_stillCaptureFramesMutex);
+@@ -222,6 +291,7 @@ void Worker::processRequestDataAndEmit()
+     }
+ 
+     // Emit view finder frame, m_image is moved for performance
++    m_lastFrame = m_image;
+     Q_EMIT viewFinderFrame(std::move(m_image));
+ }
+ 
+@@ -260,12 +330,17 @@ void Worker::processRequestData()
+ }
+ 
+ void Worker::startViewFinder()
++{
++    startStream(false);
++}
++
++bool Worker::startStream(const bool fullSize)
+ {
+     if (!m_camera) {
+-        return;
++        return false;
+     }
+ 
+-    qDebug() << "Starting view finder in worker";
++    qDebug() << "Starting stream in worker, full size" << fullSize;
+ 
+     /*
+      * https://libcamera.org/api-html/namespacelibcamera.html#a295d1f5e7828d95c0b0aabc0a8baac03
+@@ -276,7 +351,11 @@ void Worker::startViewFinder()
+      */
+     m_config = m_camera->generateConfiguration({libcamera::StreamRole::Viewfinder});
+ 
+-    configure();
++    configure(fullSize);
++    if (!m_stream || m_requests.empty()) {
++        return false;
++    }
++    m_fullSizeStream = fullSize;
+ 
+     // Connect signal for when a frame request is complete
+     m_camera->requestCompleted.connect(this, &Worker::requestComplete);
+@@ -284,25 +363,43 @@ void Worker::startViewFinder()
+     // Start camera
+     if (int ret = m_camera->start(); ret < 0) {
+         setError(ret);
+-        return;
++        return false;
+     }
+ 
+     // Add all requests
+     for (std::unique_ptr<libcamera::Request> &request : m_requests) {
+         if (int ret = m_camera->queueRequest(request.get()); ret < 0) {
+             setError(ret);
+-            return;
++            return false;
+         }
+     }
+ 
+     // Start polling for frames
+     m_framePollTimer->start();
++    return true;
+ }
+ 
+ void Worker::stopViewFinder()
+ {
+     qDebug() << "stop view finder";
++    stopStream();
++
++    if (m_camera) {
++        int ret = m_camera->release();
++        if (ret < 0) {
++            setError(ret);
++            return;
++        }
++    }
++
++    m_camera.reset();
++}
++
++void Worker::stopStream()
++{
+     m_framePollTimer->stop();
++    m_fullSizeStream = false;
++    m_lastFrame = QImage();
+ 
+     if (m_camera) {
+         // All pending requests are cancelled
+@@ -343,15 +440,8 @@ void Worker::stopViewFinder()
+         m_doneQueue.clear();
+     }
+ 
+-    if (m_camera) {
+-        int ret = m_camera->release();
+-        if (ret < 0) {
+-            setError(ret);
+-            return;
+-        }
+-    }
+-
+-    m_camera.reset();
++    m_allocator = nullptr;
++    m_stream = nullptr;
+ }
+ 
+ void Worker::setState(const State state)
+@@ -443,7 +533,7 @@ void Worker::setMode(CaptureMode mode)
+     }
+ }
+ 
+-void Worker::configure()
++void Worker::configure(const bool fullSize)
+ {
+     if (!m_config || !m_camera) {
+         return;
+@@ -480,7 +570,8 @@ void Worker::configure()
+     // and less noise in the dark. Smaller ones (the 5 MP IMX376) stay at full
+     // size: halving it gave a size the GPU debayer fails on.
+     constexpr unsigned int kMaxViewfinderWidth = 3200;
+-    if (streamConfig.size.width > kMaxViewfinderWidth) {
++    m_viewfinderReduced = streamConfig.size.width > kMaxViewfinderWidth;
++    if (m_viewfinderReduced && !fullSize) {
+         // Half of the full size is the 2x2 binned sensor mode: the whole field
+         // of view at a quarter of the pixels. The software ISP only crops, so
+         // a "standard" size such as 2048x1536 would cut the picture.
+diff --git a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+index b676079..4974bb5 100644
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -103,10 +103,17 @@ private:
+     void startViewFinder();
+     void stopViewFinder();
+ 
++    // Stream start and stop without releasing the camera. fullSize skips
++    // the reduced viewfinder size (see configure()).
++    bool startStream(bool fullSize);
++    void stopStream();
++    // Back from a full size photo to the viewfinder
++    void resumeViewFinder();
++
+     void setState(State state);
+     void setMode(CaptureMode mode);
+ 
+-    void configure();
++    void configure(bool fullSize = false);
+ 
+     static const QList<libcamera::PixelFormat> &getNativeFormats();
+     int setFormat(const QSize &size, const libcamera::PixelFormat &format, const libcamera::ColorSpace &colorSpace, unsigned int stride);
+@@ -146,6 +153,12 @@ private:
+     QMutex m_stillCaptureFramesMutex;
+     QQueue<QImage> m_stillCaptureFrames;
+ 
++    // Photos at the full sensor size while the viewfinder runs reduced
++    bool m_viewfinderReduced = false; // the viewfinder is smaller than the sensor
++    bool m_fullSizeStream = false; // the stream is at full size for a photo
++    int m_stillSkipFrames = 0; // frames left for AE and AWB to settle
++    QImage m_lastFrame; // shallow, for a deep copy shown during the switch
++
+     libcamera::Stream *m_stream{};
+     libcamera::FrameBufferAllocator *m_allocator{};
+     std::map<libcamera::FrameBuffer *, std::unique_ptr<Image>> m_mappedBuffers;
+diff --git a/src/plasmacameramanager.cpp b/src/plasmacameramanager.cpp
+index 595f9b7..55d8c3a 100644
+--- a/src/plasmacameramanager.cpp
++++ b/src/plasmacameramanager.cpp
+@@ -586,8 +586,9 @@ void PlasmaCameraManager::processCaptureImage(const QQueue<QImage> &frames)
+     image = image.transformed(transform);
+ 
+     // TODO: set format and quality
++    // ALT Mobile: 92 instead of 50, which added visible blocks to 16 MP photos
+     qDebug() << "saving image to " << fileName;
+-    const bool res = image.save(&file, "JPEG", 50);
++    const bool res = image.save(&file, "JPEG", 92);
+     if (!res) {
+         setError(
+             0,
 -- 
 2.50.1
 

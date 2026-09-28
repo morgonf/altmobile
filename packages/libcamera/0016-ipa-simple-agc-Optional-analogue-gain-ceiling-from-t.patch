@@ -1,0 +1,62 @@
+From f217e82edc0b6ac39e66d2e2fd590c1b8c74ca46 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 17:08:23 -0400
+Subject: [PATCH 16/19] ipa: simple: agc: Optional analogue gain ceiling from
+ the tuning file
+
+---
+ src/ipa/simple/algorithms/agc.cpp | 16 ++++++++++++++--
+ src/ipa/simple/algorithms/agc.h   |  2 ++
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index c925723..2b7066e 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -69,9 +69,14 @@ Agc::Agc()
+ {
+ }
+ 
+-int Agc::init(IPAContext &context,
+-	      [[maybe_unused]] const ValueNode &tuningData)
++int Agc::init(IPAContext &context, const ValueNode &tuningData)
+ {
++	/*
++	 * Optional ceiling for the analogue gain the AGC may use. Above ~8x
++	 * the small sensors mostly add noise, a darker picture looks better.
++	 */
++	maxAnalogueGain_ = tuningData["maxAnalogueGain"].get<double>(0.0);
++
+ 	context.ctrlMap[&controls::AeEnable] = ControlInfo(false, true, true);
+ 	context.ctrlMap[&controls::Brightness] = ControlInfo(0.0f, 2.0f, 1.0f);
+ 	/* Exposure compensation in stops, as defined by libcamera */
+@@ -86,6 +91,13 @@ int Agc::configure(IPAContext &context,
+ 	context.activeState.knobs.brightness = std::optional<double>();
+ 	context.activeState.knobs.ae_enabled = std::optional<bool>();
+ 
++	auto &agc = context.configuration.agc;
++	if (maxAnalogueGain_ > 0.0 && agc.againMax > maxAnalogueGain_) {
++		agc.againMax = std::max(maxAnalogueGain_, agc.againMin);
++		agc.againMinStep = (agc.againMax - agc.againMin) / 100.0;
++		LOG(IPASoftExposure, Debug) << "Analogue gain limited to " << agc.againMax;
++	}
++
+ 	return 0;
+ }
+ 
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index 3c6f419..e68e53e 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -33,6 +33,8 @@ public:
+ 
+ private:
+ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
++
++	double maxAnalogueGain_ = 0.0;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+-- 
+2.50.1
+
