@@ -92,3 +92,12 @@ msgstr "Не двигайте телефон"
 
 msgid "Processing…"
 msgstr "Обработка…"
+
+msgid "Flash off"
+msgstr "Вспышка выключена"
+
+msgid "Automatic flash"
+msgstr "Автовспышка"
+
+msgid "Flash on"
+msgstr "Вспышка включена"

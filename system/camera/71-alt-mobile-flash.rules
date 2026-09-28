@@ -1,0 +1,6 @@
+# Вспышка OnePlus 6T для приложения камеры: импульс (flash_strobe), ток и
+# длительность импульса доступны группе camera. Яркость фонарика группе
+# users уже отдаёт feedbackd (72-feedbackd.rules). Импульс гаснет сам по
+# аппаратному таймеру (flash_timeout, не больше 1,28 с), даже если
+# приложение упадёт.
+SUBSYSTEM=="leds", KERNEL=="*:flash", RUN+="/bin/sh -c 'cd %S%p && chgrp camera flash_strobe flash_brightness flash_timeout && chmod g+w flash_strobe flash_brightness flash_timeout'"
