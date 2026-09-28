@@ -1,8 +1,8 @@
-From afa5b57259b6996e85c8e96b859dc532b13e2ef0 Mon Sep 17 00:00:00 2001
+From 6f12bcf9355fdd0f2104e63ba8244bbe750dbe9d Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 00:53:07 -0400
-Subject: [PATCH 1/9] Viewfinder: at most 2400 pixels wide (binned mode on the
- OnePlus 6T)
+Subject: [PATCH 01/10] Viewfinder: at most 2400 pixels wide (binned mode on
+ the OnePlus 6T)
 
 ---
  src/plasmacamera/worker.cpp | 21 +++++++++++++++++++++
@@ -44,10 +44,10 @@ index 65a6b37..a4c8ea4 100644
 2.50.1
 
 
-From 8ea1f24455ed1340480d5c19bf0ec68c0cb44851 Mon Sep 17 00:00:00 2001
+From 86fe400760e5a696084c6e38b3591daf847d23a6 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:15:54 -0400
-Subject: [PATCH 2/9] Tap to focus: AF window, AE/AF lock, focus ring and
+Subject: [PATCH 02/10] Tap to focus: AF window, AE/AF lock, focus ring and
  exposure slider
 
 ---
@@ -61,7 +61,7 @@ Subject: [PATCH 2/9] Tap to focus: AF window, AE/AF lock, focus ring and
  7 files changed, 329 insertions(+), 1 deletion(-)
 
 diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
-index 405c20e..c5fd4df 100644
+index 405c20e..9c3e6f3 100644
 --- a/src/contents/ui/camera/Viewfinder.qml
 +++ b/src/contents/ui/camera/Viewfinder.qml
 @@ -2,6 +2,7 @@
@@ -544,17 +544,17 @@ index f2e92c7..b676079 100644
 2.50.1
 
 
-From ac851033703f308c4de0382d3404e9cd29ce5be2 Mon Sep 17 00:00:00 2001
+From c2302fc28920f5d99f0de3b352a747430d30b880 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:25:17 -0400
-Subject: [PATCH 3/9] Focus ring: white until the new search starts
+Subject: [PATCH 03/10] Focus ring: white until the new search starts
 
 ---
  src/contents/ui/camera/Viewfinder.qml | 10 ++++++++--
  1 file changed, 8 insertions(+), 2 deletions(-)
 
 diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
-index c5fd4df..bdee597 100644
+index 9c3e6f3..cc90ef6 100644
 --- a/src/contents/ui/camera/Viewfinder.qml
 +++ b/src/contents/ui/camera/Viewfinder.qml
 @@ -70,6 +70,10 @@ Rectangle {
@@ -597,10 +597,10 @@ index c5fd4df..bdee597 100644
 2.50.1
 
 
-From bcb17b3872d3c8282af10fea3a878ba3b620023e Mon Sep 17 00:00:00 2001
+From 837403a5cd4b9815176a3d6de1d2d2dec7470ead Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:35:14 -0400
-Subject: [PATCH 4/9] Shutter waits for the autofocus search to end (at most
+Subject: [PATCH 04/10] Shutter waits for the autofocus search to end (at most
  1.5 s)
 
 ---
@@ -667,11 +667,11 @@ index 79509ce..d87431f 100644
 2.50.1
 
 
-From 3fb6be09775ff025a1fd050351f0e1faebf9865c Mon Sep 17 00:00:00 2001
+From e8c1b3a49c6407d47a290009c071340ae60f7f7e Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:37:55 -0400
-Subject: [PATCH 5/9] Viewfinder: half the full size (binned mode) instead of a
- cropped standard size
+Subject: [PATCH 05/10] Viewfinder: half the full size (binned mode) instead of
+ a cropped standard size
 
 ---
  src/plasmacamera/worker.cpp | 16 ++++++----------
@@ -708,10 +708,10 @@ index 64aca6f..d8a6b52 100644
 2.50.1
 
 
-From 168e6746cb77faf7443c81dfa827f587165208b6 Mon Sep 17 00:00:00 2001
+From a6f604b48fa848606b00b26ae2572be72d3f0257 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 01:51:04 -0400
-Subject: [PATCH 6/9] Viewfinder: bin only sensors wider than 3200 pixels
+Subject: [PATCH 06/10] Viewfinder: bin only sensors wider than 3200 pixels
 
 The 5 MP IMX376 halved to 1288x970, where the GPU debayer fails and the
 application quit.
@@ -743,11 +743,11 @@ index d8a6b52..1ea737e 100644
 2.50.1
 
 
-From 8fda3ba0bc3f17cfd7f2256976393809227a46af Mon Sep 17 00:00:00 2001
+From 957252b02e539f636fd6d3e040e0d324b1a3f595 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 16:48:20 -0400
-Subject: [PATCH 7/9] Digital zoom: pinch and 1x/2x/5x buttons, photos cropped
- to match
+Subject: [PATCH 07/10] Digital zoom: pinch and 1x/2x/5x buttons, photos
+ cropped to match
 
 The viewfinder is scaled around its centre and clipped to the picture,
 tap to focus maps through the zoom, photos keep the central 1/zoom of the
@@ -775,7 +775,7 @@ index 311d6c0..1a052f2 100644
          // Header controls
          CameraExtraControls {
 diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
-index bdee597..5183c40 100644
+index cc90ef6..7e03e26 100644
 --- a/src/contents/ui/camera/Viewfinder.qml
 +++ b/src/contents/ui/camera/Viewfinder.qml
 @@ -21,6 +21,39 @@ Rectangle {
@@ -1101,10 +1101,10 @@ index 2c27541..b1857c9 100644
 2.50.1
 
 
-From faed2fb63ff907df89af351af9b1f43eedf8bd5d Mon Sep 17 00:00:00 2001
+From dffe98f39c6e4cbd57979ca5670a1be97f169d93 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:25:16 -0400
-Subject: [PATCH 8/9] Photos at the full sensor size, JPEG quality 92
+Subject: [PATCH 08/10] Photos at the full sensor size, JPEG quality 92
 
 The viewfinder runs at the 2x2 binned size. On the shutter the stream is
 restarted at full size, a few frames let exposure and white balance
@@ -1386,10 +1386,10 @@ index 595f9b7..55d8c3a 100644
 2.50.1
 
 
-From d8daf69bb814f32f69b0583f244c4c88fa7efc21 Mon Sep 17 00:00:00 2001
+From 139824f85fccf7873328db06ab4ccc9d4b500bc9 Mon Sep 17 00:00:00 2001
 From: morgonf <morgonf@altlinux.org>
 Date: Mon, 28 Sep 2026 17:51:05 -0400
-Subject: [PATCH 9/9] Night mode: a burst of 12 frames aligned and merged
+Subject: [PATCH 09/10] Night mode: a burst of 12 frames aligned and merged
 
 The moon button in the header switches it on (photo mode only). The
 shutter then takes 12 frames from the binned viewfinder stream with the
@@ -1502,7 +1502,7 @@ index 1a052f2..d8757fe 100644
          }
  
 diff --git a/src/contents/ui/camera/Viewfinder.qml b/src/contents/ui/camera/Viewfinder.qml
-index 5183c40..67732bd 100644
+index 7e03e26..5bc1dfa 100644
 --- a/src/contents/ui/camera/Viewfinder.qml
 +++ b/src/contents/ui/camera/Viewfinder.qml
 @@ -25,6 +25,8 @@ Rectangle {
@@ -1642,7 +1642,7 @@ index a8ba3c6..b34d868 100644
  
 diff --git a/src/plasmacamera/nightmerge.cpp b/src/plasmacamera/nightmerge.cpp
 new file mode 100644
-index 0000000..4301f11
+index 0000000..1f5808f
 --- /dev/null
 +++ b/src/plasmacamera/nightmerge.cpp
 @@ -0,0 +1,310 @@
@@ -1958,7 +1958,7 @@ index 0000000..4301f11
 +}
 diff --git a/src/plasmacamera/nightmerge.h b/src/plasmacamera/nightmerge.h
 new file mode 100644
-index 0000000..798ec8d
+index 0000000..64fccb7
 --- /dev/null
 +++ b/src/plasmacamera/nightmerge.h
 @@ -0,0 +1,21 @@
@@ -2234,6 +2234,42 @@ index b1857c9..b8b45bc 100644
      QString m_imageCaptureFileName;
  
      bool m_isSavingVideo = false;
+-- 
+2.50.1
+
+
+From 6eb481b411e7c21a01a98f2fe1a15cbf388b32ce Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Mon, 28 Sep 2026 18:13:49 -0400
+Subject: [PATCH 10/10] NightMerge: MIT license, as ALT Mobile
+
+---
+ src/plasmacamera/nightmerge.cpp | 2 +-
+ src/plasmacamera/nightmerge.h   | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/plasmacamera/nightmerge.cpp b/src/plasmacamera/nightmerge.cpp
+index 1f5808f..b7430a4 100644
+--- a/src/plasmacamera/nightmerge.cpp
++++ b/src/plasmacamera/nightmerge.cpp
+@@ -1,5 +1,5 @@
+ // SPDX-FileCopyrightText: 2026 morgonf
+-// SPDX-License-Identifier: GPL-2.0-or-later
++// SPDX-License-Identifier: MIT
+ 
+ #include "nightmerge.h"
+ 
+diff --git a/src/plasmacamera/nightmerge.h b/src/plasmacamera/nightmerge.h
+index 64fccb7..89fae23 100644
+--- a/src/plasmacamera/nightmerge.h
++++ b/src/plasmacamera/nightmerge.h
+@@ -1,5 +1,5 @@
+ // SPDX-FileCopyrightText: 2026 morgonf
+-// SPDX-License-Identifier: GPL-2.0-or-later
++// SPDX-License-Identifier: MIT
+ 
+ #pragma once
+ 
 -- 
 2.50.1
 
