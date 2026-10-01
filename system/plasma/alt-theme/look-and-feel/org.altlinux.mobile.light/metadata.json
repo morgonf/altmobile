@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "morgonf",
+                "Email": "morgonf@altlinux.org"
+            }
+        ],
+        "Category": "",
+        "Description": "Light ALT Mobile theme",
+        "Description[ru]": "Светлая тема ALT Mobile с дымчато-белым фоном, оранжевым акцентом «Альт Мобильный», значками и обоями ALT",
+        "Id": "org.altlinux.mobile.light",
+        "License": "MIT",
+        "Name": "ALT Mobile Light",
+        "Name[ru]": "ALT Mobile светлая",
+        "Version": "1.0",
+        "Website": "https://github.com/morgonf/altmobile"
+    },
+    "X-Plasma-APIVersion": "2"
+}

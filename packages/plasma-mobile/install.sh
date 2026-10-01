@@ -13,4 +13,6 @@ put() { # $1 источник, $2 цель, $3 права
 put $B/BUILD/components/mobileshell/libmobileshellplugin.so /usr/lib64/qt6/qml/org/kde/plasma/private/mobileshell/libmobileshellplugin.so 644
 put $B/BUILD/bin/plasma/applets/org.kde.plasma.mobile.homescreen.folio.so /usr/lib64/qt6/plugins/plasma/applets/org.kde.plasma.mobile.homescreen.folio.so 644
 put $B/kwin/mobiletaskswitcher/package/contents/ui/TaskSwitcher.qml /usr/share/kwin/effects/mobiletaskswitcher/contents/ui/TaskSwitcher.qml 644
+# Глобальная тема ALT Mobile вместо org.kde.breeze.mobile (envmanager-alt-lnf.patch)
+put $B/BUILD/bin/plasma-mobile-envmanager /usr/bin/plasma-mobile-envmanager 755
 chown altlinux $L

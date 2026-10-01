@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Базальт СПО"
+            }
+        ],
+        "Id": "ALTMobile",
+        "License": "Медиакит Базальт СПО",
+        "Name": "ALT Mobile",
+        "Name[ru]": "ALT Mobile"
+    },
+    "KPackageStructure": "Wallpaper/Images"
+}

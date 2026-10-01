@@ -1,0 +1,13 @@
+--- a/envmanager/config.h
++++ b/envmanager/config.h
+@@ -30,7 +30,9 @@
+ const QMap<QString, QMap<QString, QVariant>> KDEGLOBALS_DEFAULT_SETTINGS = {{"General", {{"BrowserApplication", "angelfish"}}}};
+ 
+ // .config/plasma-mobile/kdeglobals - immutable settings:
+-const QMap<QString, QMap<QString, QVariant>> KDEGLOBALS_SETTINGS = {{"KDE", {{"LookAndFeelPackage", "org.kde.breeze.mobile"}}}};
++// ALT Mobile использует свою глобальную тему. От неё Plasma берёт значения по
++// умолчанию, в том числе обои при пустом Image (иначе Next из Breeze)
++const QMap<QString, QMap<QString, QVariant>> KDEGLOBALS_SETTINGS = {{"KDE", {{"LookAndFeelPackage", "org.altlinux.mobile"}}}};
+ 
+ // .config/plasma-mobile/kwinrc - non-immutable settings:
+ const QMap<QString, QMap<QString, QVariant>> KWINRC_DEFAULT_SETTINGS = {

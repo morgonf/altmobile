@@ -1,0 +1,38 @@
+# Глобальная тема ALT Mobile для Plasma Mobile (ALT Mobile, OnePlus 6T).
+# Цвета, значки и обои по брендбуку Базальт СПО 3.8.1, шрифт PT Root UI.
+# Подробности в README.md каталога alt-theme.
+
+[kdeglobals][KDE]
+widgetStyle=Breeze
+
+[kdeglobals][General]
+activeFont=PT Root UI,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1
+ColorScheme=ALTMobileDark
+Name=ALT Mobile
+
+[kdeglobals][Icons]
+Theme=ALT
+
+# Шрифты KLookAndFeelManager берёт из группы kdeglobals/WM
+[kdeglobals][WM]
+font=PT Root UI,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+menuFont=PT Root UI,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+toolBarFont=PT Root UI,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+smallestReadableFont=PT Root UI,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+fixed=Noto Sans Mono,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+
+
+[plasmarc][Theme]
+name=default
+
+[Wallpaper]
+Image=ALTMobile
+
+[kcminputrc][Mouse]
+cursorTheme=breeze_cursors
+
+[kwinrc][org.kde.kdecoration2]
+library=org.kde.breeze
+
+[KSplash]
+Theme=org.kde.Breeze

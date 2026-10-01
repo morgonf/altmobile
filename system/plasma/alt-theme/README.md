@@ -47,3 +47,27 @@ KWin держит тему значков и QML переключателя за
 #1a1a1a, заголовки #222222), текст #ececec, акцент #f5911f, ссылки #ffb050,
 на оранжевом выделении текст тёмный. Приложениям на libadwaita скрипт
 ставит `color-scheme prefer-dark`.
+
+## Системная тема (01.10.2026)
+
+Тема стала самостоятельным набором в системе, `install.sh` от root:
+
+- глобальные темы `look-and-feel/org.altlinux.mobile` (тёмная) и
+  `org.altlinux.mobile.light` в `/usr/share/plasma/look-and-feel`. В
+  `defaults` цветовая схема, значки ALT, шрифт PT Root UI (KLookAndFeelManager
+  читает шрифты из группы `[kdeglobals][WM]`), обои `ALTMobile`. Разметка и
+  экран выхода взяты из `org.kde.breeze.mobile`;
+- обои пакетом KPackage `wallpapers/ALTMobile` в `/usr/share/wallpapers`,
+  Plasma сама подбирает размер, в конфигах ссылка на каталог пакета;
+- схемы и значки в `/usr/share/color-schemes` и `/usr/share/icons`.
+
+`plasma-mobile-envmanager` при каждом входе закрепляет глобальную тему
+(`LookAndFeelPackage[$i]` в `~/.config/plasma-mobile/kdeglobals`). Было
+`org.kde.breeze.mobile`, и при пустых обоях Plasma подставляла Next.
+Патч `packages/plasma-mobile/envmanager-alt-lnf.patch` закрепляет
+`org.altlinux.mobile`.
+
+`apply-alt-theme.sh` больше не копирует файлы в домашний каталог (копии
+перекрывали бы системные) и удаляет прежние. Картинка
+`/usr/share/wallpapers/alt-mobile/hex-black-ld.png` из образа ALT Mobile
+(не из пакета) убрана из выбора обоев в `/usr/share/alt-mobile/hidden-wallpapers`.
