@@ -86,5 +86,9 @@ neard, MIFARE Classic с ключами. Подробнее в `docs/settings-pl
   пересчёт раскладки (100 % ЦП, интерфейс не обновлялся, стек в
   `QQuickText::geometryChange` ← `QGridLayoutEngine::setGeometries`).
   Своя строка из двух `Label` с `Layout.preferredWidth: 0`. То же на
-  странице NFC в «Настройках»;
+  странице NFC в «Настройках». Списки (`Repeater` с вложенной `ColumnLayout`
+  внутри FormCard) давали ту же петлю при переходе на «Историю»: история
+  на `ListView`, у делегата ширина списка, записи метки без вложенных
+  раскладок. Проверка без экрана: копия приложения с таймером, который
+  переключает вкладки, и замер ЦП из `/proc/PID/stat`;
 - `console.log` в QML скрыт правилами журнала KDE, для отладки `console.warn`.

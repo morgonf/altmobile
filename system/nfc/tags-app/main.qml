@@ -209,6 +209,44 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    // Строка записи с действием справа. Без вложенных раскладок вокруг
+    // делегата и с Layout.preferredWidth: 0 у подписей: иначе перенос
+    // текста и раскладка пересчитывали друг друга без конца
+    component ActionRow: FormCard.AbstractFormDelegate {
+        id: actionRoot
+        property string description
+        property string actionText
+        Layout.fillWidth: true
+        contentItem: RowLayout {
+            spacing: Kirigami.Units.largeSpacing
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                spacing: Kirigami.Units.smallSpacing
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    text: actionRoot.text
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    visible: text !== ""
+                    text: actionRoot.description
+                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                    color: Kirigami.Theme.disabledTextColor
+                    font: Kirigami.Theme.smallFont
+                }
+            }
+            QQC2.Label {
+                visible: text !== ""
+                text: actionRoot.actionText
+                color: Kirigami.Theme.linkColor
+            }
+        }
+    }
+
     // Поле ввода в карточке. Готовые поля FormCard зовут i18ndc, которого
     // нет у запуска через qml-qt6, поэтому свои
     component Field: FormCard.AbstractFormDelegate {
@@ -306,24 +344,12 @@ Kirigami.ApplicationWindow {
 
             Repeater {
                 model: app.lastTag ? app.lastTag.records : []
-                delegate: ColumnLayout {
+                delegate: ActionRow {
                     required property var modelData
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    FormCard.FormDelegateSeparator {}
-
-                    FormCard.FormButtonDelegate {
-                        text: app.recordTitle(modelData)
-                        description: app.recordText(modelData)
-                        trailing: QQC2.Label {
-                            visible: text !== ""
-                            text: app.recordAction(modelData)
-                            color: Kirigami.Theme.linkColor
-                        }
-                        enabled: app.recordAction(modelData) !== ""
-                        onClicked: app.act(modelData)
-                    }
+                    text: app.recordTitle(modelData)
+                    description: app.recordText(modelData)
+                    actionText: app.recordAction(modelData)
+                    onClicked: if (actionText) app.act(modelData)
                 }
             }
         }
@@ -482,51 +508,56 @@ Kirigami.ApplicationWindow {
         }
     }
 
-    FormCard.FormCardPage {
+    // История на ListView: у делегата ширина списка, петле раскладки
+    // взяться неоткуда (FormCard с Repeater вешал приложение на 100 % ЦП)
+    Kirigami.ScrollablePage {
         id: historyPage
         visible: false
-        // Без полосы прокрутки: её появление сужало страницу, текст
-        // переносился иначе, полоса пропадала, и так по кругу (100 % ЦП)
-        verticalScrollBarPolicy: QQC2.ScrollBar.AlwaysOff
         title: "История"
 
-        FormCard.FormCard {
-            Layout.topMargin: Kirigami.Units.largeSpacing
+        actions: [
+            Kirigami.Action {
+                icon.name: "edit-clear-history"
+                text: "Очистить"
+                enabled: app.history.length > 0
+                onTriggered: app.call("ClearHistory", "", [], () => app.refresh())
+            }
+        ]
 
-            InfoRow {
-                visible: app.history.length === 0
+        ListView {
+            model: app.history
+
+            Kirigami.PlaceholderMessage {
+                anchors.centerIn: parent
+                width: parent.width - Kirigami.Units.gridUnit * 4
+                visible: parent.count === 0
                 text: "Меток пока не было"
             }
 
-            Repeater {
-                model: app.history
-                delegate: ColumnLayout {
-                    required property var modelData
-                    required property int index
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    FormCard.FormDelegateSeparator { visible: index > 0 }
-
-                    InfoRow {
-                        text: modelData.records.length > 0
-                              ? modelData.records.map(r => app.recordTitle(r) + " " + app.recordText(r)).join("; ")
-                              : app.tagKind(modelData)
-                        description: new Date(modelData.time * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat)
-                                     + " · " + modelData.type + (modelData.uid ? " · UID " + modelData.uid : "")
+            delegate: QQC2.ItemDelegate {
+                id: row
+                required property var modelData
+                width: ListView.view.width
+                contentItem: ColumnLayout {
+                    spacing: Kirigami.Units.smallSpacing
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        text: row.modelData.records.length > 0
+                              ? row.modelData.records.map(r => app.recordTitle(r) + " " + app.recordText(r)).join("; ")
+                              : app.tagKind(row.modelData)
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        wrapMode: Text.WordWrap
+                        color: Kirigami.Theme.disabledTextColor
+                        font: Kirigami.Theme.smallFont
+                        text: new Date(row.modelData.time * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat)
+                              + " · " + row.modelData.type + (row.modelData.uid ? " · UID " + row.modelData.uid : "")
                     }
                 }
-            }
-        }
-
-        FormCard.FormCard {
-            visible: app.history.length > 0
-            Layout.topMargin: Kirigami.Units.largeSpacing
-
-            FormCard.FormButtonDelegate {
-                icon.name: "edit-clear-history"
-                text: "Очистить историю"
-                onClicked: app.call("ClearHistory", "", [], () => app.refresh())
             }
         }
     }
