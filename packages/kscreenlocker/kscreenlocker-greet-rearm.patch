@@ -1,0 +1,27 @@
+--- a/greeter/authenticator.cpp
++++ b/greeter/authenticator.cpp
+@@ -432,6 +432,8 @@
+             Q_EMIT failed();
+             return;
+         case ConvPutAuthError:
++            // Раньше ответа не было вовсе, и экран блокировки ждал его вечно
++            Q_EMIT failed();
+             return;
+         case ConvPutAuthUnavailable:
+             m_unavailable = true;
+@@ -439,6 +441,15 @@
+             return;
+         case ConvPutAuthAbort:
+             Q_EMIT cancelled();
++            // Разговор PAM прерывает отмена, которую greeterapp.cpp шлёт по
++            // PrepareForSleep при засыпании и пробуждении. Состояние
++            // PamAuthenticators при этом остаётся Authenticating, поэтому
++            // startAuthenticating() проверку заново не начнёт, и пароль,
++            // введённый после пробуждения, уходит в пустоту, и окно не отвечает.
++            // Сразу просим новый запрос пароля.
++            if (m_type == PamAuthenticator::NoninteractiveAuthenticatorType::None) {
++                startAuth();
++            }
+             return;
+         }
+     }
