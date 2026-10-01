@@ -21,6 +21,7 @@ SPDX-License-Identifier: MIT
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSet>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
@@ -32,6 +33,8 @@ class AltAppearanceKcm : public KQuickConfigModule
 {
     Q_OBJECT
     Q_PROPERTY(bool dark READ dark NOTIFY schemeChanged)
+    // Установленные глобальные темы: id, name, preview, scheme, current
+    Q_PROPERTY(QVariantList themes READ themes NOTIFY themesChanged)
     Q_PROPERTY(QVariantList wallpapers READ wallpapers NOTIFY wallpapersChanged)
     Q_PROPERTY(QString homeWallpaper READ homeWallpaper NOTIFY wallpaperChanged)
     Q_PROPERTY(QString lockWallpaper READ lockWallpaper NOTIFY wallpaperChanged)
@@ -41,6 +44,62 @@ public:
         : KQuickConfigModule(parent, data)
     {
         setButtons(NoAdditionalButton);
+        scanWallpapers();
+        scanThemes();
+    }
+
+    QVariantList themes() const
+    {
+        return m_themes;
+    }
+
+    // Глобальная тема целиком (цвета, значки, шрифты) с сохранением обоев:
+    // plasma-apply-lookandfeel ставит и обои темы, их возвращаем после
+    Q_INVOKABLE void applyTheme(const QString &id)
+    {
+        const QString home = currentImage(QStringLiteral("home"));
+        const QString lock = currentImage(QStringLiteral("lock"));
+        QString scheme;
+        for (const QVariant &v : std::as_const(m_themes)) {
+            if (v.toMap().value(QStringLiteral("id")) == id) {
+                scheme = v.toMap().value(QStringLiteral("scheme")).toString();
+            }
+        }
+        auto process = new QProcess(this);
+        connect(process, &QProcess::finished, this, [this, process, home, lock, scheme]() {
+            process->deleteLater();
+            if (!home.isEmpty()) {
+                setWallpaper(home, true, false);
+            }
+            if (!lock.isEmpty()) {
+                setWallpaper(lock, false, true);
+            }
+            // Приложения GTK и libadwaita: тёмный или светлый вид по схеме
+            QProcess::startDetached(QStringLiteral("gsettings"),
+                                    {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"),
+                                     scheme.contains(QLatin1String("Dark")) ? QStringLiteral("prefer-dark") : QStringLiteral("default")});
+            scanThemes();
+            Q_EMIT schemeChanged();
+        });
+        process->start(QStringLiteral("plasma-apply-lookandfeel"), {QStringLiteral("--apply"), id});
+    }
+
+    // Тема из архива (.tar.gz, .zip) в ~/.local/share/plasma/look-and-feel
+    Q_INVOKABLE void installTheme(const QUrl &url)
+    {
+        auto process = new QProcess(this);
+        connect(process, &QProcess::finished, this, [this, process]() {
+            process->deleteLater();
+            scanThemes();
+        });
+        process->start(QStringLiteral("kpackagetool6"),
+                       {QStringLiteral("--type"), QStringLiteral("Plasma/LookAndFeel"), QStringLiteral("--install"), url.toLocalFile()});
+    }
+
+    // После загрузки из KDE Store
+    Q_INVOKABLE void rescan()
+    {
+        scanThemes();
         scanWallpapers();
     }
 
@@ -86,6 +145,7 @@ public:
         auto process = new QProcess(this);
         connect(process, &QProcess::finished, this, [this, process]() {
             process->deleteLater();
+            scanThemes();
             Q_EMIT schemeChanged();
         });
         process->start(QStringLiteral("/usr/libexec/alt-mobile/set-color-scheme"), {dark ? QStringLiteral("dark") : QStringLiteral("light")});
@@ -135,10 +195,78 @@ public:
 
 Q_SIGNALS:
     void schemeChanged();
+    void themesChanged();
     void wallpapersChanged();
     void wallpaperChanged();
 
 private:
+    // Источник текущих обоев (путь к пакету или картинке) для home или lock
+    QString currentImage(const QString &where) const
+    {
+        QString image;
+        if (where == QLatin1String("lock")) {
+            KSharedConfig::Ptr config = KSharedConfig::openConfig(QStringLiteral("kscreenlockerrc"));
+            config->reparseConfiguration();
+            image = KConfigGroup(config, QStringLiteral("Greeter"))
+                        .group(QStringLiteral("Wallpaper"))
+                        .group(QStringLiteral("org.kde.image"))
+                        .group(QStringLiteral("General"))
+                        .readEntry("Image");
+        } else {
+            KSharedConfig::Ptr config = KSharedConfig::openConfig(QStringLiteral("plasma-org.kde.plasma.mobileshell-appletsrc"));
+            config->reparseConfiguration();
+            const KConfigGroup containments(config, QStringLiteral("Containments"));
+            for (const QString &id : containments.groupList()) {
+                image = containments.group(id).group(QStringLiteral("Wallpaper")).group(QStringLiteral("org.kde.image")).group(QStringLiteral("General")).readEntry("Image");
+                if (!image.isEmpty()) {
+                    break;
+                }
+            }
+        }
+        QString path = image.startsWith(QLatin1String("file://")) ? QUrl(image).toLocalFile() : image;
+        if (path.endsWith(QLatin1Char('/'))) {
+            path.chop(1);
+        }
+        return path;
+    }
+
+    void scanThemes()
+    {
+        KSharedConfig::Ptr globals = KSharedConfig::openConfig(QStringLiteral("kdeglobals"));
+        globals->reparseConfiguration();
+        const QString currentScheme = KConfigGroup(globals, QStringLiteral("General")).readEntry("ColorScheme");
+        const QString currentIcons = KConfigGroup(globals, QStringLiteral("Icons")).readEntry("Theme", QStringLiteral("breeze"));
+        QVariantList alt, other;
+        QSet<QString> seen;
+        const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::GenericDataLocation, QStringLiteral("plasma/look-and-feel"), QStandardPaths::LocateDirectory);
+        for (const QString &base : dirs) {
+            for (const QFileInfo &info : QDir(base).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+                if (seen.contains(info.fileName()) || !QFile::exists(info.filePath() + QStringLiteral("/metadata.json"))) {
+                    continue;
+                }
+                seen << info.fileName();
+                const KConfig defaults(info.filePath() + QStringLiteral("/contents/defaults"), KConfig::SimpleConfig);
+                const KConfigGroup kdeglobals(&defaults, QStringLiteral("kdeglobals"));
+                const QString scheme = kdeglobals.group(QStringLiteral("General")).readEntry("ColorScheme");
+                const QString icons = kdeglobals.group(QStringLiteral("Icons")).readEntry("Theme", QStringLiteral("breeze"));
+                QString preview = info.filePath() + QStringLiteral("/contents/previews/fullscreenpreview.jpg");
+                if (!QFile::exists(preview)) {
+                    preview = info.filePath() + QStringLiteral("/contents/previews/preview.png");
+                }
+                const QVariantMap item{
+                    {QStringLiteral("id"), info.fileName()},
+                    {QStringLiteral("name"), packageName(info.filePath())},
+                    {QStringLiteral("preview"), QFile::exists(preview) ? preview : QString()},
+                    {QStringLiteral("scheme"), scheme},
+                    {QStringLiteral("current"), scheme == currentScheme && icons == currentIcons},
+                };
+                (info.fileName().startsWith(QLatin1String("org.altlinux")) ? alt : other) << item;
+            }
+        }
+        m_themes = alt + other;
+        Q_EMIT themesChanged();
+    }
+
     static bool isImage(const QString &name)
     {
         static const QStringList suffixes{QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("png"), QStringLiteral("webp"), QStringLiteral("avif"), QStringLiteral("jxl")};
@@ -229,6 +357,7 @@ private:
     }
 
     QVariantList m_wallpapers;
+    QVariantList m_themes;
 };
 
 K_PLUGIN_CLASS_WITH_JSON(AltAppearanceKcm, "kcm_altappearance.json")

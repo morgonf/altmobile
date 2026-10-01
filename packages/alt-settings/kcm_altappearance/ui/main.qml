@@ -6,14 +6,18 @@ SPDX-License-Identifier: MIT
 
 import QtQuick
 import QtQuick.Controls as QQC2
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import org.kde.kcmutils as KCM
 import org.kde.kirigami as Kirigami
 import org.kde.kirigamiaddons.formcard 1 as FormCard
+import org.kde.newstuff as NewStuff
 
-// ALT Mobile: «Тема и обои». Вид (тёмный или светлый) меняется сразу
-// касанием карточки. Обои выбираются на отдельной странице с крупным
+// ALT Mobile: «Тема и обои». Глобальная тема (ALT Mobile тёмная и
+// светлая первыми, затем остальные установленные) меняется сразу касанием
+// карточки, обои при этом сохраняются. Темы можно загрузить из KDE Store
+// или поставить из архива. Обои выбираются на отдельной странице с крупным
 // предпросмотром и ставятся кнопкой «Установить».
 KCM.SimpleKCM {
     id: root
@@ -25,14 +29,12 @@ KCM.SimpleKCM {
 
     component ThemeCard: QQC2.AbstractButton {
         id: card
-        required property bool darkVariant
-        required property string label
-        required property string preview
-        readonly property bool current: kcm.dark === darkVariant
+        required property var modelData
+        readonly property bool current: modelData.current
 
         Layout.fillWidth: true
-        implicitHeight: column.implicitHeight + Kirigami.Units.largeSpacing * 2
-        onClicked: if (!current) kcm.setDark(darkVariant)
+        implicitHeight: column.implicitHeight + Kirigami.Units.largeSpacing
+        onClicked: if (!current) kcm.applyTheme(modelData.id)
 
         contentItem: ColumnLayout {
             id: column
@@ -43,26 +45,55 @@ KCM.SimpleKCM {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 6
                 Layout.preferredHeight: Layout.preferredWidth * 2.17
                 radius: Kirigami.Units.cornerRadius
-                color: "transparent"
+                color: Kirigami.Theme.alternateBackgroundColor
                 border.width: card.current ? 3 : 1
                 border.color: card.current ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
 
                 Image {
                     anchors.fill: parent
                     anchors.margins: 3
-                    source: card.preview
+                    source: card.modelData.preview ? "file://" + card.modelData.preview : ""
+                    sourceSize.width: 400
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
+                }
+                Kirigami.Icon {
+                    anchors.centerIn: parent
+                    visible: !card.modelData.preview
+                    source: "preferences-desktop-theme-global"
+                    implicitWidth: Kirigami.Units.iconSizes.huge
+                    implicitHeight: implicitWidth
                 }
             }
 
             QQC2.RadioButton {
                 Layout.alignment: Qt.AlignHCenter
-                text: card.label
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 7
+                text: card.modelData.name
                 checked: card.current
                 onClicked: card.clicked()
+                contentItem: QQC2.Label {
+                    leftPadding: parent.indicator.width + parent.spacing
+                    text: parent.text
+                    wrapMode: Text.WordWrap
+                    horizontalAlignment: Text.AlignHCenter
+                }
             }
         }
+    }
+
+    FileDialog {
+        id: themeFileDialog
+        title: "Архив глобальной темы"
+        nameFilters: ["Темы Plasma (*.tar.gz *.tar.xz *.tgz *.zip)"]
+        onAccepted: kcm.installTheme(selectedFile)
+    }
+
+    NewStuff.Dialog {
+        id: themeStore
+        configFile: "lookandfeel.knsrc"
+        onEntryEvent: (entry, event) => kcm.rescan()
+        onVisibleChanged: if (!visible) kcm.rescan()
     }
 
     component WallpaperRow: FormCard.AbstractFormDelegate {
@@ -105,20 +136,33 @@ KCM.SimpleKCM {
         }
 
         FormCard.FormCard {
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
                 Layout.margins: Kirigami.Units.largeSpacing
+                columns: 2
+                rowSpacing: Kirigami.Units.largeSpacing
 
-                ThemeCard {
-                    darkVariant: true
-                    label: "Тёмная"
-                    preview: "file:///usr/share/plasma/look-and-feel/org.altlinux.mobile/contents/previews/fullscreenpreview.jpg"
+                Repeater {
+                    model: kcm.themes
+                    delegate: ThemeCard {}
                 }
-                ThemeCard {
-                    darkVariant: false
-                    label: "Светлая"
-                    preview: "file:///usr/share/plasma/look-and-feel/org.altlinux.mobile.light/contents/previews/fullscreenpreview.jpg"
-                }
+            }
+
+            FormCard.FormDelegateSeparator {}
+
+            FormCard.FormButtonDelegate {
+                icon.name: "get-hot-new-stuff"
+                text: "Загрузить темы"
+                description: "Из каталога KDE Store, нужен интернет"
+                onClicked: themeStore.open()
+            }
+
+            FormCard.FormDelegateSeparator {}
+
+            FormCard.FormButtonDelegate {
+                icon.name: "document-open"
+                text: "Установить тему из файла"
+                onClicked: themeFileDialog.open()
             }
         }
 

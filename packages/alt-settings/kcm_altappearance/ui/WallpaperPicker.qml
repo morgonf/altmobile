@@ -11,6 +11,7 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import org.kde.kirigami as Kirigami
+import org.kde.newstuff as NewStuff
 
 // ALT Mobile: выбор обоев. Касание миниатюры только показывает её крупно
 // сверху, записывает обои кнопка «Установить». Переключатель «Также на
@@ -30,13 +31,12 @@ Kirigami.ScrollablePage {
         selectedPreview = current;
     }
 
-    actions: [
-        Kirigami.Action {
-            icon.name: "list-add"
-            text: "Из файлов"
-            onTriggered: fileDialog.open()
-        }
-    ]
+    NewStuff.Dialog {
+        id: wallpaperStore
+        configFile: "wallpaper-mobile.knsrc"
+        onEntryEvent: (entry, event) => kcm.rescan()
+        onVisibleChanged: if (!visible) kcm.rescan()
+    }
 
     FileDialog {
         id: fileDialog
@@ -89,6 +89,22 @@ Kirigami.ScrollablePage {
                 const lock = page.target === "lock" || bothSwitch.checked;
                 kcm.setWallpaper(page.selected, home, lock);
                 kcm.pop();
+            }
+        }
+
+        RowLayout {
+            Layout.alignment: Qt.AlignHCenter
+            spacing: Kirigami.Units.largeSpacing
+
+            QQC2.Button {
+                icon.name: "document-open"
+                text: "Из файлов"
+                onClicked: fileDialog.open()
+            }
+            QQC2.Button {
+                icon.name: "get-hot-new-stuff"
+                text: "Загрузить"
+                onClicked: wallpaperStore.open()
             }
         }
 
