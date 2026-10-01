@@ -1,0 +1,11 @@
+[Unit]
+Description=Опрос NFC без остановок после ошибок чтения
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/alt-nfc-poll.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target
