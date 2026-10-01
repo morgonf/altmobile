@@ -1580,7 +1580,7 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 -                    configObject: kcm.settings
 -                    settingName: "Timeout"
 +            // Сеанс на телефоне входит сам, без этого после включения
-+            // телефон открыт без PIN. По умолчанию включено в /etc/xdg/kscreenlockerrc
++            // телефон открыт без PIN. Умолчание «включено» в ~/.config и /etc/skel
 +            FormCard.FormSwitchDelegate {
 +                id: startSwitch
 +                text: "Спрашивать PIN после включения"

@@ -7,8 +7,10 @@
 #    plasma_shell_org.kde.plasma.phone. Указываем каталог явно (i18nd).
 # 3. Блокировка после включения. Сеанс Plasma Mobile входит сам, а
 #    LockOnStart по умолчанию выключен: после перезагрузки телефон был открыт
-#    без PIN. Включено для всех в /etc/xdg/kscreenlockerrc, переключатель на
-#    странице «Блокировка и PIN-код».
+#    без PIN. Умолчание «включено» пишется в /etc/skel (новые пользователи),
+#    пользователю altlinux в ~/.config. Не в /etc/xdg: выключение на
+#    странице «Блокировка и PIN-код» удаляет ключ (false совпадает со
+#    встроенным умолчанием), и общесистемное true возвращалось бы.
 # 2. Скорость отказа. /etc/pam.d/kde (пакет kscreenlocker ALT) включает
 #    system-auth-multi, где после pam_tcb идёт pam_krb5. Области Kerberos
 #    на телефоне нет, а pam_krb5 тратит на неверном PIN 5-12 секунд, и всё
@@ -21,4 +23,6 @@ grep -n i18n $Q
 [ -f $P.orig ] || cp -a $P $P.orig
 sed -i 's/system-auth-multi$/system-auth/' $P
 cat $P
-kwriteconfig6 --file /etc/xdg/kscreenlockerrc --group Daemon --key LockOnStart true
+install -d /etc/skel/.config
+kwriteconfig6 --file /etc/skel/.config/kscreenlockerrc --group Daemon --key LockOnStart true
+su - altlinux -c "kwriteconfig6 --file kscreenlockerrc --group Daemon --key LockOnStart true"
