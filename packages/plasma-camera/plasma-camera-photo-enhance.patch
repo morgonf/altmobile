@@ -1,0 +1,232 @@
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -12,6 +12,7 @@
+     plasmacamera/flash.cpp
+     plasmacamera/image.cpp
+     plasmacamera/nightmerge.cpp
++    plasmacamera/photoenhance.cpp
+     plasmacamera/path.cpp
+     plasmacamera/settings.cpp
+     plasmacamera/worker.cpp
+--- a/src/plasmacameramanager.cpp
++++ b/src/plasmacameramanager.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include "camerasettings.h"
+ #include "plasmacamera/nightmerge.h"
++#include "plasmacamera/photoenhance.h"
+ #include "plasmacamera/path.h"
+ #include "plasmacameramanager.h"
+ 
+@@ -561,17 +562,14 @@
+         return;
+     }
+ 
+-    if (frames.size() == 1) {
+-        saveCaptureImage(frames.head());
+-        return;
+-    }
+-
+-    // Night burst: merge away from the GUI thread, then save as usual
++    // Night burst is merged first. Every photo then gets noise reduction,
++    // sharpening and a contrast curve (PhotoEnhance), away from the GUI
++    // thread, and is saved as usual
+     m_processingPhoto = true;
+     Q_EMIT processingPhotoChanged();
+     const QList<QImage> burst(frames.begin(), frames.end());
+     QThreadPool::globalInstance()->start([this, burst]() {
+-        QImage merged = NightMerge::merge(burst);
++        QImage merged = PhotoEnhance::process(burst.size() == 1 ? burst.first() : NightMerge::merge(burst));
+         QMetaObject::invokeMethod(this, [this, merged]() {
+             m_processingPhoto = false;
+             Q_EMIT processingPhotoChanged();
+--- /dev/null
++++ b/src/plasmacamera/photoenhance.h
+@@ -0,0 +1,13 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <QImage>
++
++namespace PhotoEnhance
++{
++// Chroma noise reduction, mild luma smoothing, sharpening and a contrast
++// curve for a captured photo (see photoenhance.cpp)
++QImage process(const QImage &input);
++}
+--- /dev/null
++++ b/src/plasmacamera/photoenhance.cpp
+@@ -0,0 +1,171 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// ALT Mobile: post-processing of a captured photo before it is saved.
++// The software ISP of libcamera has no noise reduction, no sharpening and
++// only a gamma curve. Under warm indoor light the blue channel of the
++// OnePlus 6T sensors is about 4x weaker than green, white balance boosts it
++// and its noise shows up as yellow and blue speckles at 100 %.
++//
++// 1. Chroma noise: Cb and Cr are averaged over 4x4 blocks, smoothed with a
++//    3x3 box on that grid and upsampled bilinearly (about 12 px radius).
++// 2. Luma: half-strength 3x3 smoothing, then unsharp mask (5x5 box twice)
++//    with a threshold, so fine noise is not sharpened.
++// 3. Tone curve: a soft S around the middle for contrast.
++
++#include "photoenhance.h"
++
++#include <QThread>
++
++#include <algorithm>
++#include <cmath>
++#include <functional>
++#include <thread>
++#include <vector>
++
++namespace
++{
++void parallelRows(int rows, const std::function<void(int, int)> &fn)
++{
++    const int n = std::max(1, std::min(4, QThread::idealThreadCount()));
++    std::vector<std::thread> threads;
++    const int chunk = (rows + n - 1) / n;
++    for (int i = 0; i < n; ++i) {
++        const int a = i * chunk;
++        const int b = std::min(rows, a + chunk);
++        if (a < b) {
++            threads.emplace_back(fn, a, b);
++        }
++    }
++    for (auto &t : threads) {
++        t.join();
++    }
++}
++
++// Horizontal then vertical box blur of radius r, in place (tmp is scratch)
++void boxBlur(std::vector<float> &a, std::vector<float> &tmp, int w, int h, int r)
++{
++    const float k = 1.0f / (2 * r + 1);
++    parallelRows(h, [&](int y0, int y1) {
++        for (int y = y0; y < y1; ++y) {
++            const float *src = &a[size_t(y) * w];
++            float *dst = &tmp[size_t(y) * w];
++            float sum = 0;
++            for (int i = -r; i <= r; ++i) {
++                sum += src[std::clamp(i, 0, w - 1)];
++            }
++            for (int x = 0; x < w; ++x) {
++                dst[x] = sum * k;
++                sum += src[std::min(x + r + 1, w - 1)] - src[std::max(x - r, 0)];
++            }
++        }
++    });
++    parallelRows(w, [&](int x0, int x1) {
++        std::vector<float> col(h);
++        for (int x = x0; x < x1; ++x) {
++            for (int y = 0; y < h; ++y) {
++                col[y] = tmp[size_t(y) * w + x];
++            }
++            float sum = 0;
++            for (int i = -r; i <= r; ++i) {
++                sum += col[std::clamp(i, 0, h - 1)];
++            }
++            for (int y = 0; y < h; ++y) {
++                a[size_t(y) * w + x] = sum * k;
++                sum += col[std::min(y + r + 1, h - 1)] - col[std::max(y - r, 0)];
++            }
++        }
++    });
++}
++}
++
++QImage PhotoEnhance::process(const QImage &input)
++{
++    QImage img = input.convertToFormat(QImage::Format_RGB888);
++    const int w = img.width();
++    const int h = img.height();
++    if (w < 16 || h < 16) {
++        return img;
++    }
++
++    // Luma, and chroma summed over 4x4 blocks
++    const int cw = (w + 3) / 4;
++    const int ch = (h + 3) / 4;
++    std::vector<float> luma(size_t(w) * h);
++    std::vector<float> cb(size_t(cw) * ch, 0.0f), cr(size_t(cw) * ch, 0.0f), cn(size_t(cw) * ch, 0.0f);
++    parallelRows(ch, [&](int by0, int by1) {
++        for (int y = by0 * 4; y < std::min(h, by1 * 4); ++y) {
++            const uchar *p = img.constScanLine(y);
++            for (int x = 0; x < w; ++x) {
++                const float r = p[3 * x], g = p[3 * x + 1], b = p[3 * x + 2];
++                const float yy = 0.299f * r + 0.587f * g + 0.114f * b;
++                luma[size_t(y) * w + x] = yy;
++                const size_t c = size_t(y / 4) * cw + x / 4;
++                cb[c] += b - yy;
++                cr[c] += r - yy;
++                cn[c] += 1;
++            }
++        }
++    });
++    for (size_t i = 0; i < cb.size(); ++i) {
++        cb[i] /= cn[i];
++        cr[i] /= cn[i];
++    }
++    {
++        std::vector<float> tmp(cb.size());
++        boxBlur(cb, tmp, cw, ch, 1);
++        boxBlur(cr, tmp, cw, ch, 1);
++    }
++
++    // Luma: half-strength 3x3 smoothing, then thresholded unsharp mask
++    std::vector<float> tmp(luma.size());
++    std::vector<float> smooth = luma;
++    boxBlur(smooth, tmp, w, h, 1);
++    for (size_t i = 0; i < luma.size(); ++i) {
++        luma[i] = 0.5f * luma[i] + 0.5f * smooth[i];
++    }
++    smooth = luma;
++    boxBlur(smooth, tmp, w, h, 2);
++    boxBlur(smooth, tmp, w, h, 2);
++    tmp.clear();
++    tmp.shrink_to_fit();
++
++    // Tone curve lookup: 0.6 * y + 0.4 * smoothstep(y), y in 0..1
++    std::vector<float> curve(1024);
++    for (int i = 0; i < 1024; ++i) {
++        const float y = i / 1023.0f;
++        curve[i] = 255.0f * (0.6f * y + 0.4f * y * y * (3 - 2 * y));
++    }
++
++    QImage out(w, h, QImage::Format_RGB888);
++    parallelRows(h, [&](int y0, int y1) {
++        for (int y = y0; y < y1; ++y) {
++            uchar *o = out.scanLine(y);
++            // bilinear position on the chroma grid (block centres)
++            const float fy = std::clamp((y - 1.5f) / 4.0f, 0.0f, float(ch - 1));
++            const int cy0 = int(fy), cy1 = std::min(cy0 + 1, ch - 1);
++            const float ty = fy - cy0;
++            for (int x = 0; x < w; ++x) {
++                const size_t i = size_t(y) * w + x;
++                float d = luma[i] - smooth[i];
++                d = std::abs(d) < 5.0f ? 0.0f : d - std::copysign(5.0f, d);
++                const float l = std::clamp((luma[i] + 0.6f * d) / 255.0f, 0.0f, 1.0f);
++                const float yy = curve[int(l * 1023.0f + 0.5f)];
++
++                const float fx = std::clamp((x - 1.5f) / 4.0f, 0.0f, float(cw - 1));
++                const int cx0 = int(fx), cx1 = std::min(cx0 + 1, cw - 1);
++                const float tx = fx - cx0;
++                auto lerp2 = [&](const std::vector<float> &c) {
++                    const float a = c[size_t(cy0) * cw + cx0] * (1 - tx) + c[size_t(cy0) * cw + cx1] * tx;
++                    const float b = c[size_t(cy1) * cw + cx0] * (1 - tx) + c[size_t(cy1) * cw + cx1] * tx;
++                    return a * (1 - ty) + b * ty;
++                };
++                const float vb = lerp2(cb), vr = lerp2(cr);
++                o[3 * x] = uchar(std::clamp(yy + vr, 0.0f, 255.0f));
++                o[3 * x + 1] = uchar(std::clamp(yy - 0.50937f * vr - 0.19420f * vb, 0.0f, 255.0f));
++                o[3 * x + 2] = uchar(std::clamp(yy + vb, 0.0f, 255.0f));
++            }
++        }
++    });
++    return out;
++}
