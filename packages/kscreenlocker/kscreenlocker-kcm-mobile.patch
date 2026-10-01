@@ -220,6 +220,41 @@ diff -ruN a/kcm/kcm.cpp b/kcm/kcm.cpp
      qmlProtectModule(url, 1);
  
      // Our modules will be checking the Plasmoid attached object when running from Plasma, let it load the module
+@@ -68,6 +72,34 @@
+     updateState();
+ }
+ 
++static void reconfigureScreenLocker()
++{
++    OrgKdeScreensaverInterface interface(QStringLiteral("org.kde.screensaver"), QStringLiteral("/ScreenSaver"), QDBusConnection::sessionBus());
++    if (interface.isValid()) {
++        interface.configure();
++    }
++}
++
++void ScreenLockerKcm::saveLockSettings()
++{
++    KScreenSaverSettings::getInstance().save();
++    reconfigureScreenLocker();
++    updateState();
++}
++
++void ScreenLockerKcm::saveAppearance()
++{
++    m_appearanceSettings->save();
++    reconfigureScreenLocker();
++    updateState();
++}
++
++void ScreenLockerKcm::discardAppearance()
++{
++    m_appearanceSettings->load();
++    updateState();
++}
++
+ void ScreenLockerKcm::defaults()
+ {
+     KQuickManagedConfigModule::defaults();
 diff -ruN a/kcm/kcm.h b/kcm/kcm.h
 --- a/kcm/kcm.h
 +++ b/kcm/kcm.h
@@ -242,7 +277,7 @@ diff -ruN a/kcm/kcm.h b/kcm/kcm.h
  
      Q_INVOKABLE QList<WallpaperInfo> availableWallpaperPlugins()
      {
-@@ -47,6 +52,14 @@
+@@ -47,6 +52,23 @@
      ScreenLocker::WallpaperIntegration *wallpaperIntegration() const;
      QString currentWallpaper() const;
      bool isDefaultsAppearance() const;
@@ -254,10 +289,19 @@ diff -ruN a/kcm/kcm.h b/kcm/kcm.h
 +    {
 +        return m_policy;
 +    }
++
++    // ALT Mobile: на телефоне нет кнопки «Применить». Настройки блокировки
++    // сохраняются сразу, но без обоев: полный save() записывал и обои,
++    // случайно выбранные касанием на странице «Обои экрана блокировки»,
++    // и они «сами» менялись после любой правки. Обои пишет только явная
++    // кнопка «Установить» (saveAppearance), уход без неё их отменяет.
++    Q_INVOKABLE void saveLockSettings();
++    Q_INVOKABLE void saveAppearance();
++    Q_INVOKABLE void discardAppearance();
  
  public Q_SLOTS:
      void load() override;
-@@ -80,4 +93,6 @@
+@@ -80,4 +102,6 @@
      AppearanceSettings *m_appearanceSettings;
      QString m_currentWallpaper;
      bool m_forceUpdateState = false;
@@ -1007,6 +1051,39 @@ diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 +
 +    bool m_busy = false;
 +};
+diff -ruN a/kcm/ui/Appearance.qml b/kcm/ui/Appearance.qml
+--- a/kcm/ui/Appearance.qml
++++ b/kcm/ui/Appearance.qml
+@@ -21,6 +21,29 @@
+ 
+     title: i18nc("@title", "Appearance")
+ 
++    // ALT Mobile: выбор миниатюры здесь только предпросмотр. Записывает
++    // обои кнопка «Установить», уход со страницы без неё выбор отменяет
++    // (kcm.h, saveAppearance)
++    property bool applied: false
++
++    actions: [
++        Kirigami.Action {
++            icon.name: "dialog-ok-apply"
++            text: "Установить"
++            onTriggered: {
++                appearanceRoot.applied = true;
++                kcm.saveAppearance();
++                kcm.pop();
++            }
++        }
++    ]
++
++    Component.onDestruction: {
++        if (!applied) {
++            kcm.discardAppearance();
++        }
++    }
++
+     padding: 6  // Layout_ChildMarginWidth from Breeze
+ 
+     ColumnLayout {
 diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 --- a/kcm/ui/ChangePin.qml
 +++ b/kcm/ui/ChangePin.qml
@@ -1312,7 +1389,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 --- a/kcm/ui/main.qml
 +++ b/kcm/ui/main.qml
-@@ -2,237 +2,167 @@
+@@ -2,237 +2,168 @@
  SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
  SPDX-FileCopyrightText: 2024 Kristen McWilliam <kmcwilliampublic@gmail.com>
  SPDX-FileCopyrightText: 2024 Jakob Petsovits <jpetso@petsovits.com>
@@ -1336,7 +1413,7 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
  
 +// ALT Mobile: страница в мобильном стиле карточек FormCard, как «Дата и
 +// время». Раздел «PIN-код» открывает смену кода с цифровой клавиатурой
-+// (ChangePin.qml). Каждое изменение сохраняется сразу. Сочетание клавиш и
++// (ChangePin.qml). Каждое изменение сохраняется сразу, кроме обоев. Сочетание клавиш и
 +// произвольная длительность из настольной версии убраны.
  KCM.SimpleKCM {
      id: root
@@ -1347,16 +1424,17 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +    rightPadding: 0
 +    topPadding: 0
 +    bottomPadding: 0
++
++    // Только настройки блокировки, без обоев (kcm.h, saveLockSettings)
++    function apply() {
++        kcm.saveLockSettings();
++    }
  
 -    actions:  [
 -        Kirigami.Action {
 -            text: i18nc("@action:button", "Configure Appearance…")
 -            icon.name: "edit-image-symbolic"
 -            onTriggered: kcm.push("Appearance.qml")
-+    function apply() {
-+        kcm.save();
-+    }
-+
 +    // Выбор по значению: индекс строки или -1, если такого значения в
 +    // списке нет (задано вручную в файле настроек)
 +    function indexOf(model, value) {
@@ -1376,7 +1454,7 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +        { value: 10, text: i18n("10 minutes") },
 +        { value: 15, text: i18n("15 minutes") },
 +        { value: 30, text: i18n("30 minutes") },
-     ]
++    ]
 +
 +    // -1 означает «не спрашивать PIN» (requirePassword = false)
 +    readonly property var graceModel: [
@@ -1387,7 +1465,7 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +        { value: 300, text: "Через 5 минут" },
 +        { value: 900, text: "Через 15 минут" },
 +        { value: -1, text: "Не спрашивать" },
-+    ]
+     ]
 +
      ColumnLayout {
          spacing: 0
