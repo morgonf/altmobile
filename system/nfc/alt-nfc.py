@@ -16,9 +16,12 @@
 #    растёт до 30 секунд.
 # 3. Пока экран заблокирован (org.freedesktop.ScreenSaver), опрос стоит,
 #    как в Android: метки не читаются с чужих рук и заряд не тратится.
-# 4. Зависание контроллера (после неудачного подключения к карте PN553
-#    перестаёт отвечать) лечит alt-nfc-reset.service (перепривязка чипа от
-#    root, разрешена правилом polkit), не чаще раза в минуту.
+# 4. Сбой. После неудачного подключения к карте neard держит объект карты и
+#    отвечает «занято», это лечит перезапуск neard (alt-nfc-reset.service от
+#    root, разрешён правилом polkit), не чаще раза в минуту. Если контроллер
+#    завис по-настоящему (адаптер выключился, -110), помогает только
+#    перезагрузка: служба один раз показывает уведомление. Перепривязку
+#    драйвера не делаем, она попадала во взаимную блокировку в ядре.
 # 5. Метки с данными NDEF дают уведомление с действием: ссылка открывается,
 #    сеть Wi-Fi (WSC) подключается, текст копируется, контакт (vCard)
 #    сохраняется и открывается. Записи neard публикует объектами
@@ -137,7 +140,7 @@ def stop_poll():
 
 
 def reset_chip():
-    log("контроллер NFC не отвечает, сброс")
+    log("NFC не отвечает, перезапуск neard")
     try:
         system.call_sync("org.freedesktop.systemd1", "/org/freedesktop/systemd1",
                          "org.freedesktop.systemd1.Manager", "StartUnit",
@@ -157,13 +160,20 @@ def tick():
     if neard_prop("Mode") is None:
         return False  # neard ещё нет, дождёмся NameOwnerChanged
     if not neard_prop("Powered"):
-        # Выключен не нами (после зависания). Powered=true на этом чипе
-        # повторно не срабатывает, только перепривязка
+        # Выключен не нами. Сначала перезапуск neard (с DefaultPowered он
+        # включит адаптер), если и после него выключен, контроллер завис
         if time.monotonic() - state["reset_at"] > 60:
             state["reset_at"] = time.monotonic()
-            reset_chip()
+            state["resets"] = state.get("resets", 0) + 1
+            if state["resets"] <= 2:
+                reset_chip()
+            elif not state.get("dead_notified"):
+                state["dead_notified"] = True
+                notify("NFC не отвечает", "Контроллер NFC завис. Он заработает после перезагрузки телефона.", [])
         schedule(10)
         return False
+    state["resets"] = 0
+    state["dead_notified"] = False
     if not want_polling():
         if neard_prop("Polling"):
             stop_poll()

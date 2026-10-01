@@ -1,5 +1,5 @@
 [Unit]
-Description=Сброс контроллера NFC
+Description=Восстановление NFC (перезапуск neard)
 
 [Service]
 Type=oneshot

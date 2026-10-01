@@ -1,16 +1,13 @@
 #!/bin/sh
-# Сброс контроллера NFC (NXP PN553) перепривязкой к драйверу. Нужен, когда
-# чип перестаёт отвечать по I2C (ошибка -121, таймауты NCI): так бывает
-# после неудачного подключения к карте («Could not connect» у neard).
-# Выгрузка модуля не помогает, перепривязка возвращает чип. Вызывает
-# alt-nfc-poll через службу alt-nfc-reset.service.
-D=/sys/bus/i2c/drivers/nxp-nci_i2c
-DEV=$(basename "$(readlink -f /sys/class/nfc/nfc0/device 2>/dev/null)")
-[ -n "$DEV" ] || DEV=3-0028
-logger -t alt-nfc-reset "сброс NFC $DEV"
-systemctl stop neard
-echo "$DEV" > $D/unbind 2>/dev/null
-sleep 3
-echo "$DEV" > $D/bind
-sleep 2
-systemctl start neard
+# Восстановление NFC (NXP PN553) после сбоя, от root. Вызывает служба
+# пользователя alt-nfc через alt-nfc-reset.service (разрешено polkit).
+#
+# Только перезапуск neard. После неудачного подключения к двойной карте
+# (ISO-DEP и MIFARE Classic) neard держит объект карты и отвечает «занято»
+# на StartPollLoop, хотя контроллер жив. Перепривязку драйвера здесь не
+# делаем: если контроллер завис по-настоящему (I2C -121), отвязка
+# nxp-nci_i2c попадает во взаимную блокировку info_lock в ядре, процессы
+# повисают в состоянии D и не дают даже выключить телефон. Такой сбой
+# лечит только перезагрузка.
+logger -t alt-nfc-reset "перезапуск neard"
+systemctl restart neard
