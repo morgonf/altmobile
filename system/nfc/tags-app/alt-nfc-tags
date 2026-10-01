@@ -1,0 +1,3 @@
+#!/bin/sh
+# «Метки»: приложение чтения и записи меток NFC (QML, Kirigami)
+exec qml-qt6 /usr/share/alt-mobile/nfc-tags/main.qml "$@"

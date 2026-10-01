@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=NFC Tags
+Name[ru]=Метки
+GenericName=NFC tag reader and writer
+GenericName[ru]=Чтение и запись меток NFC
+Comment=Read and write NFC tags
+Comment[ru]=Прочитать метку или карту NFC, записать ссылку, текст, сеть Wi-Fi или контакт
+Exec=alt-nfc-tags
+Icon=nfc
+Categories=Utility;
+Keywords=nfc;tag;метка;карта;
+X-KDE-FormFactor=handset;tablet;

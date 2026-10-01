@@ -63,3 +63,28 @@ neard, MIFARE Classic с ключами. Подробнее в `docs/settings-pl
 Плитка шторки `ru.altlinux.quicksetting.nfc` (значок `nfc` в теме ALT)
 переключает NFC через службу, долгое нажатие открывает страницу NFC в
 «Настройках».
+
+## Приложение «Метки» (01.10.2026)
+
+`tags-app/main.qml` (QML на Kirigami, запуск `alt-nfc-tags` через `qml-qt6`,
+ярлык `ru.altlinux.NfcTags.desktop`). Вкладки «Прочитать» (последняя метка,
+действия с записями через `Act`), «Записать» (ссылка, текст, сеть Wi‑Fi,
+контакт на следующую поднесённую метку, `WriteTag`, итог в `LastWrite`),
+«История». Запись делает служба `alt-nfc` вызовом `org.neard.Tag.Write`
+(ключи neard: `URI`; `Text` с `Encoding`, `Language`, `Representation`;
+`MIME=application/vnd.wfa.wsc` с `SSID`, `Passphrase`; `MIME=text/x-vcard` с
+`Payload`). Запись на метку на телефоне не проверена: нужна записываемая
+метка (NTAG213/215).
+
+Ловушки:
+- модуль `org.kde.plasma.workspace.dbus` отдаёт строки D-Bus объектом
+  `{"value": ...}` (логические значения обычными), `JSON.parse` надо делать
+  от `String(x.value)`;
+- поля ввода FormCard зовут `i18ndc`, которого нет у запуска через
+  `qml-qt6`, поля свои;
+- `FormCard.FormTextDelegate` с переносом пояснения уходил в бесконечный
+  пересчёт раскладки (100 % ЦП, интерфейс не обновлялся, стек в
+  `QQuickText::geometryChange` ← `QGridLayoutEngine::setGeometries`).
+  Своя строка из двух `Label` с `Layout.preferredWidth: 0`. То же на
+  странице NFC в «Настройках»;
+- `console.log` в QML скрыт правилами журнала KDE, для отладки `console.warn`.

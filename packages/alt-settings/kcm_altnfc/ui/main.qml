@@ -48,6 +48,32 @@ KCM.SimpleKCM {
         return t.protocol === "ISO-DEP" ? "Карта без данных NFC (банковская, пропуск)" : "Метка без данных NFC";
     }
 
+    // Строка с заголовком и пояснением. Готовая FormTextDelegate с переносом
+    // уходила в бесконечный пересчёт раскладки (100 % ЦП в «Метках»)
+    component InfoRow: FormCard.AbstractFormDelegate {
+        id: infoRoot
+        property string description
+        background: null
+        contentItem: ColumnLayout {
+            spacing: Kirigami.Units.smallSpacing
+            QQC2.Label {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                text: infoRoot.text
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+            }
+            QQC2.Label {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                visible: text !== ""
+                text: infoRoot.description
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                color: Kirigami.Theme.disabledTextColor
+                font: Kirigami.Theme.smallFont
+            }
+        }
+    }
+
     ColumnLayout {
         spacing: 0
 
@@ -76,20 +102,18 @@ KCM.SimpleKCM {
         }
 
         FormCard.FormCard {
-            FormCard.FormTextDelegate {
+            InfoRow {
                 visible: kcm.history.length === 0
                 text: "Меток пока не было"
             }
 
             Repeater {
                 model: kcm.history
-                delegate: FormCard.FormTextDelegate {
+                delegate: InfoRow {
                     required property var modelData
                     text: root.tagSummary(modelData)
                     description: new Date(modelData.time * 1000).toLocaleString(Qt.locale(), Locale.ShortFormat)
                                  + " · " + modelData.type + (modelData.uid ? " · UID " + modelData.uid : "")
-                    textItem.wrapMode: Text.WordWrap
-                    descriptionItem.wrapMode: Text.WordWrap
                 }
             }
 

@@ -26,6 +26,10 @@
 #    сеть Wi-Fi (WSC) подключается, текст копируется, контакт (vCard)
 #    сохраняется и открывается. Записи neard публикует объектами
 #    org.neard.Record, они ловятся по InterfacesAdded.
+# 7. Запись (для приложения «Метки»): WriteTag(json) взводит запись, и
+#    следующая поднесённая метка получает ссылку, текст, сеть Wi-Fi или
+#    контакт через org.neard.Tag.Write. Итог в свойстве LastWrite (json).
+#    Act(json) выполняет действие с записью, как кнопка уведомления.
 # 6. История последних меток (UID, тип, записи) в
 #    ~/.local/state/alt-mobile/nfc-history.json и по D-Bus (GetHistory,
 #    сигнал TagSeen) для приложения «Метки».
@@ -52,6 +56,11 @@ IFACE_XML = """
     <method name="SetEnabled"><arg type="b" direction="in"/></method>
     <method name="GetHistory"><arg type="s" direction="out"/></method>
     <method name="ClearHistory"/>
+    <property name="WritePending" type="b" access="read"/>
+    <property name="LastWrite" type="s" access="read"/>
+    <method name="WriteTag"><arg type="s" direction="in"/></method>
+    <method name="CancelWrite"/>
+    <method name="Act"><arg type="s" direction="in"/></method>
     <signal name="TagSeen"><arg type="s"/></signal>
   </interface>
 </node>
@@ -71,6 +80,8 @@ state = {
     "last_uid": None,
     "last_uid_time": 0.0,
     "notif_actions": {},
+    "write": None,  # a{sv} для Tag.Write или None
+    "last_write": "",
 }
 tags = {}  # путь метки -> {"uid", "type", "protocol", "records": []}
 
@@ -233,6 +244,8 @@ def on_interfaces_added(conn, sender, path, iface, signal, params):
         props = {k: unpack_value(v) for k, v in ifaces["org.neard.Tag"].items()}
         uid = ":".join("%02X" % b for b in props.get("Uid", []))
         tags[obj] = {"uid": uid, "type": props.get("Type", ""), "protocol": props.get("Protocol", ""), "records": []}
+        if state["write"] is not None:
+            write_tag(obj)
         # Записи приходят следом отдельными объектами, собираем их
         GLib.timeout_add(400, finish_tag, obj)
     elif "org.neard.Record" in ifaces:
@@ -247,6 +260,66 @@ def on_interfaces_removed(conn, sender, path, iface, signal, params):
     # прочитывает и убирает быстрее, чем через 400 мс сработает finish_tag,
     # и она пропадала из истории. Запись удаляет сам finish_tag.
     pass
+
+
+def write_tag(obj):
+    attrs = state["write"]
+    state["write"] = None
+    tags[obj]["written"] = True
+
+    def done(conn, res):
+        try:
+            conn.call_finish(res)
+            result = {"ok": True, "message": "Метка записана"}
+        except GLib.Error as e:
+            result = {"ok": False, "message": e.message.split(": ", 1)[-1]}
+        result["time"] = int(time.time())
+        state["last_write"] = json.dumps(result, ensure_ascii=False)
+        emit_props(["WritePending", "LastWrite"])
+        notify("Метка записана" if result["ok"] else "Не удалось записать метку",
+               "" if result["ok"] else result["message"], [])
+
+    system.call(NEARD, obj, "org.neard.Tag", "Write", GLib.Variant("(a{sv})", (attrs,)),
+                None, 0, 10000, None, done)
+
+
+def build_write(d):
+    """Словарь для Tag.Write из запроса приложения."""
+    kind = d.get("kind")
+    if kind == "URI":
+        return {"Type": GLib.Variant("s", "URI"), "URI": GLib.Variant("s", d["uri"])}
+    if kind == "Text":
+        return {"Type": GLib.Variant("s", "Text"), "Encoding": GLib.Variant("s", "UTF-8"),
+                "Language": GLib.Variant("s", d.get("lang") or "ru"),
+                "Representation": GLib.Variant("s", d["text"])}
+    if kind == "WiFi":
+        a = {"Type": GLib.Variant("s", "MIME"), "MIME": GLib.Variant("s", "application/vnd.wfa.wsc"),
+             "SSID": GLib.Variant("s", d["ssid"])}
+        if d.get("key"):
+            a["Passphrase"] = GLib.Variant("s", d["key"])
+        return a
+    if kind == "Contact":
+        lines = ["BEGIN:VCARD", "VERSION:3.0", "FN:" + d.get("name", "")]
+        if d.get("phone"):
+            lines.append("TEL:" + d["phone"])
+        if d.get("email"):
+            lines.append("EMAIL:" + d["email"])
+        lines.append("END:VCARD")
+        return {"Type": GLib.Variant("s", "MIME"), "MIME": GLib.Variant("s", "text/x-vcard"),
+                "Payload": GLib.Variant("ay", "\r\n".join(lines).encode() + b"\r\n")}
+    raise ValueError("неизвестный тип записи")
+
+
+def act(rec):
+    kind = rec.get("kind")
+    if kind in ("URI", "SmartPoster") and rec.get("uri"):
+        run("xdg-open", rec["uri"])
+    elif kind == "Text":
+        run("wl-copy", rec.get("text", ""))
+    elif kind == "WiFi" and rec.get("ssid"):
+        connect_wifi(rec["ssid"], rec.get("key", ""))
+    elif kind == "Contact":
+        save_contact(rec.get("vcard", ""))
 
 
 def finish_tag(obj):
@@ -264,8 +337,9 @@ def finish_tag(obj):
     add_history(entry)
     session.emit_signal(None, "/ru/altlinux/Nfc", "ru.altlinux.Nfc", "TagSeen",
                         GLib.Variant("(s)", (json.dumps(entry, ensure_ascii=False),)))
-    for rec in records:
-        notify_record(rec)
+    if not tag.get("written"):
+        for rec in records:
+            notify_record(rec)
     return False
 
 
@@ -416,6 +490,10 @@ def get_prop(conn, sender, path, iface, name):
         return GLib.Variant("b", neard_prop("Mode") is not None)
     if name == "Locked":
         return GLib.Variant("b", state["locked"])
+    if name == "WritePending":
+        return GLib.Variant("b", state["write"] is not None)
+    if name == "LastWrite":
+        return GLib.Variant("s", state["last_write"])
     return None
 
 
@@ -436,6 +514,25 @@ def method_call(conn, sender, path, iface, method, params, invocation):
         invocation.return_value(None)
     elif method == "GetHistory":
         invocation.return_value(GLib.Variant("(s)", (json.dumps(load_history(), ensure_ascii=False),)))
+    elif method == "WriteTag":
+        try:
+            state["write"] = build_write(json.loads(params.unpack()[0]))
+        except (ValueError, KeyError) as e:
+            invocation.return_dbus_error("ru.altlinux.Nfc.Error.InvalidArguments", str(e))
+            return
+        state["last_write"] = ""
+        emit_props(["WritePending", "LastWrite"])
+        invocation.return_value(None)
+    elif method == "CancelWrite":
+        state["write"] = None
+        emit_props(["WritePending"])
+        invocation.return_value(None)
+    elif method == "Act":
+        try:
+            act(json.loads(params.unpack()[0]))
+        except ValueError:
+            pass
+        invocation.return_value(None)
     elif method == "ClearHistory":
         try:
             os.remove(HISTORY)

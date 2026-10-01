@@ -20,5 +20,9 @@ systemctl --global enable alt-nfc.service
 rm -rf /usr/share/plasma/quicksettings/ru.altlinux.quicksetting.nfc
 cp -r ru.altlinux.quicksetting.nfc /usr/share/plasma/quicksettings/
 chmod -R u=rwX,go=rX /usr/share/plasma/quicksettings/ru.altlinux.quicksetting.nfc
+install -d /usr/share/alt-mobile/nfc-tags
+install -m 644 tags-app/main.qml /usr/share/alt-mobile/nfc-tags/
+install -m 755 tags-app/alt-nfc-tags /usr/bin/
+install -m 644 tags-app/ru.altlinux.NfcTags.desktop /usr/share/applications/
 systemctl daemon-reload
 busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus ReloadConfig
