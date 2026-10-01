@@ -1,0 +1,46 @@
+From: morgonf <morgonf@altlinux.org>
+Subject: [PATCH] ipa: simple: Check the sensor controls before reading them
+
+processStats() read V4L2_CID_EXPOSURE and V4L2_CID_ANALOGUE_GAIN with
+ControlValue::get<int32_t>() before the "Control(s) missing" check. Right
+after a camera switch DelayedControls may return an empty value for a
+frame, and the type assertion in controls.h aborts the whole application
+from the IPAProxySoft thread. Skip such a frame but still deliver its
+metadata, the pipeline waits for it.
+---
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -321,12 +321,28 @@
+ {
+ 	IPAFrameContext &frameContext = context_.frameContexts.get(frame);
+ 
+-	frameContext.sensor.exposure =
+-		sensorControls.get(V4L2_CID_EXPOSURE).get<int32_t>();
+-	int32_t again = sensorControls.get(V4L2_CID_ANALOGUE_GAIN).get<int32_t>();
++	/*
++	 * Right after a camera switch DelayedControls may hand out empty
++	 * values for a frame; get<int32_t>() on them asserts and aborts the
++	 * whole application. Skip the frame instead, but still deliver its
++	 * metadata, the pipeline waits for it.
++	 */
++	const ControlValue &exposure = sensorControls.get(V4L2_CID_EXPOSURE);
++	const ControlValue &gain = sensorControls.get(V4L2_CID_ANALOGUE_GAIN);
++	if (exposure.type() != ControlTypeInteger32 ||
++	    gain.type() != ControlTypeInteger32) {
++		LOG(IPASoft, Warning)
++			<< "Frame " << frame << ": sensor controls missing, skipping stats";
++		metadataReady.emit(frame, ControlList(controls::controls));
++		return;
++	}
++
++	frameContext.sensor.exposure = exposure.get<int32_t>();
++	int32_t again = gain.get<int32_t>();
+ 	frameContext.sensor.gain = camHelper_ ? camHelper_->gain(again) : again;
+-	frameContext.sensor.vblank = sensorControls.contains(V4L2_CID_VBLANK)
+-		? sensorControls.get(V4L2_CID_VBLANK).get<int32_t>()
++	const ControlValue &vblank = sensorControls.get(V4L2_CID_VBLANK);
++	frameContext.sensor.vblank = vblank.type() == ControlTypeInteger32
++		? vblank.get<int32_t>()
+ 		: context_.configuration.agc.vblankDef;
+ 
+ 	ControlList metadata(controls::controls);

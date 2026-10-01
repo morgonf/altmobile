@@ -1,0 +1,45 @@
+diff -ru a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -517,7 +517,7 @@
+     }
+ 
+     libcamera::FrameBuffer *buffer = request->buffers().at(m_stream);
+-    Image *image = m_mappedBuffers[buffer].get();
++    const std::shared_ptr<Image> &image = m_mappedBuffers[buffer];
+ 
+     // Exposure of this frame, for the flash photo
+     m_frameExposureUs = request->metadata().get(libcamera::controls::ExposureTime).value_or(0);
+@@ -527,9 +527,17 @@
+     // Load frame into m_image
+     size_t size = buffer->metadata().planes()[0].bytesused;
+     if (getNativeFormats().contains(m_format)) {
+-        m_image = QImage(image->data(0).data(), m_size.width(), m_size.height(), static_cast<qsizetype>(size) / m_size.height(), NATIVE_FORMATS[m_format]);
++        // The QImage points into the mapped buffer and travels to the GUI
++        // and render threads (QVideoFrame, video sink, recorder). Keep the
++        // mapping alive for as long as any copy of the image exists: on a
++        // camera switch or a stream restart stopStream() frees the buffers
++        // while the viewfinder may still draw the last frame, and the unmapped
++        // memory crashed the app (SIGSEGV after "Camera offset orientation").
++        auto *holder = new std::shared_ptr<Image>(image);
++        m_image = QImage(image->data(0).data(), m_size.width(), m_size.height(), static_cast<qsizetype>(size) / m_size.height(), NATIVE_FORMATS[m_format],
++                         [](void *p) { delete static_cast<std::shared_ptr<Image> *>(p); }, holder);
+     } else {
+-        m_converter.convert(image, size, &m_image);
++        m_converter.convert(image.get(), size, &m_image);
+     }
+ 
+     {
+diff -ru a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -207,7 +207,8 @@
+ 
+     libcamera::Stream *m_stream{};
+     libcamera::FrameBufferAllocator *m_allocator{};
+-    std::map<libcamera::FrameBuffer *, std::unique_ptr<Image>> m_mappedBuffers;
++    // Shared: a viewfinder QImage keeps the mapping alive (see processRequestData())
++    std::map<libcamera::FrameBuffer *, std::shared_ptr<Image>> m_mappedBuffers;
+     std::vector<std::unique_ptr<libcamera::Request>> m_requests;
+ 
+     // Queue of finished requests with data, waiting for processing
