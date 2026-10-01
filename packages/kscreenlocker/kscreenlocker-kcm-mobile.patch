@@ -628,7 +628,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 --- a/kcm/ui/main.qml
 +++ b/kcm/ui/main.qml
-@@ -2,237 +2,157 @@
+@@ -2,237 +2,158 @@
  SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
  SPDX-FileCopyrightText: 2024 Kristen McWilliam <kmcwilliampublic@gmail.com>
  SPDX-FileCopyrightText: 2024 Jakob Petsovits <jpetso@petsovits.com>
@@ -733,8 +733,8 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +        FormCard.FormCard {
 +            FormCard.FormComboBoxDelegate {
 +                id: timeoutCombo
-+                text: i18n("Lock screen automatically:").replace(/:$/, "")
-+                description: "Если телефоном не пользуются"
++                text: "Блокировать автоматически"
++                description: "Если телефоном не пользуются, а экран включён"
                  textRole: "text"
                  valueRole: "value"
 -                property var customOptions: []
@@ -814,6 +814,7 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +            FormCard.FormSwitchDelegate {
 +                id: resumeSwitch
                  text: i18nc("@option:check", "Lock after waking from sleep")
++                description: "Выключение экрана кнопкой блокирует телефон всегда"
                  checked: kcm.settings.lockOnResume
 -                onToggled: kcm.settings.lockOnResume = checked
 -
