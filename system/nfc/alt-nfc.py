@@ -243,12 +243,14 @@ def on_interfaces_added(conn, sender, path, iface, signal, params):
 
 
 def on_interfaces_removed(conn, sender, path, iface, signal, params):
-    obj, _ = params.unpack()
-    tags.pop(obj, None)
+    # Объект метки не удаляем сразу: карту ISO-DEP без данных neard
+    # прочитывает и убирает быстрее, чем через 400 мс сработает finish_tag,
+    # и она пропадала из истории. Запись удаляет сам finish_tag.
+    pass
 
 
 def finish_tag(obj):
-    tag = tags.get(obj)
+    tag = tags.pop(obj, None)
     if not tag:
         return False
     now = time.time()
