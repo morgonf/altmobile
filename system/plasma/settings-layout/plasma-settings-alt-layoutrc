@@ -10,6 +10,7 @@ kcm_cellular_network=alt-network,2
 kcm_mobile_hotspot=alt-network,3
 kcm_bluetooth=alt-network,4
 kcm_mobile_wired=alt-network,5
+kcm_altnfc=alt-network,6
 
 kcm_kscreen=alt-display,1
 kcm_nightlight=alt-display,2

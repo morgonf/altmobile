@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "NFC tags and cards",
+        "Description[ru]": "Чтение меток и карт NFC",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "nfc",
+        "Name": "NFC",
+        "Name[ru]": "NFC"
+    },
+    "X-KDE-Keywords": "nfc,tag,card,neard",
+    "X-KDE-Keywords[ru]": "nfc,метка,карта,бесконтактный",
+    "X-KDE-System-Settings-Parent-Category": "network",
+    "X-KDE-Weight": 50
+}
