@@ -1,0 +1,17 @@
+--- a/src/plasmacameramanager.cpp
++++ b/src/plasmacameramanager.cpp
+@@ -595,10 +595,13 @@
+ 
+     // Digital zoom, as shown in the viewfinder. The crop is centred, so it
+     // does not matter that it comes before the mirroring and the rotation.
++    // It is scaled back to the full size, as photos from other phones are
+     if (m_zoom > 1.0) {
++        const QSize full = image.size();
+         const int w = qRound(image.width() / m_zoom);
+         const int h = qRound(image.height() / m_zoom);
+-        image = image.copy((image.width() - w) / 2, (image.height() - h) / 2, w, h);
++        image = image.copy((image.width() - w) / 2, (image.height() - h) / 2, w, h)
++                    .scaled(full, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+     }
+ 
+     // Flip image if requested
