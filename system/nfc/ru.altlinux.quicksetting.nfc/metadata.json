@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KPackage/GenericQML",
+    "KPlugin": {
+        "Authors": [ { "Name": "morgonf" } ],
+        "Description": "Turn NFC on or off",
+        "Description[ru]": "Включение и выключение NFC",
+        "Icon": "nfc",
+        "Id": "ru.altlinux.quicksetting.nfc",
+        "License": "MIT",
+        "Name": "NFC",
+        "Name[ru]": "NFC"
+    }
+}
