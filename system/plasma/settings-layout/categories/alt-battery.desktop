@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+X-KDE-System-Settings-Category=alt-battery
+X-KDE-System-Settings-Parent-Category=
+X-KDE-Weight=80
+Icon=battery
+Name=Battery
+Name[ru]=Батарея

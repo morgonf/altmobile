@@ -1,0 +1,105 @@
+diff -ruN a/src/menuitem.cpp b/src/menuitem.cpp
+--- a/src/menuitem.cpp
++++ b/src/menuitem.cpp
+@@ -175,6 +175,11 @@
+     return d->category;
+ }
+ 
++void MenuItem::setWeight(int weight)
++{
++    d->weight = weight;
++}
++
+ int MenuItem::weight()
+ {
+     return d->weight;
+diff -ruN a/src/menuitem.h b/src/menuitem.h
+--- a/src/menuitem.h
++++ b/src/menuitem.h
+@@ -145,6 +145,9 @@
+      */
+     int weight();
+ 
++    // ALT Mobile: порядок из раскладки групп
++    void setWeight(int weight);
++
+     /**
+      * Provides information on which type the current item is.
+      *
+diff -ruN a/src/modulesmodel.cpp b/src/modulesmodel.cpp
+--- a/src/modulesmodel.cpp
++++ b/src/modulesmodel.cpp
+@@ -9,6 +9,10 @@
+ 
+ #include "modulesmodel.h"
+ 
++#include <KConfigGroup>
++#include <KSharedConfig>
++#include <QDir>
++
+ #include <QDebug>
+ #include <QGuiApplication>
+ #include <QQuickItem>
+@@ -25,6 +29,17 @@
+ #include <KPluginFactory>
+ #include <KRuntimePlatform>
+ 
++// ALT Mobile: раскладка групп /etc/xdg/plasma-settings-alt-layoutrc.
++// [General] CategoriesDir=каталог с файлами групп .desktop вместо
++// стандартного. [Modules] id_модуля=группа,вес (вес задаёт порядок внутри
++// группы), группа hidden скрывает модуль. Без файла всё как в upstream.
++static KSharedConfig::Ptr altLayout()
++{
++    static const KSharedConfig::Ptr config = KSharedConfig::openConfig(QStringLiteral("plasma-settings-alt-layoutrc"), KConfig::NoGlobals);
++    return config;
++}
++
++
+ using namespace Qt::Literals::StringLiterals;
+ 
+ ModulesModel::ModulesModel(QObject *parent)
+@@ -98,7 +113,12 @@
+     kcms << KPluginMetaData::findPlugins(u"plasma/kcms"_s, filter);
+     kcms << KPluginMetaData::findPlugins(u"plasma/kcms/systemsettings"_s, filter);
+ 
+-    const QStringList dirs = QStandardPaths::locateAll(QStandardPaths::AppDataLocation, QStringLiteral("categories"), QStandardPaths::LocateDirectory);
++    QStringList dirs = QStandardPaths::locateAll(QStandardPaths::AppDataLocation, QStringLiteral("categories"), QStandardPaths::LocateDirectory);
++    // ALT Mobile: свой набор групп вместо настольного
++    const QString altDir = KConfigGroup(altLayout(), QStringLiteral("General")).readEntry("CategoriesDir");
++    if (!altDir.isEmpty() && QDir(altDir).exists()) {
++        dirs = QStringList{altDir};
++    }
+     QStringList categories = KFileUtils::findAllUniqueFiles(dirs, QStringList(QStringLiteral("*.desktop")));
+ 
+     initMenuList(m_rootModule.get(), kcms, categories);
+@@ -131,6 +151,20 @@
+     for (const auto &metaData : std::as_const(kcms)) {
+         QString category = metaData.value(QStringLiteral("X-KDE-System-Settings-Parent-Category"));
+         QString categoryv2 = metaData.value(QStringLiteral("X-KDE-System-Settings-Parent-Category-V2"));
++        // ALT Mobile: группа и порядок модуля из раскладки, «hidden» скрывает
++        int weightOverride = -1;
++        const QString override = KConfigGroup(altLayout(), QStringLiteral("Modules")).readEntry(metaData.pluginId());
++        if (!override.isEmpty()) {
++            const QStringList parts = override.split(QLatin1Char(','));
++            category = parts.at(0).trimmed();
++            categoryv2.clear();
++            if (parts.size() > 1) {
++                weightOverride = parts.at(1).trimmed().toInt();
++            }
++        }
++        if (category == QLatin1String("hidden")) {
++            continue;
++        }
+         const QString parentCategoryKcm = parent->systemsettingsCategoryModule();
+         bool isCategoryOwner = false;
+ 
+@@ -144,6 +178,9 @@
+                 // Add the module info to the menu
+                 auto infoItem = new MenuItem(false, parent);
+                 infoItem->setMetaData(metaData);
++                if (weightOverride >= 0) {
++                    infoItem->setWeight(weightOverride);
++                }
+                 infoItem->setCategoryOwner(isCategoryOwner);
+             }
+         }

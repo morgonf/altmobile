@@ -1,0 +1,48 @@
+# ALT Mobile: раскладка «Настроек» (packages/plasma-settings/plasma-settings-alt-layout.patch).
+# [Modules] модуль=группа,порядок. Группа hidden скрывает модуль.
+# Группы описаны файлами в CategoriesDir.
+[General]
+CategoriesDir=/usr/share/alt-mobile/settings-categories
+
+[Modules]
+kcm_mobile_wifi=alt-network,1
+kcm_cellular_network=alt-network,2
+kcm_mobile_hotspot=alt-network,3
+kcm_bluetooth=alt-network,4
+kcm_mobile_wired=alt-network,5
+
+kcm_kscreen=alt-display,1
+kcm_nightlight=alt-display,2
+kcm_nighttime=alt-display,3
+
+kcm_pulseaudio=alt-sound,1
+kcm_notifications=alt-sound,2
+
+kcm_altappearance=alt-appearance,1
+kcm_colors=alt-appearance,2
+kcm_icons=alt-appearance,3
+kcm_fonts=alt-appearance,4
+kcm_desktoptheme=alt-appearance,5
+kcm_animations=alt-appearance,6
+
+kcm_mobileshell=alt-shell,1
+kcm_navigation=alt-shell,2
+kcm_plasmakeyboard=alt-shell,3
+kcm_virtualkeyboard=alt-shell,4
+
+kcm_componentchooser=alt-apps,1
+kcm_autostart=alt-apps,2
+kcm_waydroidintegration=alt-apps,3
+
+kcm_screenlocker=alt-security,1
+kcm_users=alt-security,2
+kcm_kaccounts=alt-security,3
+
+kcm_mobile_power=alt-battery,1
+
+kcm_regionandlang=alt-system,1
+kcm_mobile_time=alt-system,2
+kcm_mobile_info=alt-system,3
+
+# Вариант для X11, на телефоне дублирует «Анимацию»
+kcm_animations_x11=hidden

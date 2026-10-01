@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+X-KDE-System-Settings-Category=alt-network
+X-KDE-System-Settings-Parent-Category=
+X-KDE-Weight=10
+Icon=network-wireless
+Name=Network and connections
+Name[ru]=Сеть и подключения

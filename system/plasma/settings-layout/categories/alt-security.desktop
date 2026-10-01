@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+X-KDE-System-Settings-Category=alt-security
+X-KDE-System-Settings-Parent-Category=
+X-KDE-Weight=70
+Icon=preferences-security
+Name=Security and accounts
+Name[ru]=Безопасность и учётные записи
