@@ -1,0 +1,983 @@
+diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
+--- a/kcm/CMakeLists.txt
++++ b/kcm/CMakeLists.txt
+@@ -4,6 +4,7 @@
+ set(screenlocker_kcm_SRCS
+     kcm.cpp
+     kscreenlockerdata.cpp
++    pinmanager.cpp
+ )
+ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)
+ include_directories(${CMAKE_CURRENT_BINARY_DIR}/../)
+@@ -19,4 +20,5 @@
+     KF6::KCMUtilsQuick # KQuickManagedConfigModule
+     KF6::I18n
+     KF6::GlobalAccel
++    crypt
+ )
+diff -ruN a/kcm/kcm.cpp b/kcm/kcm.cpp
+--- a/kcm/kcm.cpp
++++ b/kcm/kcm.cpp
+@@ -24,6 +24,7 @@
+ ScreenLockerKcm::ScreenLockerKcm(QObject *parent, const KPluginMetaData &data)
+     : KQuickManagedConfigModule(parent, data)
+     , m_appearanceSettings(new AppearanceSettings(this))
++    , m_pin(new PinManager(this))
+ {
+     registerSettings(&KScreenSaverSettings::getInstance());
+ 
+@@ -33,6 +34,7 @@
+     qmlRegisterAnonymousType<WallpaperInfo>(url, 1);
+     qmlRegisterAnonymousType<ScreenLocker::WallpaperIntegration>(url, 1);
+     qmlRegisterAnonymousType<KConfigPropertyMap>(url, 1);
++    qmlRegisterAnonymousType<PinManager>(url, 1);
+     qmlProtectModule(url, 1);
+ 
+     // Our modules will be checking the Plasmoid attached object when running from Plasma, let it load the module
+diff -ruN a/kcm/kcm.h b/kcm/kcm.h
+--- a/kcm/kcm.h
++++ b/kcm/kcm.h
+@@ -12,6 +12,7 @@
+ #include <KQuickManagedConfigModule>
+ 
+ #include "kscreensaversettings.h"
++#include "pinmanager.h"
+ #include "wallpaper_integration.h"
+ 
+ class ScreenLockerKcmForm;
+@@ -35,6 +36,8 @@
+     Q_PROPERTY(ScreenLocker::WallpaperIntegration *wallpaperIntegration READ wallpaperIntegration NOTIFY currentWallpaperChanged)
+     Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY currentWallpaperChanged)
+     Q_PROPERTY(bool isDefaultsAppearance READ isDefaultsAppearance NOTIFY isDefaultsAppearanceChanged)
++    // ALT Mobile: смена PIN-кода на странице блокировки
++    Q_PROPERTY(PinManager *pin READ pin CONSTANT)
+ 
+     Q_INVOKABLE QList<WallpaperInfo> availableWallpaperPlugins()
+     {
+@@ -47,6 +50,10 @@
+     ScreenLocker::WallpaperIntegration *wallpaperIntegration() const;
+     QString currentWallpaper() const;
+     bool isDefaultsAppearance() const;
++    PinManager *pin() const
++    {
++        return m_pin;
++    }
+ 
+ public Q_SLOTS:
+     void load() override;
+@@ -80,4 +87,5 @@
+     AppearanceSettings *m_appearanceSettings;
+     QString m_currentWallpaper;
+     bool m_forceUpdateState = false;
++    PinManager *m_pin;
+ };
+diff -ruN a/kcm/kcm_screenlocker.json b/kcm/kcm_screenlocker.json
+--- a/kcm/kcm_screenlocker.json
++++ b/kcm/kcm_screenlocker.json
+@@ -37,7 +37,7 @@
+         "Description[pt]": "Configurar o bloqueio do ecrã",
+         "Description[pt_BR]": "Configurar bloqueio de tela",
+         "Description[ro]": "Configurează blocarea ecranului",
+-        "Description[ru]": "Настройка блокировщика экрана",
++        "Description[ru]": "Блокировка экрана и смена PIN-кода",
+         "Description[sa]": "स्क्रीन लॉकिंग विन्यस्तं कुर्वन्तु",
+         "Description[sk]": "Nastaviť zamykanie obrazovky",
+         "Description[sl]": "Nastavi zaklepanje zaslona",
+@@ -91,7 +91,7 @@
+         "Name[pt]": "Bloqueio do Ecrã",
+         "Name[pt_BR]": "Bloqueio de tela",
+         "Name[ro]": "Blocarea ecranului",
+-        "Name[ru]": "Блокировка экрана",
++        "Name[ru]": "Блокировка и PIN-код",
+         "Name[sa]": "स्क्रीन लॉकिंग",
+         "Name[sk]": "Zamykanie obrazovky",
+         "Name[sl]": "Zaklep zaslona",
+diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
+--- a/kcm/pinmanager.cpp
++++ b/kcm/pinmanager.cpp
+@@ -0,0 +1,280 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#include "pinmanager.h"
++
++#include <QCoreApplication>
++#include <QDBusConnection>
++#include <QDBusMessage>
++#include <QDBusObjectPath>
++#include <QDBusPendingCallWatcher>
++#include <QDBusPendingReply>
++#include <QPointer>
++#include <QThread>
++
++#include <crypt.h>
++#include <errno.h>
++#include <pthread.h>
++#include <signal.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/socket.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++namespace
++{
++// Коды протокола kcheckpass (kcheckpass-enums.h из пакета ALT)
++enum {
++    ConvGetNormal,
++    ConvGetHidden,
++    ConvPutInfo,
++    ConvPutError,
++    ConvPutAuthSucceeded,
++    ConvPutAuthFailed,
++};
++
++enum CheckResult {
++    CheckOk,
++    CheckBad,
++    CheckError,
++};
++
++bool readAll(int fd, void *buf, size_t len)
++{
++    auto p = static_cast<char *>(buf);
++    while (len) {
++        const ssize_t n = ::read(fd, p, len);
++        if (n < 0 && errno == EINTR) {
++            continue;
++        }
++        if (n <= 0) {
++            return false;
++        }
++        p += n;
++        len -= n;
++    }
++    return true;
++}
++
++bool writeAll(int fd, const void *buf, size_t len)
++{
++    auto p = static_cast<const char *>(buf);
++    while (len) {
++        const ssize_t n = ::write(fd, p, len);
++        if (n < 0 && errno == EINTR) {
++            continue;
++        }
++        if (n <= 0) {
++            return false;
++        }
++        p += n;
++        len -= n;
++    }
++    return true;
++}
++
++bool sendInt(int fd, int value)
++{
++    return writeAll(fd, &value, sizeof(value));
++}
++
++bool sendStr(int fd, const QByteArray &str)
++{
++    // Длина вместе с нулём в конце, как GSendStr в греетере
++    const int len = str.size() + 1;
++    return sendInt(fd, len) && writeAll(fd, str.constData(), len);
++}
++
++bool recvStr(int fd)
++{
++    int len;
++    if (!readAll(fd, &len, sizeof(len)) || len < 0 || len > 0x10000) {
++        return false;
++    }
++    QByteArray buf(len, Qt::Uninitialized);
++    return readAll(fd, buf.data(), len);
++}
++
++// Проверка пароля через kcheckpass (setgid chkpwd), службой PAM kde,
++// той же, что у экрана блокировки. Сам процесс настроек файл tcb
++// прочитать не может.
++CheckResult checkPassword(const QByteArray &password)
++{
++    int sv[2];
++    if (::socketpair(AF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0, sv)) {
++        return CheckError;
++    }
++    // SIGUSR1 блокируется до fork и остаётся заблокированным в kcheckpass:
++    // тот включает signalfd не сразу, а незаблокированный SIGUSR1 убил бы
++    // его. Заблокированный дождётся в очереди. Блокировать в самом ребёнке
++    // поздно, kill из родителя может успеть раньше.
++    sigset_t mask, oldMask;
++    sigemptyset(&mask);
++    sigaddset(&mask, SIGUSR1);
++    sigaddset(&mask, SIGUSR2);
++    pthread_sigmask(SIG_BLOCK, &mask, &oldMask);
++    const pid_t pid = ::fork();
++    if (pid != 0) {
++        pthread_sigmask(SIG_SETMASK, &oldMask, nullptr);
++    }
++    if (pid < 0) {
++        ::close(sv[0]);
++        ::close(sv[1]);
++        return CheckError;
++    }
++    if (pid == 0) {
++        ::close(sv[0]);
++        const int fd = ::dup(sv[1]); // без CLOEXEC
++        char arg[16];
++        snprintf(arg, sizeof(arg), "%d", fd);
++        execl("/usr/libexec/kcheckpass", "kcheckpass", "-S", arg, static_cast<char *>(nullptr));
++        _exit(20);
++    }
++    ::close(sv[1]);
++    const int fd = sv[0];
++
++    CheckResult result = CheckError;
++    if (sendStr(fd, QByteArrayLiteral("kde"))) {
++        ::kill(pid, SIGUSR1);
++        int prompts = 0;
++        int what;
++        while (readAll(fd, &what, sizeof(what))) {
++            if (what == ConvGetNormal || what == ConvGetHidden) {
++                if (!recvStr(fd) || ++prompts > 3 || !sendInt(fd, 0) || !sendStr(fd, password)) {
++                    break;
++                }
++            } else if (what == ConvPutInfo || what == ConvPutError) {
++                if (!recvStr(fd)) {
++                    break;
++                }
++            } else {
++                if (what == ConvPutAuthSucceeded) {
++                    result = CheckOk;
++                } else if (what == ConvPutAuthFailed) {
++                    result = CheckBad;
++                }
++                break;
++            }
++        }
++    }
++    ::kill(pid, SIGUSR2);
++    ::close(fd);
++    while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) { }
++    return result;
++}
++
++// Хеш gost-yescrypt, как у модуля «Пользователи» в ALT, запасной yescrypt
++QByteArray hashPin(const QByteArray &pin)
++{
++    for (const char *prefix : {"$gy$", "$y$"}) {
++        char *setting = crypt_gensalt_ra(prefix, 0, nullptr, 0);
++        if (!setting) {
++            continue;
++        }
++        void *data = nullptr;
++        int size = 0;
++        const char *hash = crypt_ra(pin.constData(), setting, &data, &size);
++        QByteArray result;
++        if (hash && hash[0] != '*') {
++            result = hash;
++        }
++        free(data);
++        free(setting);
++        if (!result.isEmpty()) {
++            return result;
++        }
++    }
++    return {};
++}
++}
++
++PinManager::PinManager(QObject *parent)
++    : QObject(parent)
++{
++}
++
++bool PinManager::busy() const
++{
++    return m_busy;
++}
++
++void PinManager::setBusy(bool busy)
++{
++    if (m_busy != busy) {
++        m_busy = busy;
++        Q_EMIT busyChanged();
++    }
++}
++
++void PinManager::changePin(const QString &current, const QString &pin)
++{
++    if (m_busy) {
++        return;
++    }
++    setBusy(true);
++    QPointer<PinManager> self(this);
++    const QByteArray currentUtf8 = current.toUtf8();
++    const QByteArray pinUtf8 = pin.toUtf8();
++    // kcheckpass и хеш занимают до секунды, интерфейс не держим
++    QThread *thread = QThread::create([self, currentUtf8, pinUtf8]() {
++        const CheckResult check = checkPassword(currentUtf8);
++        const QByteArray hash = check == CheckOk ? hashPin(pinUtf8) : QByteArray();
++        QMetaObject::invokeMethod(qApp, [self, check, hash]() {
++            if (!self) {
++                return;
++            }
++            if (check == CheckBad) {
++                self->setBusy(false);
++                Q_EMIT self->failed(true, QString());
++            } else if (check != CheckOk) {
++                self->setBusy(false);
++                Q_EMIT self->failed(false, QStringLiteral("не удалось проверить текущий PIN-код"));
++            } else if (hash.isEmpty()) {
++                self->setBusy(false);
++                Q_EMIT self->failed(false, QStringLiteral("не удалось зашифровать новый PIN-код"));
++            } else {
++                self->setPassword(hash);
++            }
++        });
++    });
++    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
++    thread->start();
++}
++
++void PinManager::setPassword(const QByteArray &hash)
++{
++    const QString service = QStringLiteral("org.freedesktop.Accounts");
++    auto find = QDBusMessage::createMethodCall(service,
++                                               QStringLiteral("/org/freedesktop/Accounts"),
++                                               QStringLiteral("org.freedesktop.Accounts"),
++                                               QStringLiteral("FindUserById"));
++    find << qlonglong(::getuid());
++    const QDBusMessage found = QDBusConnection::systemBus().call(find);
++    const QString path = found.arguments().value(0).value<QDBusObjectPath>().path();
++    if (found.type() != QDBusMessage::ReplyMessage || path.isEmpty()) {
++        setBusy(false);
++        Q_EMIT failed(false, found.errorMessage());
++        return;
++    }
++
++    auto set = QDBusMessage::createMethodCall(service, path, QStringLiteral("org.freedesktop.Accounts.User"), QStringLiteral("SetPassword"));
++    set << QString::fromLatin1(hash) << QString();
++    // polkit может спросить подтверждение через своего агента
++    set.setInteractiveAuthorizationAllowed(true);
++    auto watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(set, 120000), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
++        w->deleteLater();
++        const QDBusPendingReply<> reply = *w;
++        setBusy(false);
++        if (reply.isError()) {
++            Q_EMIT failed(false, reply.error().message());
++        } else {
++            Q_EMIT succeeded();
++        }
++    });
++}
++
++#include "moc_pinmanager.cpp"
+diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
+--- a/kcm/pinmanager.h
++++ b/kcm/pinmanager.h
+@@ -0,0 +1,35 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#pragma once
++
++#include <QObject>
++
++// Смена PIN-кода (пароля пользователя) для ALT Mobile. Текущий код
++// проверяет kcheckpass, как на экране блокировки, новый записывает
++// AccountsService (SetPassword), как модуль «Пользователи».
++class PinManager : public QObject
++{
++    Q_OBJECT
++    Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
++
++public:
++    explicit PinManager(QObject *parent = nullptr);
++
++    bool busy() const;
++    Q_INVOKABLE void changePin(const QString &current, const QString &pin);
++
++Q_SIGNALS:
++    void busyChanged();
++    void succeeded();
++    // wrongPin: текущий код неверен, иначе message с причиной
++    void failed(bool wrongPin, const QString &message);
++
++private:
++    void setBusy(bool busy);
++    void setPassword(const QByteArray &hash);
++
++    bool m_busy = false;
++};
+diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
+--- a/kcm/ui/ChangePin.qml
++++ b/kcm/ui/ChangePin.qml
+@@ -0,0 +1,206 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++import QtQuick
++import QtQuick.Controls as QQC2
++import QtQuick.Layouts
++
++import org.kde.kirigami as Kirigami
++
++// ALT Mobile: смена PIN-кода. Три шага на одной цифровой панели (текущий
++// код, новый, повтор), как окно разблокировки SIM. Системная клавиатура не
++// открывается. Текущий код проверяет kcheckpass, новый записывает
++// AccountsService (kcm.pin, pinmanager.cpp).
++Kirigami.Page {
++    id: page
++
++    title: "Сменить PIN-код"
++    padding: Kirigami.Units.gridUnit
++
++    // 0 текущий код, 1 новый, 2 повтор, 3 готово
++    property int step: 0
++    property string current: ""
++    property string fresh: ""
++    property string entry: ""
++    property string error: ""
++
++    readonly property int minLength: 4
++    readonly property int maxLength: 16
++    readonly property bool busy: kcm.pin.busy
++    readonly property bool entryValid: step === 0 ? entry.length > 0 : entry.length >= minLength
++
++    function press(digit) {
++        if (busy || step === 3 || entry.length >= maxLength) {
++            return;
++        }
++        error = "";
++        entry += digit;
++    }
++
++    function erase() {
++        if (!busy && step !== 3) {
++            entry = entry.slice(0, -1);
++        }
++    }
++
++    function submit() {
++        if (busy || !entryValid) {
++            return;
++        }
++        if (step === 0) {
++            current = entry;
++            step = 1;
++        } else if (step === 1) {
++            fresh = entry;
++            step = 2;
++        } else if (step === 2) {
++            if (entry !== fresh) {
++                fresh = "";
++                step = 1;
++                error = "PIN-коды не совпадают, введите новый ещё раз";
++            } else {
++                kcm.pin.changePin(current, fresh);
++            }
++        }
++        entry = "";
++    }
++
++    Connections {
++        target: kcm.pin
++
++        function onSucceeded() {
++            page.current = "";
++            page.fresh = "";
++            page.step = 3;
++            closeTimer.start();
++        }
++
++        function onFailed(wrongPin, message) {
++            page.fresh = "";
++            if (wrongPin) {
++                page.current = "";
++                page.step = 0;
++                page.error = "Неверный текущий PIN-код";
++            } else {
++                page.step = 1;
++                page.error = "Не удалось сменить PIN-код (" + message + ")";
++            }
++        }
++    }
++
++    Timer {
++        id: closeTimer
++        interval: 1500
++        onTriggered: kcm.pop()
++    }
++
++    // Физическая клавиатура, если подключена
++    focus: true
++    Keys.onPressed: event => {
++        if (event.text.length === 1 && event.text >= "0" && event.text <= "9") {
++            page.press(event.text);
++        } else if (event.key === Qt.Key_Backspace) {
++            page.erase();
++        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
++            page.submit();
++        } else {
++            return;
++        }
++        event.accepted = true;
++    }
++
++    ColumnLayout {
++        anchors.fill: parent
++        spacing: Kirigami.Units.largeSpacing
++
++        Item { Layout.fillHeight: true }
++
++        Kirigami.Icon {
++            Layout.alignment: Qt.AlignHCenter
++            implicitWidth: Kirigami.Units.iconSizes.large
++            implicitHeight: Kirigami.Units.iconSizes.large
++            source: page.step === 3 ? "dialog-ok" : "lock-symbolic"
++        }
++
++        Kirigami.Heading {
++            Layout.fillWidth: true
++            horizontalAlignment: Text.AlignHCenter
++            wrapMode: Text.WordWrap
++            level: 2
++            text: page.step === 0 ? "Текущий PIN-код"
++                : page.step === 1 ? "Новый PIN-код"
++                : page.step === 2 ? "Повторите новый PIN-код"
++                : "PIN-код изменён"
++        }
++
++        QQC2.Label {
++            Layout.fillWidth: true
++            horizontalAlignment: Text.AlignHCenter
++            wrapMode: Text.WordWrap
++            color: page.error ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.disabledTextColor
++            text: page.busy ? "Проверка…"
++                : page.error ? page.error
++                : page.step === 1 ? "От " + page.minLength + " до " + page.maxLength + " цифр"
++                : ""
++        }
++
++        // Кружки вместо введённых цифр
++        Row {
++            Layout.alignment: Qt.AlignHCenter
++            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
++            spacing: Kirigami.Units.largeSpacing
++            visible: page.step !== 3
++            Repeater {
++                model: page.entry.length
++                Rectangle {
++                    anchors.verticalCenter: parent.verticalCenter
++                    width: Kirigami.Units.gridUnit * 0.7
++                    height: width
++                    radius: width / 2
++                    color: Kirigami.Theme.textColor
++                }
++            }
++        }
++
++        Item { Layout.preferredHeight: Kirigami.Units.largeSpacing }
++
++        GridLayout {
++            Layout.alignment: Qt.AlignHCenter
++            columns: 3
++            rowSpacing: Kirigami.Units.largeSpacing
++            columnSpacing: Kirigami.Units.gridUnit * 1.5
++            visible: page.step !== 3
++
++            Repeater {
++                model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "erase", "0", "ok"]
++                delegate: QQC2.RoundButton {
++                    required property string modelData
++                    readonly property bool digit: modelData.length === 1
++
++                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4
++                    Layout.preferredHeight: Kirigami.Units.gridUnit * 4
++                    focusPolicy: Qt.NoFocus
++                    flat: !digit
++                    text: digit ? modelData : ""
++                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.8
++                    icon.name: modelData === "erase" ? "edit-clear"
++                             : modelData === "ok" ? "dialog-ok-apply" : ""
++                    icon.width: Kirigami.Units.iconSizes.medium
++                    icon.height: Kirigami.Units.iconSizes.medium
++                    enabled: !page.busy && (modelData === "ok" ? page.entryValid
++                                           : modelData === "erase" ? page.entry.length > 0 : true)
++                    highlighted: modelData === "ok" && page.entryValid
++                    onClicked: modelData === "erase" ? page.erase()
++                             : modelData === "ok" ? page.submit()
++                             : page.press(modelData)
++                    onPressAndHold: if (modelData === "erase") page.entry = ""
++                }
++            }
++        }
++
++        Item { Layout.fillHeight: true }
++    }
++}
+diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
+--- a/kcm/ui/main.qml
++++ b/kcm/ui/main.qml
+@@ -2,237 +2,157 @@
+ SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
+ SPDX-FileCopyrightText: 2024 Kristen McWilliam <kmcwilliampublic@gmail.com>
+ SPDX-FileCopyrightText: 2024 Jakob Petsovits <jpetso@petsovits.com>
++SPDX-FileCopyrightText: 2026 morgonf
+ 
+ SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+ */
+ 
+-import QtQuick 2.15
+-import QtQuick.Controls 2.15 as QQC2
+-import QtQuick.Layouts 1.15
++import QtQuick
++import QtQuick.Controls as QQC2
++import QtQuick.Layouts
+ 
+ import org.kde.kcmutils as KCM
+-import org.kde.kirigami 2.20 as Kirigami
+-import org.kde.kquickcontrols 2.0 as KQuickControls
++import org.kde.kirigami as Kirigami
++import org.kde.kirigamiaddons.formcard 1 as FormCard
+ 
++// ALT Mobile: страница в мобильном стиле карточек FormCard, как «Дата и
++// время». Раздел «PIN-код» открывает смену кода с цифровой клавиатурой
++// (ChangePin.qml). Каждое изменение сохраняется сразу. Сочетание клавиш и
++// произвольная длительность из настольной версии убраны.
+ KCM.SimpleKCM {
+     id: root
+ 
+-    implicitHeight: Kirigami.Units.gridUnit * 45
+-    implicitWidth: Kirigami.Units.gridUnit * 45
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
+ 
+-    actions:  [
+-        Kirigami.Action {
+-            text: i18nc("@action:button", "Configure Appearance…")
+-            icon.name: "edit-image-symbolic"
+-            onTriggered: kcm.push("Appearance.qml")
++    function apply() {
++        kcm.save();
++    }
++
++    // Выбор по значению: индекс строки или -1, если такого значения в
++    // списке нет (задано вручную в файле настроек)
++    function indexOf(model, value) {
++        for (let i = 0; i < model.length; ++i) {
++            if (model[i].value === value) {
++                return i;
++            }
+         }
++        return -1;
++    }
++
++    readonly property var timeoutModel: [
++        { value: 0, text: i18nc("Screen will not lock automatically", "Never") },
++        { value: 1, text: i18n("1 minute") },
++        { value: 2, text: i18n("2 minutes") },
++        { value: 5, text: i18n("5 minutes") },
++        { value: 10, text: i18n("10 minutes") },
++        { value: 15, text: i18n("15 minutes") },
++        { value: 30, text: i18n("30 minutes") },
+     ]
++
++    // -1 означает «не спрашивать PIN» (requirePassword = false)
++    readonly property var graceModel: [
++        { value: 0, text: "Сразу" },
++        { value: 5, text: "Через 5 секунд" },
++        { value: 30, text: "Через 30 секунд" },
++        { value: 60, text: "Через 1 минуту" },
++        { value: 300, text: "Через 5 минут" },
++        { value: 900, text: "Через 15 минут" },
++        { value: -1, text: "Не спрашивать" },
++    ]
++
+     ColumnLayout {
+         spacing: 0
+ 
+-        Kirigami.FormLayout {
+-            ComboBoxWithCustomValue {
+-                id: timeoutComboBox
+-                Layout.fillWidth: true
+-                Kirigami.FormData.label: i18n("Lock screen automatically:")
++        FormCard.FormHeader {
++            title: "PIN-код"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormButtonDelegate {
++                icon.name: "lock-symbolic"
++                text: "Сменить PIN-код"
++                description: "Этим кодом снимается блокировка экрана"
++                onClicked: kcm.push("ChangePin.qml")
++            }
++        }
++
++        FormCard.FormHeader {
++            title: "Блокировка"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormComboBoxDelegate {
++                id: timeoutCombo
++                text: i18n("Lock screen automatically:").replace(/:$/, "")
++                description: "Если телефоном не пользуются"
+                 textRole: "text"
+                 valueRole: "value"
+-                property var customOptions: []
+-                model: [
+-                    { value: 0, text: i18nc("Screen will not lock automatically", "Never") },
+-                    { value: 1, text: i18n("1 minute") },
+-                    { value: 2, text: i18n("2 minutes") },
+-                    { value: 5, text: i18n("5 minutes") },
+-                    { value: 10, text: i18n("10 minutes") },
+-                    { value: 15, text: i18n("15 minutes") },
+-                    { value: 30, text: i18n("30 minutes") },
+-                    { value: -1, text: i18nc("@option:combobox Choose a custom value outside the list of preset values", "Custom…") },
+-                    ...customOptions
+-                ]
+-                customRequesterValue: -1
+-                configuredValue: kcm.settings.autolock ? kcm.settings.timeout : 0
+-
+-                onRegularValueActivated: {
+-                    kcm.settings.autolock = currentValue !== 0;
+-                    kcm.settings.timeout = currentValue;
+-                }
+-                onCustomRequest: {
+-                    // Pass the current value to the dialog so it can be pre-filled in the input field.
+-                    customDurationPromptDialogLoader.load(customTimeoutPromptDialogComponent);
+-                    customDurationPromptDialogLoader.item.value = kcm.settings.timeout;
+-                    customDurationPromptDialogLoader.item.open();
+-                }
+-                onConfiguredValueOptionMissing: {
+-                    customOptions = [{
+-                        text: i18np("%1 minute", "%1 minutes", configuredValue),
+-                        value: configuredValue,
+-                    }];
+-                }
+-
+-                /// Load the dialog on demand into the corresponding Loader further down.
+-                Component {
+-                    id: customTimeoutPromptDialogComponent
+-
+-                    DurationPromptDialog {
+-                        title: i18nc("@title:window", "Custom Duration")
+-                        label: timeoutComboBox.Kirigami.FormData.label
+-                        parent: QQC2.Overlay.overlay
+-                        from: 1
+-
+-                        acceptsUnits: [DurationPromptDialog.Unit.Minutes]
+-
+-                        onAccepted: {
+-                            kcm.settings.autolock = value !== 0;
+-                            kcm.settings.timeout = value;
+-                            timeoutComboBox.customRequestCompleted();
+-                        }
+-                        onRejected: {
+-                            timeoutComboBox.customRequestCompleted();
+-                        }
++                displayMode: FormCard.FormComboBoxDelegate.Dialog
++                model: root.timeoutModel
++                currentIndex: root.indexOf(root.timeoutModel, kcm.settings.autolock ? kcm.settings.timeout : 0)
++                displayText: currentIndex >= 0 ? currentText : i18np("%1 minute", "%1 minutes", kcm.settings.timeout)
++                onActivated: index => {
++                    const value = root.timeoutModel[index].value;
++                    kcm.settings.autolock = value !== 0;
++                    if (value !== 0) {
++                        kcm.settings.timeout = value;
+                     }
+-                }
+-
+-                KCM.SettingStateBinding {
+-                    configObject: kcm.settings
+-                    settingName: "Timeout"
++                    root.apply();
+                 }
+             }
+ 
+-            QQC2.CheckBox {
++            FormCard.FormDelegateSeparator { above: timeoutCombo; below: resumeSwitch }
++
++            FormCard.FormSwitchDelegate {
++                id: resumeSwitch
+                 text: i18nc("@option:check", "Lock after waking from sleep")
+                 checked: kcm.settings.lockOnResume
+-                onToggled: kcm.settings.lockOnResume = checked
+-
+-                KCM.SettingStateBinding {
+-                    configObject: kcm.settings
+-                    settingName: "LockOnResume"
++                onToggled: {
++                    kcm.settings.lockOnResume = checked;
++                    root.apply();
+                 }
+             }
+ 
+-            Item {
+-                Kirigami.FormData.isSection: true
+-            }
++            FormCard.FormDelegateSeparator { above: resumeSwitch; below: graceCombo }
+ 
+-            ComboBoxWithCustomValue {
+-                id: lockGraceComboBox
+-                Layout.fillWidth: true
+-                Kirigami.FormData.label: i18nc("First part of sentence \"Delay before password required: X minutes\"", "Delay before password required:")
++            FormCard.FormComboBoxDelegate {
++                id: graceCombo
++                text: "Спрашивать PIN-код"
++                description: "После блокировки экрана"
+                 textRole: "text"
+-                valueRole: "seconds"
+-                property var customOptions: []
+-                model: [
+-                    { seconds: 0, text: i18nc("The grace period is disabled", "Require password immediately"), unit: DurationPromptDialog.Unit.Seconds },
+-                    { seconds: -1, text: i18nc("Password not required", "Never require password"), skipPassword: true },
+-                    { seconds: 5, text: i18n("5 seconds"), unit: DurationPromptDialog.Unit.Seconds },
+-                    { seconds: 30, text: i18n("30 seconds"), unit: DurationPromptDialog.Unit.Seconds },
+-                    { seconds: 1 * 60, text: i18n("1 minute"), unit: DurationPromptDialog.Unit.Minutes },
+-                    { seconds: 5 * 60, text: i18n("5 minutes"), unit: DurationPromptDialog.Unit.Minutes },
+-                    { seconds: 15 * 60, text: i18n("15 minutes"), unit: DurationPromptDialog.Unit.Minutes },
+-                    { seconds: -2, text: i18nc("@option:combobox Choose a custom value outside the list of preset values", "Custom…") },
+-                    ...customOptions
+-                ]
+-                customRequesterValue: -2
+-                configuredValue: kcm.settings.requirePassword ? kcm.settings.lockGrace : -1
+-
+-                onRegularValueActivated: {
+-                    if (model[currentIndex].skipPassword === true) {
+-                        kcm.settings.requirePassword = false;
+-                        return;
+-                    } else {
+-                        kcm.settings.lockGrace = currentValue;
+-                        kcm.settings.requirePassword = true;
+-                    }
+-                }
+-                onCustomRequest: {
+-                    // Pass the current value to the dialog so it can be pre-filled in the input field.
+-                    const currentOptionIndex = indexOfValue(kcm.settings.lockGrace);
+-                    const currentOption = currentOptionIndex !== -1
+-                        ? model[currentOptionIndex]
+-                        : { seconds: kcm.settings.lockGrace, unit: DurationPromptDialog.Unit.Seconds };
+-
+-                    customDurationPromptDialogLoader.load(customLockGracePromptDialogComponent);
+-                    customDurationPromptDialogLoader.item.unit = currentOption.unit;
+-                    customDurationPromptDialogLoader.item.value =
+-                        currentOption.unit === DurationPromptDialog.Unit.Minutes
+-                            ? (currentOption.seconds / 60)
+-                            : currentOption.seconds;
+-                    customDurationPromptDialogLoader.item.open();
+-                }
+-                onConfiguredValueOptionMissing: {
+-                    const isMinutes = configuredValue % 60 === 0 &&
+-                    (customUnit ?? DurationPromptDialog.Unit.Minutes) !== DurationPromptDialog.Unit.Seconds;
+-                    customOptions = [{
+-                        seconds: configuredValue,
+-                        text: isMinutes
+-                            ? i18np("%1 minute", "%1 minutes", configuredValue / 60)
+-                            : i18np("%1 second", "%1 seconds", configuredValue),
+-                        unit: isMinutes ? DurationPromptDialog.Unit.Minutes : DurationPromptDialog.Unit.Seconds,
+-                    }];
+-                    customUnit = null;
+-                }
+-                property var customUnit: null
+-
+-                /// Component prevents the dialog from being loaded until the loader loads it.
+-                Component {
+-                    id: customLockGracePromptDialogComponent
+-
+-                    DurationPromptDialog {
+-                        title: i18nc("@title:window", "Custom Duration")
+-                        label: lockGraceComboBox.Kirigami.FormData.label
+-                        parent: QQC2.Overlay.overlay
+-                        from: 1
+-
+-                        acceptsUnits: [DurationPromptDialog.Unit.Seconds, DurationPromptDialog.Unit.Minutes]
+-
+-                        onAccepted: function() {
+-                            // Set the combo box's customUnit prior to configuredValue,
+-                            // so the selected unit is set explicitly instead of guessed by modulo.
+-                            lockGraceComboBox.customUnit = unit;
+-                            kcm.settings.lockGrace =
+-                                unit === DurationPromptDialog.Unit.Minutes ? (value * 60) : value;
+-                            kcm.settings.requirePassword = true;
+-                            lockGraceComboBox.customRequestCompleted();
+-                        }
+-
+-                        onRejected: function() {
+-                            lockGraceComboBox.customRequestCompleted();
+-                        }
++                valueRole: "value"
++                displayMode: FormCard.FormComboBoxDelegate.Dialog
++                model: root.graceModel
++                currentIndex: root.indexOf(root.graceModel, kcm.settings.requirePassword ? kcm.settings.lockGrace : -1)
++                displayText: currentIndex >= 0 ? currentText : i18np("%1 second", "%1 seconds", kcm.settings.lockGrace)
++                onActivated: index => {
++                    const value = root.graceModel[index].value;
++                    kcm.settings.requirePassword = value !== -1;
++                    if (value !== -1) {
++                        kcm.settings.lockGrace = value;
+                     }
+-                }
+-
+-                KCM.SettingStateBinding {
+-                    extraEnabledConditions: kcm.settings.autolock
+-                    configObject: kcm.settings
+-                    settingName: "LockGrace"
++                    root.apply();
+                 }
+             }
++        }
+ 
+-            Kirigami.Separator {
+-                Kirigami.FormData.isSection: true
+-            }
++        FormCard.FormSectionText {
++            visible: !kcm.settings.requirePassword
++            text: "Экран блокировки снимается без PIN-кода. Телефоном сможет воспользоваться любой, у кого он в руках."
++        }
+ 
+-            KQuickControls.KeySequenceItem {
+-                Kirigami.FormData.label: i18n("Keyboard shortcut:")
+-                keySequence: kcm.settings.shortcut
+-                onCaptureFinished: kcm.settings.shortcut = keySequence
+-
+-                KCM.SettingStateBinding {
+-                    configObject: kcm.settings
+-                    settingName: "shortcut"
+-                }
+-            }
++        FormCard.FormHeader {
++            title: "Оформление"
+         }
+-    }
+ 
+-    /// Dialog handled by a Loader to avoid loading it until it is needed.
+-    Loader {
+-        id: customDurationPromptDialogLoader
+-        anchors.centerIn: parent
+-
+-        /// Load the dialog if it is not already loaded, or change it for a different one.
+-        function load(component) {
+-            if (sourceComponent !== component) {
+-                sourceComponent = component;
++        FormCard.FormCard {
++            FormCard.FormButtonDelegate {
++                icon.name: "edit-image-symbolic"
++                text: "Обои экрана блокировки"
++                onClicked: kcm.push("Appearance.qml")
+             }
+         }
+     }
