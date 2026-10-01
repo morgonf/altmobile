@@ -1,0 +1,4 @@
+# ALT Mobile: модуль nci вне дерева ядра (исходники v7.0, совпадают с ядром
+# kernel-image-qualcomm-sdm845-7.1.0-alt0.rc1) с правкой MIFARE Classic.
+obj-m += nci.o
+nci-objs := core.o data.o lib.o ntf.o rsp.o hci.o

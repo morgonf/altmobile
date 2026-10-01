@@ -1,0 +1,6 @@
+# ALT Mobile: nxp-nci вне дерева ядра. Исходники v7.0 с правкой firmware.c
+# из патча ядра ALT (как в kernel-image-qualcomm-sdm845-7.1.0-alt0.rc1) и
+# исправлением взаимной блокировки при удалении.
+obj-m += nxp-nci.o nxp-nci_i2c.o
+nxp-nci-objs := core.o firmware.o
+nxp-nci_i2c-objs := i2c.o

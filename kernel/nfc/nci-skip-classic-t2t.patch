@@ -1,0 +1,26 @@
+--- a/net/nfc/nci/ntf.c
++++ b/net/nfc/nci/ntf.c
+@@ -409,6 +409,23 @@
+ 		}
+ 	}
+ 
++	/*
++	 * NXP PN553 (OnePlus 6T) reports MIFARE Classic (SEL_RES bit 3) as
++	 * T2T, so a dual card (ISO-DEP plus Classic) is announced as two
++	 * targets. The kernel cannot talk to Classic, and neard, trying the
++	 * second target while the first is active, fails with "Could not
++	 * connect" and stays busy. Skip such a target here, in discovery with
++	 * several targets: the card is then seen as ISO-DEP only. A single
++	 * auto-activated card is left alone, rejecting it there would leave it
++	 * activated with nobody to deactivate it.
++	 */
++	if (ntf->rf_protocol == NCI_RF_PROTOCOL_T2T &&
++	    ntf->rf_tech_and_mode == NCI_NFC_A_PASSIVE_POLL_MODE &&
++	    (ntf->rf_tech_specific_params.nfca_poll.sel_res & 0x08)) {
++		pr_info("MIFARE Classic reported as T2T, skipped\n");
++		return;
++	}
++
+ 	/* This is a new target, check if we've enough room */
+ 	if (ndev->n_targets == NCI_MAX_DISCOVERED_TARGETS) {
+ 		pr_debug("not enough room, ignoring new target...\n");
