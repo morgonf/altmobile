@@ -1,12 +1,13 @@
 diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
 --- a/kcm/CMakeLists.txt
 +++ b/kcm/CMakeLists.txt
-@@ -4,12 +4,16 @@
+@@ -4,12 +4,19 @@
  set(screenlocker_kcm_SRCS
      kcm.cpp
      kscreenlockerdata.cpp
 +    pinmanager.cpp
 +    pinagent.cpp
++    passwordpolicy.cpp
  )
  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)
  include_directories(${CMAKE_CURRENT_BINARY_DIR}/../)
@@ -14,57 +15,234 @@ diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
  qt_add_dbus_interface(screenlocker_kcm_SRCS ../dbus/org.kde.screensaver.xml screenlocker_interface)
  
 +find_package(PolkitQt6-1 REQUIRED)
++find_package(KF6Auth REQUIRED)
++add_subdirectory(helper)
 +
  kcmutils_add_qml_kcm(kcm_screenlocker SOURCES ${screenlocker_kcm_SRCS})
  
  target_link_libraries(kcm_screenlocker PRIVATE
-@@ -19,4 +23,6 @@
+@@ -19,4 +26,8 @@
      KF6::KCMUtilsQuick # KQuickManagedConfigModule
      KF6::I18n
      KF6::GlobalAccel
 +    crypt
 +    PolkitQt6-1::Agent
++    KF6::AuthCore
++    passwdqc
  )
+diff -ruN a/kcm/helper/CMakeLists.txt b/kcm/helper/CMakeLists.txt
+--- a/kcm/helper/CMakeLists.txt
++++ b/kcm/helper/CMakeLists.txt
+@@ -0,0 +1,10 @@
++# ALT Mobile: помощник KAuth для записи /etc/passwdqc.conf
++add_executable(passwordpolicyhelper passwordpolicyhelper.cpp)
++target_link_libraries(passwordpolicyhelper
++    Qt::Core
++    KF6::AuthCore
++    passwdqc
++)
++install(TARGETS passwordpolicyhelper DESTINATION ${KAUTH_HELPER_INSTALL_DIR})
++kauth_install_helper_files(passwordpolicyhelper org.altmobile.passwordpolicy root)
++kauth_install_actions(org.altmobile.passwordpolicy org.altmobile.passwordpolicy.actions)
+diff -ruN a/kcm/helper/org.altmobile.passwordpolicy.actions b/kcm/helper/org.altmobile.passwordpolicy.actions
+--- a/kcm/helper/org.altmobile.passwordpolicy.actions
++++ b/kcm/helper/org.altmobile.passwordpolicy.actions
+@@ -0,0 +1,13 @@
++[Domain]
++Name=Password requirements
++Name[ru]=Требования к паролю
++Icon=preferences-desktop-user-password
++
++[org.altmobile.passwordpolicy.save]
++Name=Change password requirements
++Name[ru]=Изменение требований к паролю
++Description=Change password complexity requirements for all users
++Description[ru]=Изменение требований к сложности паролей всех пользователей
++Policy=auth_self
++PolicyInactive=no
++Persistence=session
+diff -ruN a/kcm/helper/passwordpolicyhelper.cpp b/kcm/helper/passwordpolicyhelper.cpp
+--- a/kcm/helper/passwordpolicyhelper.cpp
++++ b/kcm/helper/passwordpolicyhelper.cpp
+@@ -0,0 +1,134 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++// Помощник KAuth от root записывает требования к паролю в
++// /etc/passwdqc.conf. Их же применяет passwd (pam_passwdqc) и страница
++// смены PIN-кода. Переписываются только ключи min, max, passphrase,
++// match, similar, enforce; остальные строки файла остаются как есть.
++// Перед записью итог проверяет сам passwdqc.
++
++#include <KAuth/ActionReply>
++#include <KAuth/HelperSupport>
++
++#include <QFile>
++#include <QSaveFile>
++#include <QStringList>
++
++#include <passwdqc.h>
++
++static const QString configPath = QStringLiteral("/etc/passwdqc.conf");
++
++class PasswordPolicyHelper : public QObject
++{
++    Q_OBJECT
++
++public Q_SLOTS:
++    KAuth::ActionReply save(const QVariantMap &args);
++};
++
++static KAuth::ActionReply errorReply(const QString &text)
++{
++    auto reply = KAuth::ActionReply::HelperErrorReply();
++    reply.setErrorDescription(text);
++    return reply;
++}
++
++// Число или «disabled» (-1) для min
++static QString minValue(int value)
++{
++    return value < 0 ? QStringLiteral("disabled") : QString::number(value);
++}
++
++KAuth::ActionReply PasswordPolicyHelper::save(const QVariantMap &args)
++{
++    const QVariantList minList = args.value(QStringLiteral("min")).toList();
++    if (minList.size() != 5) {
++        return errorReply(QStringLiteral("min: нужно пять значений"));
++    }
++    QStringList mins;
++    for (const QVariant &v : minList) {
++        bool ok = false;
++        const int n = v.toInt(&ok);
++        if (!ok || n < -1 || n > 72) {
++            return errorReply(QStringLiteral("min: недопустимое значение"));
++        }
++        mins << minValue(n);
++    }
++    const int max = args.value(QStringLiteral("max")).toInt();
++    const int passphrase = args.value(QStringLiteral("passphrase")).toInt();
++    const int match = args.value(QStringLiteral("match")).toInt();
++    const bool similar = args.value(QStringLiteral("similarDeny")).toBool();
++    const QString enforce = args.value(QStringLiteral("enforce")).toString();
++    if (max < 8 || max > 72 || passphrase < 0 || passphrase > 10 || match < 0 || match > 72
++        || !QStringList{QStringLiteral("none"), QStringLiteral("users"), QStringLiteral("everyone")}.contains(enforce)) {
++        return errorReply(QStringLiteral("недопустимые параметры"));
++    }
++
++    QMap<QString, QString> values{
++        {QStringLiteral("min"), mins.join(QLatin1Char(','))},
++        {QStringLiteral("max"), QString::number(max)},
++        {QStringLiteral("passphrase"), QString::number(passphrase)},
++        {QStringLiteral("match"), QString::number(match)},
++        {QStringLiteral("similar"), similar ? QStringLiteral("deny") : QStringLiteral("permit")},
++        {QStringLiteral("enforce"), enforce},
++    };
++
++    // Проверка самим passwdqc (порядок min, max не меньше min и т. д.)
++    QList<QByteArray> argvData;
++    for (auto it = values.cbegin(); it != values.cend(); ++it) {
++        argvData << (it.key() + QLatin1Char('=') + it.value()).toUtf8();
++    }
++    QList<const char *> argv;
++    for (const QByteArray &a : argvData) {
++        argv << a.constData();
++    }
++    passwdqc_params_t params;
++    passwdqc_params_reset(&params);
++    char *reason = nullptr;
++    if (passwdqc_params_parse(&params, &reason, argv.size(), argv.constData())) {
++        const QString text = QString::fromUtf8(reason ? reason : "неверные параметры");
++        free(reason);
++        passwdqc_params_free(&params);
++        return errorReply(text);
++    }
++    passwdqc_params_free(&params);
++
++    QStringList lines;
++    QFile in(configPath);
++    if (in.open(QIODevice::ReadOnly)) {
++        lines = QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'));
++        if (!lines.isEmpty() && lines.last().isEmpty()) {
++            lines.removeLast();
++        }
++    }
++    QSet<QString> written;
++    for (QString &line : lines) {
++        const QString key = line.section(QLatin1Char('='), 0, 0).trimmed();
++        if (!line.startsWith(QLatin1Char('#')) && values.contains(key)) {
++            line = key + QLatin1Char('=') + values.value(key);
++            written << key;
++        }
++    }
++    for (auto it = values.cbegin(); it != values.cend(); ++it) {
++        if (!written.contains(it.key())) {
++            lines << it.key() + QLatin1Char('=') + it.value();
++        }
++    }
++
++    QSaveFile out(configPath);
++    if (!out.open(QIODevice::WriteOnly) || out.write((lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8()) < 0) {
++        return errorReply(out.errorString());
++    }
++    out.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
++    if (!out.commit()) {
++        return errorReply(out.errorString());
++    }
++    return KAuth::ActionReply::SuccessReply();
++}
++
++KAUTH_HELPER_MAIN("org.altmobile.passwordpolicy", PasswordPolicyHelper)
++
++#include "passwordpolicyhelper.moc"
 diff -ruN a/kcm/kcm.cpp b/kcm/kcm.cpp
 --- a/kcm/kcm.cpp
 +++ b/kcm/kcm.cpp
-@@ -24,6 +24,7 @@
+@@ -24,6 +24,8 @@
  ScreenLockerKcm::ScreenLockerKcm(QObject *parent, const KPluginMetaData &data)
      : KQuickManagedConfigModule(parent, data)
      , m_appearanceSettings(new AppearanceSettings(this))
 +    , m_pin(new PinManager(this))
++    , m_policy(new PasswordPolicy(this))
  {
      registerSettings(&KScreenSaverSettings::getInstance());
  
-@@ -33,6 +34,7 @@
+@@ -33,6 +35,8 @@
      qmlRegisterAnonymousType<WallpaperInfo>(url, 1);
      qmlRegisterAnonymousType<ScreenLocker::WallpaperIntegration>(url, 1);
      qmlRegisterAnonymousType<KConfigPropertyMap>(url, 1);
 +    qmlRegisterAnonymousType<PinManager>(url, 1);
++    qmlRegisterAnonymousType<PasswordPolicy>(url, 1);
      qmlProtectModule(url, 1);
  
      // Our modules will be checking the Plasmoid attached object when running from Plasma, let it load the module
 diff -ruN a/kcm/kcm.h b/kcm/kcm.h
 --- a/kcm/kcm.h
 +++ b/kcm/kcm.h
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,8 @@
  #include <KQuickManagedConfigModule>
  
  #include "kscreensaversettings.h"
++#include "passwordpolicy.h"
 +#include "pinmanager.h"
  #include "wallpaper_integration.h"
  
  class ScreenLockerKcmForm;
-@@ -35,6 +36,8 @@
+@@ -35,6 +37,9 @@
      Q_PROPERTY(ScreenLocker::WallpaperIntegration *wallpaperIntegration READ wallpaperIntegration NOTIFY currentWallpaperChanged)
      Q_PROPERTY(QString currentWallpaper READ currentWallpaper NOTIFY currentWallpaperChanged)
      Q_PROPERTY(bool isDefaultsAppearance READ isDefaultsAppearance NOTIFY isDefaultsAppearanceChanged)
 +    // ALT Mobile: смена PIN-кода на странице блокировки
 +    Q_PROPERTY(PinManager *pin READ pin CONSTANT)
++    Q_PROPERTY(PasswordPolicy *policy READ policy CONSTANT)
  
      Q_INVOKABLE QList<WallpaperInfo> availableWallpaperPlugins()
      {
-@@ -47,6 +50,10 @@
+@@ -47,6 +52,14 @@
      ScreenLocker::WallpaperIntegration *wallpaperIntegration() const;
      QString currentWallpaper() const;
      bool isDefaultsAppearance() const;
@@ -72,14 +250,19 @@ diff -ruN a/kcm/kcm.h b/kcm/kcm.h
 +    {
 +        return m_pin;
 +    }
++    PasswordPolicy *policy() const
++    {
++        return m_policy;
++    }
  
  public Q_SLOTS:
      void load() override;
-@@ -80,4 +87,5 @@
+@@ -80,4 +93,6 @@
      AppearanceSettings *m_appearanceSettings;
      QString m_currentWallpaper;
      bool m_forceUpdateState = false;
 +    PinManager *m_pin;
++    PasswordPolicy *m_policy;
  };
 diff -ruN a/kcm/kcm_screenlocker.json b/kcm/kcm_screenlocker.json
 --- a/kcm/kcm_screenlocker.json
@@ -102,10 +285,190 @@ diff -ruN a/kcm/kcm_screenlocker.json b/kcm/kcm_screenlocker.json
          "Name[sa]": "स्क्रीन लॉकिंग",
          "Name[sk]": "Zamykanie obrazovky",
          "Name[sl]": "Zaklep zaslona",
+diff -ruN a/kcm/passwordpolicy.cpp b/kcm/passwordpolicy.cpp
+--- a/kcm/passwordpolicy.cpp
++++ b/kcm/passwordpolicy.cpp
+@@ -0,0 +1,121 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#include "passwordpolicy.h"
++
++#include <QHash>
++
++#include <climits>
++#include <passwdqc.h>
++#include <pwd.h>
++#include <unistd.h>
++
++static const char configPath[] = "/etc/passwdqc.conf";
++
++PasswordPolicy::PasswordPolicy(QObject *parent)
++    : QObject(parent)
++{
++    load();
++}
++
++void PasswordPolicy::load()
++{
++    passwdqc_params_t params;
++    passwdqc_params_reset(&params);
++    char *reason = nullptr;
++    if (passwdqc_params_load(&params, &reason, configPath) == 0) {
++        m_min.clear();
++        for (int n : params.qc.min) {
++            m_min << (n == INT_MAX ? -1 : n);
++        }
++        m_max = params.qc.max;
++        m_passphrase = params.qc.passphrase_words;
++        m_match = params.qc.match_length;
++        m_similarDeny = params.qc.similar_deny;
++        switch (params.pam.flags & F_ENFORCE_MASK) {
++        case 0:
++            m_enforce = QStringLiteral("none");
++            break;
++        case F_ENFORCE_EVERYONE:
++            m_enforce = QStringLiteral("everyone");
++            break;
++        default:
++            m_enforce = QStringLiteral("users");
++        }
++    }
++    free(reason);
++    passwdqc_params_free(&params);
++    Q_EMIT changed();
++}
++
++QVariantList PasswordPolicy::min() const
++{
++    return m_min;
++}
++
++int PasswordPolicy::max() const
++{
++    return m_max;
++}
++
++int PasswordPolicy::passphrase() const
++{
++    return m_passphrase;
++}
++
++int PasswordPolicy::match() const
++{
++    return m_match;
++}
++
++bool PasswordPolicy::similarDeny() const
++{
++    return m_similarDeny;
++}
++
++QString PasswordPolicy::enforce() const
++{
++    return m_enforce;
++}
++
++QString PasswordPolicy::check(const QString &newPin, const QString &oldPin) const
++{
++    passwdqc_params_t params;
++    passwdqc_params_reset(&params);
++    char *loadReason = nullptr;
++    if (passwdqc_params_load(&params, &loadReason, configPath)) {
++        free(loadReason);
++        passwdqc_params_free(&params);
++        return QString();
++    }
++    const QByteArray newUtf8 = newPin.toUtf8();
++    const QByteArray oldUtf8 = oldPin.toUtf8();
++    const char *reason = passwdqc_check(&params.qc, newUtf8.constData(), oldUtf8.isEmpty() ? nullptr : oldUtf8.constData(), getpwuid(getuid()));
++    passwdqc_params_free(&params);
++    if (!reason) {
++        return QString();
++    }
++
++    // Причины из passwdqc_check.c
++    static const QHash<QString, QString> russian{
++        {QStringLiteral("is the same as the old one"), QStringLiteral("совпадает с прежним")},
++        {QStringLiteral("is based on the old one"), QStringLiteral("слишком похож на прежний")},
++        {QStringLiteral("too short"), QStringLiteral("слишком короткий")},
++        {QStringLiteral("too long"), QStringLiteral("слишком длинный")},
++        {QStringLiteral("not enough different characters or classes for this length"),
++         QStringLiteral("при такой длине нужно больше разных символов")},
++        {QStringLiteral("not enough different characters or classes"), QStringLiteral("слишком мало разных символов")},
++        {QStringLiteral("based on personal login information"), QStringLiteral("основан на имени пользователя")},
++        {QStringLiteral("based on a dictionary word and not a passphrase"), QStringLiteral("основан на слове из словаря")},
++        {QStringLiteral("based on a common sequence of characters and not a passphrase"),
++         QStringLiteral("основан на простой последовательности (1234, qwerty)")},
++        {QStringLiteral("based on a word list entry"), QStringLiteral("есть в списке слабых паролей")},
++        {QStringLiteral("is in deny list"), QStringLiteral("есть в списке запрещённых")},
++    };
++    const QString english = QString::fromUtf8(reason);
++    return russian.value(english, english);
++}
++
++#include "moc_passwordpolicy.cpp"
+diff -ruN a/kcm/passwordpolicy.h b/kcm/passwordpolicy.h
+--- a/kcm/passwordpolicy.h
++++ b/kcm/passwordpolicy.h
+@@ -0,0 +1,51 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#pragma once
++
++#include <QObject>
++#include <QVariantList>
++
++// Требования к паролю из /etc/passwdqc.conf (их же применяет passwd).
++// Чтение и проверка нового кода библиотекой passwdqc. Запись идёт через
++// помощника KAuth (PinManager::savePolicy).
++class PasswordPolicy : public QObject
++{
++    Q_OBJECT
++    // Наименьшая длина по числу видов символов: один, два, кодовая фраза,
++    // три, четыре. -1 означает «запрещено»
++    Q_PROPERTY(QVariantList min READ min NOTIFY changed)
++    Q_PROPERTY(int max READ max NOTIFY changed)
++    Q_PROPERTY(int passphrase READ passphrase NOTIFY changed)
++    Q_PROPERTY(int match READ match NOTIFY changed)
++    Q_PROPERTY(bool similarDeny READ similarDeny NOTIFY changed)
++    // none, users или everyone
++    Q_PROPERTY(QString enforce READ enforce NOTIFY changed)
++
++public:
++    explicit PasswordPolicy(QObject *parent = nullptr);
++
++    QVariantList min() const;
++    int max() const;
++    int passphrase() const;
++    int match() const;
++    bool similarDeny() const;
++    QString enforce() const;
++
++    Q_INVOKABLE void load();
++    // Пустая строка, если код подходит, иначе причина по-русски
++    Q_INVOKABLE QString check(const QString &newPin, const QString &oldPin) const;
++
++Q_SIGNALS:
++    void changed();
++
++private:
++    QVariantList m_min;
++    int m_max = 72;
++    int m_passphrase = 3;
++    int m_match = 4;
++    bool m_similarDeny = true;
++    QString m_enforce = QStringLiteral("users");
++};
 diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 --- a/kcm/pinagent.cpp
 +++ b/kcm/pinagent.cpp
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,90 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -115,14 +478,17 @@ diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 +
 +#include <QCoreApplication>
 +
++#include <memory>
++
 +#include <PolkitQt1/Identity>
 +#include <PolkitQt1/Subject>
 +
 +#include <unistd.h>
 +
-+PinAgent::PinAgent(const QString &password, QObject *parent)
++PinAgent::PinAgent(const QString &password, const QString &actionId, QObject *parent)
 +    : PolkitQt1::Agent::Listener(parent)
 +    , m_password(password)
++    , m_actionId(actionId)
 +{
 +}
 +
@@ -146,7 +512,7 @@ diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 +    Q_UNUSED(iconName)
 +    Q_UNUSED(details)
 +
-+    // Отвечаем только на смену собственного пароля и только за себя
++    // Отвечаем только на своё действие и только за себя
 +    PolkitQt1::Identity self;
 +    // toString() даёт имя (unix-user:altlinux), сравниваем по uid
 +    for (PolkitQt1::Identity identity : identities) {
@@ -155,26 +521,27 @@ diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 +            self = identity;
 +        }
 +    }
-+    if (m_session || actionId != QStringLiteral("org.freedesktop.accounts.change-own-password") || !self.isValid()) {
++    if (m_session || actionId != m_actionId || !self.isValid()) {
 +        result->setError(QStringLiteral("не то действие"));
 +        result->setCompleted();
 +        return;
 +    }
 +
 +    m_session = new PolkitQt1::Agent::Session(self, cookie, result, this);
-+    connect(m_session, &PolkitQt1::Agent::Session::request, this, [this](const QString &, bool) {
-+        // Код отдаётся один раз: если PAM спросит снова, код не подошёл
-+        const QString password = m_password;
-+        m_password.clear();
-+        if (password.isEmpty()) {
++    // Код отдаётся один раз за запрос: если PAM спросит снова, код не подошёл
++    auto answered = std::make_shared<bool>(false);
++    connect(m_session, &PolkitQt1::Agent::Session::request, this, [this, answered](const QString &, bool) {
++        if (*answered) {
 +            m_session->cancel();
 +        } else {
-+            m_session->setResponse(password);
++            *answered = true;
++            m_session->setResponse(m_password);
 +        }
 +    });
 +    connect(m_session, &PolkitQt1::Agent::Session::completed, this, [this](bool) {
 +        m_session->result()->setCompleted();
 +        m_session->deleteLater();
++        m_session = nullptr;
 +    });
 +    m_session->initiate();
 +}
@@ -195,7 +562,7 @@ diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 diff -ruN a/kcm/pinagent.h b/kcm/pinagent.h
 --- a/kcm/pinagent.h
 +++ b/kcm/pinagent.h
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,42 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -206,7 +573,8 @@ diff -ruN a/kcm/pinagent.h b/kcm/pinagent.h
 +#include <PolkitQt1/Agent/Listener>
 +#include <PolkitQt1/Agent/Session>
 +
-+// Агент polkit только для процесса настроек и только на время смены PIN.
++// Агент polkit только для процесса настроек и только на время смены PIN
++// или записи требований к паролю.
 +// AccountsService спрашивает у polkit право change-own-password (auth_self),
 +// и без своего агента системный агент открывал окно «Требуется
 +// аутентификация», хотя текущий PIN пользователь уже ввёл. Агент отвечает
@@ -217,7 +585,7 @@ diff -ruN a/kcm/pinagent.h b/kcm/pinagent.h
 +    Q_OBJECT
 +
 +public:
-+    PinAgent(const QString &password, QObject *parent = nullptr);
++    PinAgent(const QString &password, const QString &actionId, QObject *parent = nullptr);
 +
 +    bool registerForThisProcess();
 +
@@ -234,12 +602,13 @@ diff -ruN a/kcm/pinagent.h b/kcm/pinagent.h
 +
 +private:
 +    QString m_password;
++    QString m_actionId;
 +    PolkitQt1::Agent::Session *m_session = nullptr;
 +};
 diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 --- a/kcm/pinmanager.cpp
 +++ b/kcm/pinmanager.cpp
-@@ -0,0 +1,287 @@
+@@ -0,0 +1,351 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -256,6 +625,9 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +#include <QDBusPendingReply>
 +#include <QPointer>
 +#include <QThread>
++
++#include <KAuth/Action>
++#include <KAuth/ExecuteJob>
 +
 +#include <crypt.h>
 +#include <errno.h>
@@ -507,7 +879,7 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +    set << QString::fromLatin1(hash) << QString();
 +    // polkit спросит пароль (auth_self) у агента этого процесса, тот
 +    // ответит уже проверенным текущим PIN-кодом (pinagent.h)
-+    auto agent = new PinAgent(current, this);
++    auto agent = new PinAgent(current, QStringLiteral("org.freedesktop.accounts.change-own-password"), this);
 +    if (!agent->registerForThisProcess()) {
 +        qWarning("PinAgent: не удалось зарегистрировать агента polkit");
 +    }
@@ -526,11 +898,72 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +    });
 +}
 +
++void PinManager::verifyThen(const QString &current, std::function<void()> next)
++{
++    QPointer<PinManager> self(this);
++    const QByteArray currentUtf8 = current.toUtf8();
++    QThread *thread = QThread::create([self, currentUtf8, next]() {
++        const CheckResult check = checkPassword(currentUtf8);
++        QMetaObject::invokeMethod(qApp, [self, check, next]() {
++            if (!self) {
++                return;
++            }
++            if (check == CheckOk) {
++                next();
++                return;
++            }
++            self->setBusy(false);
++            if (check == CheckBad) {
++                Q_EMIT self->failed(true, QString());
++            } else {
++                Q_EMIT self->failed(false, QStringLiteral("не удалось проверить PIN-код"));
++            }
++        });
++    });
++    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
++    thread->start();
++}
++
++void PinManager::savePolicy(const QString &current, const QVariantMap &policy)
++{
++    if (m_busy) {
++        return;
++    }
++    setBusy(true);
++    verifyThen(current, [this, current, policy]() {
++        runPolicyHelper(current, policy);
++    });
++}
++
++void PinManager::runPolicyHelper(const QString &current, const QVariantMap &policy)
++{
++    const QString actionId = QStringLiteral("org.altmobile.passwordpolicy.save");
++    // polkit спросит пароль (auth_self) у агента этого процесса
++    auto agent = new PinAgent(current, actionId, this);
++    if (!agent->registerForThisProcess()) {
++        qWarning("PinAgent: не удалось зарегистрировать агента polkit");
++    }
++    KAuth::Action action(actionId);
++    action.setHelperId(QStringLiteral("org.altmobile.passwordpolicy"));
++    action.setArguments(policy);
++    KAuth::ExecuteJob *job = action.execute();
++    connect(job, &KJob::result, this, [this, job, agent]() {
++        agent->deleteLater();
++        setBusy(false);
++        if (job->error()) {
++            Q_EMIT failed(false, job->errorString().isEmpty() ? job->errorText() : job->errorString());
++        } else {
++            Q_EMIT succeeded();
++        }
++    });
++    job->start();
++}
++
 +#include "moc_pinmanager.cpp"
 diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 --- a/kcm/pinmanager.h
 +++ b/kcm/pinmanager.h
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,43 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -539,6 +972,9 @@ diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 +#pragma once
 +
 +#include <QObject>
++#include <QVariantMap>
++
++#include <functional>
 +
 +// Смена PIN-кода (пароля пользователя) для ALT Mobile. Текущий код
 +// проверяет kcheckpass, как на экране блокировки, новый записывает
@@ -553,6 +989,8 @@ diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 +
 +    bool busy() const;
 +    Q_INVOKABLE void changePin(const QString &current, const QString &pin);
++    // Записать требования к паролю (помощник KAuth) после проверки PIN-кода
++    Q_INVOKABLE void savePolicy(const QString &current, const QVariantMap &policy);
 +
 +Q_SIGNALS:
 +    void busyChanged();
@@ -563,13 +1001,16 @@ diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 +private:
 +    void setBusy(bool busy);
 +    void setPassword(const QByteArray &hash, const QString &current);
++    void runPolicyHelper(const QString &current, const QVariantMap &policy);
++    // Проверка PIN в отдельном потоке, затем next в основном
++    void verifyThen(const QString &current, std::function<void()> next);
 +
 +    bool m_busy = false;
 +};
 diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 --- a/kcm/ui/ChangePin.qml
 +++ b/kcm/ui/ChangePin.qml
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,298 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -582,14 +1023,21 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +
 +import org.kde.kirigami as Kirigami
 +
-+// ALT Mobile: смена PIN-кода. Три шага на одной цифровой панели (текущий
-+// код, новый, повтор), как окно разблокировки SIM. Системная клавиатура не
-+// открывается. Текущий код проверяет kcheckpass, новый записывает
-+// AccountsService (kcm.pin, pinmanager.cpp).
++// ALT Mobile: ввод PIN-кода с цифровой панелью, как окно разблокировки SIM.
++// Режим change меняет код в три шага (текущий, новый, повтор), новый код
++// проверяется требованиями passwdqc (kcm.policy). Режим policy один раз
++// спрашивает PIN-код и сохраняет требования (kcm.pin.savePolicy). Кнопка
++// «АБВ» переключает на ввод пароля с буквами системной клавиатурой.
 +Kirigami.Page {
 +    id: page
 +
-+    title: "Сменить PIN-код"
++    // change или policy
++    property string mode: "change"
++    // Для режима policy: требования и что вызвать после записи
++    property var policy: ({})
++    property var doneCallback: null
++
++    title: mode === "policy" ? "Подтверждение" : "Сменить PIN-код"
 +    padding: Kirigami.Units.gridUnit
 +
 +    // 0 текущий код, 1 новый, 2 повтор, 3 готово
@@ -598,11 +1046,22 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +    property string fresh: ""
 +    property string entry: ""
 +    property string error: ""
++    // Предупреждение о слабом коде при enforce=none: второе нажатие принимает
++    property string warnedFor: ""
++    property bool textMode: false
 +
-+    readonly property int minLength: 4
-+    readonly property int maxLength: 16
++    readonly property var minList: kcm.policy.min
++    // PIN из одних цифр разрешён, если min[0] задан
++    readonly property bool digitsAllowed: minList.length === 0 || minList[0] >= 0
++    readonly property int minLength: digitsAllowed && minList.length > 0 ? minList[0] : 4
++    readonly property int maxLength: kcm.policy.max
 +    readonly property bool busy: kcm.pin.busy
-+    readonly property bool entryValid: step === 0 ? entry.length > 0 : entry.length >= minLength
++    readonly property bool entryValid: step === 0 ? entry.length > 0 : entry.length > 0 && entry.length <= maxLength
++
++    Component.onCompleted: {
++        kcm.policy.load();
++        textMode = false;
++    }
 +
 +    function press(digit) {
 +        if (busy || step === 3 || entry.length >= maxLength) {
@@ -618,26 +1077,48 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +        }
 +    }
 +
++    function clearEntry() {
++        entry = "";
++        textField.text = "";
++    }
++
 +    function submit() {
 +        if (busy || !entryValid) {
 +            return;
 +        }
 +        if (step === 0) {
 +            current = entry;
-+            step = 1;
++            if (mode === "policy") {
++                kcm.pin.savePolicy(current, policy);
++            } else {
++                step = 1;
++                // Цифровой PIN запрещён требованиями, сразу буквы
++                textMode = !digitsAllowed;
++                error = digitsAllowed ? "" : "Требования не разрешают PIN-код из одних цифр, нужен пароль с буквами";
++            }
 +        } else if (step === 1) {
-+            fresh = entry;
-+            step = 2;
++            const reason = kcm.policy.check(entry, current);
++            if (reason && kcm.policy.enforce !== "none") {
++                error = "Не подходит, " + reason;
++            } else if (reason && warnedFor !== entry) {
++                warnedFor = entry;
++                error = "Слабый код, " + reason + ". Нажмите ещё раз, чтобы оставить его";
++                return;
++            } else {
++                fresh = entry;
++                step = 2;
++                error = "";
++            }
 +        } else if (step === 2) {
 +            if (entry !== fresh) {
 +                fresh = "";
 +                step = 1;
-+                error = "PIN-коды не совпадают, введите новый ещё раз";
++                error = "Коды не совпадают, введите новый ещё раз";
 +            } else {
 +                kcm.pin.changePin(current, fresh);
 +            }
 +        }
-+        entry = "";
++        clearEntry();
 +    }
 +
 +    Connections {
@@ -647,6 +1128,9 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            page.current = "";
 +            page.fresh = "";
 +            page.step = 3;
++            if (page.doneCallback) {
++                page.doneCallback();
++            }
 +            closeTimer.start();
 +        }
 +
@@ -655,7 +1139,10 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            if (wrongPin) {
 +                page.current = "";
 +                page.step = 0;
-+                page.error = "Неверный текущий PIN-код";
++                page.error = "Неверный PIN-код";
++            } else if (page.mode === "policy") {
++                page.step = 0;
++                page.error = "Не удалось сохранить (" + message + ")";
 +            } else {
 +                page.step = 1;
 +                page.error = "Не удалось сменить PIN-код (" + message + ")";
@@ -670,7 +1157,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +    }
 +
 +    // Физическая клавиатура, если подключена
-+    focus: true
++    focus: !page.textMode
 +    Keys.onPressed: event => {
 +        if (event.text.length === 1 && event.text >= "0" && event.text <= "9") {
 +            page.press(event.text);
@@ -702,10 +1189,10 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            horizontalAlignment: Text.AlignHCenter
 +            wrapMode: Text.WordWrap
 +            level: 2
-+            text: page.step === 0 ? "Текущий PIN-код"
-+                : page.step === 1 ? "Новый PIN-код"
-+                : page.step === 2 ? "Повторите новый PIN-код"
-+                : "PIN-код изменён"
++            text: page.step === 3 ? (page.mode === "policy" ? "Требования сохранены" : "PIN-код изменён")
++                : page.step === 0 ? (page.mode === "policy" ? "Введите PIN-код" : "Текущий PIN-код")
++                : page.step === 1 ? "Новый код"
++                : "Повторите новый код"
 +        }
 +
 +        QQC2.Label {
@@ -715,7 +1202,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            color: page.error ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.disabledTextColor
 +            text: page.busy ? "Проверка…"
 +                : page.error ? page.error
-+                : page.step === 1 ? "От " + page.minLength + " до " + page.maxLength + " цифр"
++                : page.step === 1 && page.digitsAllowed ? "PIN-код не короче " + page.minLength + " цифр"
 +                : ""
 +        }
 +
@@ -724,7 +1211,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            Layout.alignment: Qt.AlignHCenter
 +            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
 +            spacing: Kirigami.Units.largeSpacing
-+            visible: page.step !== 3
++            visible: page.step !== 3 && !page.textMode
 +            Repeater {
 +                model: page.entry.length
 +                Rectangle {
@@ -737,6 +1224,23 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            }
 +        }
 +
++        // Пароль с буквами
++        Kirigami.PasswordField {
++            id: textField
++            Layout.alignment: Qt.AlignHCenter
++            Layout.preferredWidth: Kirigami.Units.gridUnit * 16
++            visible: page.step !== 3 && page.textMode
++            enabled: !page.busy
++            maximumLength: page.maxLength
++            onTextChanged: {
++                page.entry = text;
++                if (text) {
++                    page.error = "";
++                }
++            }
++            onAccepted: page.submit()
++        }
++
 +        Item { Layout.preferredHeight: Kirigami.Units.largeSpacing }
 +
 +        GridLayout {
@@ -744,7 +1248,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            columns: 3
 +            rowSpacing: Kirigami.Units.largeSpacing
 +            columnSpacing: Kirigami.Units.gridUnit * 1.5
-+            visible: page.step !== 3
++            visible: page.step !== 3 && !page.textMode
 +
 +            Repeater {
 +                model: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "erase", "0", "ok"]
@@ -773,13 +1277,42 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 +            }
 +        }
 +
++        RowLayout {
++            Layout.alignment: Qt.AlignHCenter
++            visible: page.step !== 3
++            spacing: Kirigami.Units.largeSpacing
++
++            QQC2.Button {
++                flat: true
++                text: page.textMode ? "123" : "АБВ"
++                // На новом коде без разрешения цифр вернуться к цифрам нельзя
++                enabled: !page.busy && (page.textMode ? (page.step === 0 || page.digitsAllowed) : true)
++                onClicked: {
++                    page.textMode = !page.textMode;
++                    page.clearEntry();
++                    if (page.textMode) {
++                        textField.forceActiveFocus();
++                    } else {
++                        page.forceActiveFocus();
++                    }
++                }
++            }
++
++            QQC2.Button {
++                visible: page.textMode
++                text: "Готово"
++                enabled: page.entryValid && !page.busy
++                onClicked: page.submit()
++            }
++        }
++
 +        Item { Layout.fillHeight: true }
 +    }
 +}
 diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 --- a/kcm/ui/main.qml
 +++ b/kcm/ui/main.qml
-@@ -2,237 +2,158 @@
+@@ -2,237 +2,167 @@
  SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
  SPDX-FileCopyrightText: 2024 Kristen McWilliam <kmcwilliampublic@gmail.com>
  SPDX-FileCopyrightText: 2024 Jakob Petsovits <jpetso@petsovits.com>
@@ -874,6 +1407,15 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +                text: "Сменить PIN-код"
 +                description: "Этим кодом снимается блокировка экрана"
 +                onClicked: kcm.push("ChangePin.qml")
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormButtonDelegate {
++                icon.name: "security-medium-symbolic"
++                text: "Требования к коду"
++                description: "Длина, словарь, кодовая фраза"
++                onClicked: kcm.push("PasswordPolicy.qml")
 +            }
 +        }
 +
@@ -1133,3 +1675,272 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
              }
          }
      }
+diff -ruN a/kcm/ui/PasswordPolicy.qml b/kcm/ui/PasswordPolicy.qml
+--- a/kcm/ui/PasswordPolicy.qml
++++ b/kcm/ui/PasswordPolicy.qml
+@@ -0,0 +1,265 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++
++import QtQuick
++import QtQuick.Controls as QQC2
++import QtQuick.Layouts
++
++import org.kde.kcmutils as KCM
++import org.kde.kirigami as Kirigami
++import org.kde.kirigamiaddons.formcard 1 as FormCard
++
++// ALT Mobile: требования к PIN-коду и паролю (/etc/passwdqc.conf, их же
++// применяет passwd). Правки копятся на странице, «Сохранить» просит
++// PIN-код (ChangePin.qml в режиме policy) и пишет файл через помощника
++// KAuth. У passwdqc длины min не возрастают слева направо: чем больше
++// видов символов, тем короче может быть код. Верхние пределы полей ниже
++// поэтому зависят от полей выше.
++KCM.SimpleKCM {
++    id: page
++
++    title: "Требования к коду"
++
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
++
++    readonly property var policy: kcm.policy
++
++    property bool pinAllowed
++    property int pinMin
++    property int min2
++    property int min3
++    property int min4
++    property bool phraseAllowed
++    property int phraseMin
++    property int phraseWords
++    property bool dictionary
++    property bool similarDeny
++    property int maxLength
++    property string enforce
++    property bool dirty: false
++
++    function reset() {
++        policy.load();
++        const m = policy.min;
++        pinAllowed = m[0] >= 0;
++        pinMin = m[0] >= 0 ? m[0] : 6;
++        min2 = m[1] >= 0 ? m[1] : 8;
++        phraseMin = m[2] >= 0 ? m[2] : 8;
++        min3 = m[3] >= 0 ? m[3] : 8;
++        min4 = m[4] >= 0 ? m[4] : 8;
++        phraseAllowed = policy.passphrase > 0;
++        phraseWords = policy.passphrase > 0 ? policy.passphrase : 3;
++        dictionary = policy.match > 0;
++        similarDeny = policy.similarDeny;
++        maxLength = policy.max;
++        enforce = policy.enforce;
++        dirty = false;
++    }
++
++    function result() {
++        const n0 = pinAllowed ? pinMin : -1;
++        const n1 = pinAllowed ? Math.min(min2, n0) : min2;
++        const n2 = Math.min(phraseMin, n1);
++        const n3 = Math.min(min3, n2);
++        const n4 = Math.min(min4, n3);
++        return {
++            "min": [n0, n1, n2, n3, n4],
++            "max": Math.max(maxLength, pinAllowed ? n0 : n1),
++            "passphrase": phraseAllowed ? phraseWords : 0,
++            "match": dictionary ? 4 : 0,
++            "similarDeny": similarDeny,
++            "enforce": enforce,
++        };
++    }
++
++    Component.onCompleted: reset()
++
++    readonly property var enforceModel: [
++        { value: "users", text: "Запрещать" },
++        { value: "none", text: "Только предупреждать" },
++        { value: "everyone", text: "Запрещать и для root" },
++    ]
++
++    ColumnLayout {
++        spacing: 0
++
++        FormCard.FormHeader {
++            title: "PIN-код"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormSwitchDelegate {
++                id: pinSwitch
++                text: "Разрешить PIN-код из одних цифр"
++                description: "Иначе нужен пароль с буквами"
++                checked: page.pinAllowed
++                onToggled: { page.pinAllowed = checked; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator { visible: page.pinAllowed }
++
++            FormCard.FormSpinBoxDelegate {
++                visible: page.pinAllowed
++                label: "Не короче, цифр"
++                from: 4
++                to: 40
++                value: page.pinMin
++                onValueChanged: if (value !== page.pinMin) { page.pinMin = value; page.dirty = true; }
++            }
++        }
++
++        FormCard.FormHeader {
++            title: "Пароль"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormSpinBoxDelegate {
++                label: "Не короче, два вида символов"
++                from: 4
++                to: page.pinAllowed ? page.pinMin : 72
++                value: page.min2
++                onValueChanged: if (value !== page.min2) { page.min2 = value; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormSpinBoxDelegate {
++                label: "Не короче, три вида символов"
++                from: 4
++                to: Math.min(page.min2, page.phraseMin)
++                value: page.min3
++                onValueChanged: if (value !== page.min3) { page.min3 = value; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormSpinBoxDelegate {
++                label: "Не короче, четыре вида символов"
++                from: 4
++                to: page.min3
++                value: page.min4
++                onValueChanged: if (value !== page.min4) { page.min4 = value; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormSpinBoxDelegate {
++                label: "Не длиннее"
++                from: 8
++                to: 72
++                value: page.maxLength
++                onValueChanged: if (value !== page.maxLength) { page.maxLength = value; page.dirty = true; }
++            }
++        }
++
++        FormCard.FormSectionText {
++            text: "Различаются четыре вида символов (строчные буквы, заглавные буквы, цифры, прочие знаки). Чем больше видов, тем короче может быть пароль, поэтому нижние поля не превышают верхние."
++        }
++
++        FormCard.FormHeader {
++            title: "Кодовая фраза"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormSwitchDelegate {
++                text: "Разрешить кодовую фразу"
++                description: "Несколько слов через пробел"
++                checked: page.phraseAllowed
++                onToggled: { page.phraseAllowed = checked; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator { visible: page.phraseAllowed }
++
++            FormCard.FormSpinBoxDelegate {
++                visible: page.phraseAllowed
++                label: "Слов не меньше"
++                from: 2
++                to: 10
++                value: page.phraseWords
++                onValueChanged: if (value !== page.phraseWords) { page.phraseWords = value; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator { visible: page.phraseAllowed }
++
++            FormCard.FormSpinBoxDelegate {
++                visible: page.phraseAllowed
++                label: "Фраза не короче, символов"
++                from: 4
++                to: page.min2
++                value: page.phraseMin
++                onValueChanged: if (value !== page.phraseMin) { page.phraseMin = value; page.dirty = true; }
++            }
++        }
++
++        FormCard.FormHeader {
++            title: "Проверки"
++        }
++
++        FormCard.FormCard {
++            FormCard.FormSwitchDelegate {
++                text: "Проверять по словарю"
++                description: "Запрещать слова из словаря, имя пользователя и простые последовательности вроде 1234 и qwerty"
++                checked: page.dictionary
++                onToggled: { page.dictionary = checked; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormSwitchDelegate {
++                text: "Запрещать похожий на прежний"
++                checked: page.similarDeny
++                onToggled: { page.similarDeny = checked; page.dirty = true; }
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormComboBoxDelegate {
++                text: "Если код не подходит"
++                textRole: "text"
++                valueRole: "value"
++                displayMode: FormCard.FormComboBoxDelegate.Dialog
++                model: page.enforceModel
++                currentIndex: {
++                    for (let i = 0; i < page.enforceModel.length; ++i) {
++                        if (page.enforceModel[i].value === page.enforce) {
++                            return i;
++                        }
++                    }
++                    return 0;
++                }
++                onActivated: index => { page.enforce = page.enforceModel[index].value; page.dirty = true; }
++            }
++        }
++
++        FormCard.FormSectionText {
++            text: "Требования действуют для всех пользователей телефона и для команды passwd. Уже заданный PIN-код они не меняют, проверяется только новый."
++        }
++
++        FormCard.FormCard {
++            Layout.topMargin: Kirigami.Units.largeSpacing
++
++            FormCard.FormButtonDelegate {
++                icon.name: "document-save"
++                text: "Сохранить требования"
++                description: page.dirty ? "Понадобится PIN-код" : "Изменений нет"
++                enabled: page.dirty
++                onClicked: kcm.push("ChangePin.qml", { "mode": "policy", "policy": page.result(), "doneCallback": page.reset })
++            }
++
++            FormCard.FormDelegateSeparator {}
++
++            FormCard.FormButtonDelegate {
++                icon.name: "edit-undo"
++                text: "Отменить изменения"
++                enabled: page.dirty
++                onClicked: page.reset()
++            }
++        }
++    }
++}
