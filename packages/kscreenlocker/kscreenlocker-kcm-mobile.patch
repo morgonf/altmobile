@@ -105,7 +105,7 @@ diff -ruN a/kcm/kcm_screenlocker.json b/kcm/kcm_screenlocker.json
 diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 --- a/kcm/pinagent.cpp
 +++ b/kcm/pinagent.cpp
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,86 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
@@ -148,8 +148,10 @@ diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
 +
 +    // Отвечаем только на смену собственного пароля и только за себя
 +    PolkitQt1::Identity self;
-+    for (const PolkitQt1::Identity &identity : identities) {
-+        if (identity.toString() == QStringLiteral("unix-user:%1").arg(::getuid())) {
++    // toString() даёт имя (unix-user:altlinux), сравниваем по uid
++    for (PolkitQt1::Identity identity : identities) {
++        const PolkitQt1::UnixUserIdentity user = identity.toUnixUserIdentity();
++        if (user.isValid() && user.uid() == ::getuid()) {
 +            self = identity;
 +        }
 +    }
