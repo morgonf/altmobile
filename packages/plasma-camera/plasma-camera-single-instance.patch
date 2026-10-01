@@ -1,0 +1,61 @@
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -7,6 +7,8 @@
+ #include <QUrl>
+ #include <QIcon>
+ 
++#include <KDBusService>
++#include <QQuickWindow>
+ #include <KAboutData>
+ #include <KLocalizedString>
+ #include <KLocalizedContext>
+@@ -94,6 +96,12 @@
+     // set about as the information about the app
+     KAboutData::setApplicationData(about);
+ 
++    // ALT Mobile: one instance only. On the OnePlus 6T the cameras work one
++    // at a time, so a second instance started from the launcher while the
++    // first one ran in the background got "camera unavailable" (media link
++    // busy). Now the second start activates the first window and exits.
++    KDBusService service(KDBusService::Unique);
++
+     // register about as a qml singleton
+     qmlRegisterSingletonType(URI, 1, 0, "About",
+         [](QQmlEngine* engine, QJSEngine *) -> QJSValue {
+@@ -122,6 +130,15 @@
+     engine.rootContext()->setContextObject(new KLocalizedContext(&engine));
+     engine.load(QUrl(QStringLiteral("qrc:///main.qml")));
+ 
++    QObject::connect(&service, &KDBusService::activateRequested, &engine, [&engine]() {
++        const auto roots = engine.rootObjects();
++        if (auto window = roots.isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(roots.first())) {
++            window->show();
++            window->raise();
++            window->requestActivate();
++        }
++    });
++
+     if (engine.rootObjects().isEmpty()) {
+         return -1;
+     }
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -44,7 +44,7 @@
+     find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Widgets)
+ endif()
+ 
+-find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Kirigami CoreAddons I18n Config)
++find_package(KF6 ${KF_MIN_VERSION} REQUIRED COMPONENTS Kirigami CoreAddons I18n Config DBusAddons)
+ 
+ find_package(LibExiv2 REQUIRED)
+ 
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -33,6 +33,7 @@
+         KF6::CoreAddons
+         KF6::I18n
+         KF6::ConfigGui
++        KF6::DBusAddons
+         LibExiv2::LibExiv2
+ )
+ 
