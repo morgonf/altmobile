@@ -1,0 +1,13 @@
+#!/bin/sh
+# Светлая или тёмная схема ALT Mobile для Plasma и приложений GTK.
+# set-color-scheme dark|light. Вызывает страница «Тема и обои», та же
+# логика, что в system/plasma/alt-theme/apply-alt-theme.sh.
+case "$1" in
+	light) SCHEME=ALTMobile; GTK=default ;;
+	*) SCHEME=ALTMobileDark; GTK=prefer-dark ;;
+esac
+kwriteconfig6 --file kdeglobals --group General --key accentColorFromWallpaper false
+plasma-apply-colorscheme $SCHEME >/dev/null 2>&1
+gsettings set org.gnome.desktop.interface color-scheme $GTK
+# kded gtkconfig переписывает цвета GTK по сигналу о смене схемы
+busctl --user call org.kde.kded6 /kded org.kde.kded6 loadModule s gtkconfig >/dev/null 2>&1 || true

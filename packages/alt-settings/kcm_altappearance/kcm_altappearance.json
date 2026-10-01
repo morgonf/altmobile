@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "Theme, light or dark look, home and lock screen wallpapers",
+        "Description[ru]": "Тема, светлый или тёмный вид, обои рабочего стола и экрана блокировки",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "preferences-desktop-theme-global",
+        "Name": "Theme and Wallpapers",
+        "Name[ru]": "Тема и обои"
+    },
+    "X-KDE-Keywords": "theme,wallpaper,dark,light,lock screen,background",
+    "X-KDE-Keywords[ru]": "тема,обои,тёмная,светлая,экран блокировки,фон,оформление",
+    "X-KDE-System-Settings-Parent-Category": "themes",
+    "X-KDE-Weight": 1
+}
