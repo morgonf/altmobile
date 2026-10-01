@@ -8,6 +8,8 @@ cd "$(dirname "$0")"
 install -m 644 org.neard-alt-mobile.conf /etc/dbus-1/system.d/
 install -d /etc/neard
 install -m 644 main.conf /etc/neard/main.conf
+install -d /etc/systemd/system/neard.service.d
+install -m 644 neard-restart.conf /etc/systemd/system/neard.service.d/restart.conf
 install -m 755 alt-nfc-reset /usr/local/sbin/
 install -m 644 alt-nfc-reset.service /etc/systemd/system/
 install -m 644 50-alt-mobile-nfc.rules /etc/polkit-1/rules.d/
