@@ -1,0 +1,6 @@
+[Unit]
+Description=Сброс контроллера NFC
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/alt-nfc-reset

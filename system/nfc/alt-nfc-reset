@@ -1,0 +1,16 @@
+#!/bin/sh
+# Сброс контроллера NFC (NXP PN553) перепривязкой к драйверу. Нужен, когда
+# чип перестаёт отвечать по I2C (ошибка -121, таймауты NCI): так бывает
+# после неудачного подключения к карте («Could not connect» у neard).
+# Выгрузка модуля не помогает, перепривязка возвращает чип. Вызывает
+# alt-nfc-poll через службу alt-nfc-reset.service.
+D=/sys/bus/i2c/drivers/nxp-nci_i2c
+DEV=$(basename "$(readlink -f /sys/class/nfc/nfc0/device 2>/dev/null)")
+[ -n "$DEV" ] || DEV=3-0028
+logger -t alt-nfc-reset "сброс NFC $DEV"
+systemctl stop neard
+echo "$DEV" > $D/unbind 2>/dev/null
+sleep 3
+echo "$DEV" > $D/bind
+sleep 2
+systemctl start neard

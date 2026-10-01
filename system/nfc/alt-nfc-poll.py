@@ -9,6 +9,14 @@
 # несколько секунд после каждого перезапуска, и цикл не кончается. Если
 # опрос встал быстрее чем за 10 секунд после запуска, пауза перед
 # следующим удваивается до 30 секунд, после минуты тишины снова 1 секунда.
+#
+# Зависание. После неудачного подключения к карте («Could not connect»)
+# контроллер перестаёт отвечать, neard держит объект карты, StartPollLoop
+# отвечает Busy, а включение адаптера кончается таймаутом. Если опрос не
+# удаётся запустить 15 секунд, служба сначала выключает и включает
+# адаптер, а если и это не помогло, запускает alt-nfc-reset.service
+# (перепривязка чипа от root, разрешена правилом polkit). Не чаще раза в
+# минуту.
 import time
 
 from gi.repository import Gio, GLib
@@ -18,6 +26,7 @@ ADAPTER = "/org/neard/nfc0"
 bus = Gio.bus_get_sync(Gio.BusType.SYSTEM)
 pending = {"id": 0}
 backoff = {"delay": 1, "started": 0.0}
+stuck = {"since": 0.0, "reset": 0.0}
 
 
 def prop(name):
@@ -37,12 +46,55 @@ def restart():
             bus.call_sync(NEARD, ADAPTER, "org.neard.Adapter", "StartPollLoop",
                           GLib.Variant("(s)", ("Initiator",)), None, 0, -1, None)
             backoff["started"] = time.monotonic()
+            stuck["since"] = 0.0
         except GLib.Error as e:
-            # Busy: метка ещё у телефона, проверим позже
-            if "Busy" not in e.message and "busy" not in e.message:
+            # Busy: метка ещё у телефона или контроллер завис
+            if "busy" not in e.message.lower():
                 print("StartPollLoop:", e.message, flush=True)
+            now = time.monotonic()
+            if not stuck["since"]:
+                stuck["since"] = now
+            elif now - stuck["since"] > 15 and now - stuck["reset"] > 60:
+                stuck["reset"] = now
+                stuck["since"] = 0.0
+                recover()
             schedule(3)
+    elif prop("Powered") is False:
+        # Адаптер выключился сам (после зависания), включаем
+        if not set_powered(True) and time.monotonic() - stuck["reset"] > 60:
+            stuck["reset"] = time.monotonic()
+            reset_chip()
+        schedule(5)
     return False
+
+
+def set_powered(value):
+    try:
+        bus.call_sync(NEARD, ADAPTER, "org.freedesktop.DBus.Properties", "Set",
+                      GLib.Variant("(ssv)", ("org.neard.Adapter", "Powered", GLib.Variant("b", value))),
+                      None, 0, -1, None)
+        return True
+    except GLib.Error as e:
+        print("Powered", value, e.message, flush=True)
+        return False
+
+
+def reset_chip():
+    print("контроллер NFC не отвечает, сброс", flush=True)
+    try:
+        bus.call_sync("org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                      "org.freedesktop.systemd1.Manager", "StartUnit",
+                      GLib.Variant("(ss)", ("alt-nfc-reset.service", "replace")),
+                      None, 0, -1, None)
+    except GLib.Error as e:
+        print("alt-nfc-reset:", e.message, flush=True)
+
+
+def recover():
+    set_powered(False)
+    time.sleep(2)
+    if not set_powered(True):
+        reset_chip()
 
 
 def schedule(seconds=1):
