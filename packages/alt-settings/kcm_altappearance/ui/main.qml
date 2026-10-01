@@ -15,12 +15,24 @@ import org.kde.kirigamiaddons.formcard 1 as FormCard
 import org.kde.newstuff as NewStuff
 
 // ALT Mobile: «Тема и обои». Глобальная тема (ALT Mobile тёмная и
-// светлая первыми, затем остальные установленные) меняется сразу касанием
-// карточки, обои при этом сохраняются. Темы можно загрузить из KDE Store
+// светлая первыми, затем остальные установленные) выбирается касанием
+// карточки и применяется кнопкой «Применить тему», обои при этом сохраняются. Темы можно загрузить из KDE Store
 // или поставить из архива. Обои выбираются на отдельной странице с крупным
 // предпросмотром и ставятся кнопкой «Установить».
 KCM.SimpleKCM {
     id: root
+
+    // Тема, выбранная касанием. Применяет её кнопка, а не касание: при
+    // прокрутке сетки касание легко попадает в чужую карточку
+    property string selectedTheme: ""
+    readonly property bool themePending: {
+        for (const t of kcm.themes) {
+            if (t.id === selectedTheme) {
+                return !t.current;
+            }
+        }
+        return false;
+    }
 
     leftPadding: 0
     rightPadding: 0
@@ -30,11 +42,12 @@ KCM.SimpleKCM {
     component ThemeCard: QQC2.AbstractButton {
         id: card
         required property var modelData
-        readonly property bool current: modelData.current
+        // Выбрана касанием (ещё не применена) или текущая, если ничего не выбрано
+        readonly property bool current: root.selectedTheme ? root.selectedTheme === modelData.id : modelData.current
 
         Layout.fillWidth: true
         implicitHeight: column.implicitHeight + Kirigami.Units.largeSpacing
-        onClicked: if (!current) kcm.applyTheme(modelData.id)
+        onClicked: root.selectedTheme = modelData.id
 
         contentItem: ColumnLayout {
             id: column
@@ -145,6 +158,18 @@ KCM.SimpleKCM {
                 Repeater {
                     model: kcm.themes
                     delegate: ThemeCard {}
+                }
+            }
+
+            FormCard.FormDelegateSeparator { visible: root.themePending }
+
+            FormCard.FormButtonDelegate {
+                visible: root.themePending
+                icon.name: "dialog-ok-apply"
+                text: "Применить тему"
+                onClicked: {
+                    kcm.applyTheme(root.selectedTheme);
+                    root.selectedTheme = "";
                 }
             }
 
