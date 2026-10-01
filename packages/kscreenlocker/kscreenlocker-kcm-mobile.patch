@@ -1389,7 +1389,7 @@ diff -ruN a/kcm/ui/ChangePin.qml b/kcm/ui/ChangePin.qml
 diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 --- a/kcm/ui/main.qml
 +++ b/kcm/ui/main.qml
-@@ -2,237 +2,168 @@
+@@ -2,237 +2,183 @@
  SPDX-FileCopyrightText: 2020 David Redondo <kde@david-redondo.de>
  SPDX-FileCopyrightText: 2024 Kristen McWilliam <kmcwilliampublic@gmail.com>
  SPDX-FileCopyrightText: 2024 Jakob Petsovits <jpetso@petsovits.com>
@@ -1570,17 +1570,30 @@ diff -ruN a/kcm/ui/main.qml b/kcm/ui/main.qml
 +                    if (value !== 0) {
 +                        kcm.settings.timeout = value;
                      }
--                }
--
++                    root.apply();
+                 }
++            }
++
++            FormCard.FormDelegateSeparator { above: timeoutCombo; below: startSwitch }
+ 
 -                KCM.SettingStateBinding {
 -                    configObject: kcm.settings
 -                    settingName: "Timeout"
++            // Сеанс на телефоне входит сам, без этого после включения
++            // телефон открыт без PIN. По умолчанию включено в /etc/xdg/kscreenlockerrc
++            FormCard.FormSwitchDelegate {
++                id: startSwitch
++                text: "Спрашивать PIN после включения"
++                description: "Иначе после перезагрузки телефон сразу открыт"
++                checked: kcm.settings.lockOnStart
++                onToggled: {
++                    kcm.settings.lockOnStart = checked;
 +                    root.apply();
                  }
              }
  
 -            QQC2.CheckBox {
-+            FormCard.FormDelegateSeparator { above: timeoutCombo; below: resumeSwitch }
++            FormCard.FormDelegateSeparator { above: startSwitch; below: resumeSwitch }
 +
 +            FormCard.FormSwitchDelegate {
 +                id: resumeSwitch
