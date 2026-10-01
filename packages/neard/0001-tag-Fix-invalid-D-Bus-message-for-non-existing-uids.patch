@@ -1,0 +1,46 @@
+From f6f07a5ccaf766a52f6b3a5c83c385758fbfc085 Mon Sep 17 00:00:00 2001
+From: Volker Krause <vkrause@kde.org>
+Date: Thu, 9 Jul 2026 17:44:50 +0200
+Subject: [PATCH] tag: Fix invalid D-Bus message for non-existing uids
+
+Without this the uid property getter produced an invalid D-Bus message if
+the uid isn't available (yet), causing dbus-broker to close the connection,
+which in turn results in neard terminating.
+
+Reviewed-by: David Heidelberg <david@ixit.cz>
+Signed-off-by: Krzysztof Kozlowski <krzk@kernel.org>
+---
+ src/tag.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/src/tag.c b/src/tag.c
+index 91cd255..4414ada 100644
+--- a/src/tag.c
++++ b/src/tag.c
+@@ -243,6 +243,17 @@ static gboolean property_get_type(const GDBusPropertyTable *property,
+ 	return TRUE;
+ }
+ 
++static gboolean property_uid_exists(const GDBusPropertyTable *property, void *user_data)
++{
++	struct near_tag *tag = user_data;
++
++	uint8_t *uid;
++	uint8_t len;
++	len = uid_array(tag, &uid);
++
++	return uid && len;
++}
++
+ static gboolean property_get_uid(const GDBusPropertyTable *property,
+ 					DBusMessageIter *iter, void *user_data)
+ {
+@@ -572,7 +583,7 @@ static const GDBusPropertyTable tag_properties[] = {
+ 	{ "Protocol", "s", property_get_protocol },
+ 	{ "ReadOnly", "b", property_get_readonly },
+ 	{ "Adapter", "o", property_get_adapter },
+-	{ "Uid", "ay", property_get_uid },
++	{ "Uid", "ay", property_get_uid, NULL, property_uid_exists },
+ 
+ 	{ }
+ };

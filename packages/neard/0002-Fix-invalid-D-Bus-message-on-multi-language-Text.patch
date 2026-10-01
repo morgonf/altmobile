@@ -1,0 +1,37 @@
+From d347cbb22647b944aa18bac4a706908c39264493 Mon Sep 17 00:00:00 2001
+From: Volker Krause <vkrause@kde.org>
+Date: Mon, 20 Jul 2026 18:15:34 +0200
+Subject: [PATCH] Fix invalid D-Bus message on multi-language Text or
+ SmartPoster tags
+
+If text or title records in multiple languages are present we end up
+emitting the property values multiple times on D-Bus, which produces an
+invalid message and gets us disconnected from the bus.
+
+Instead this now stops after the first one. That's not ideal (we are not
+forwarding all available information to clients), but I don't see how the
+current D-Bus interface could support this.
+
+Reviewed-by: David Heidelberg <david@ixit.cz>
+Signed-off-by: Krzysztof Kozlowski <krzk@kernel.org>
+---
+ src/ndef.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/ndef.c b/src/ndef.c
+index 31237cf..0a88e16 100644
+--- a/src/ndef.c
++++ b/src/ndef.c
+@@ -317,6 +317,12 @@ static gboolean property_get_text(const GDBusPropertyTable *property,
+ 
+ 			dbus_message_iter_append_basic(iter, DBUS_TYPE_STRING,
+ 									&text);
++			/*
++			 * stop after the first record as we otherwise emit multiple
++			 * property values for multi-language tags, which gets us
++			 * disconnected from D-Bus for having produced an invalid message.
++			 */
++			break;
+ 		}
+ 
+ 		return TRUE;
