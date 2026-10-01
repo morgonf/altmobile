@@ -1,19 +1,29 @@
 diff -ruN a/kcm/CMakeLists.txt b/kcm/CMakeLists.txt
 --- a/kcm/CMakeLists.txt
 +++ b/kcm/CMakeLists.txt
-@@ -4,6 +4,7 @@
+@@ -4,12 +4,16 @@
  set(screenlocker_kcm_SRCS
      kcm.cpp
      kscreenlockerdata.cpp
 +    pinmanager.cpp
++    pinagent.cpp
  )
  include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../)
  include_directories(${CMAKE_CURRENT_BINARY_DIR}/../)
-@@ -19,4 +20,5 @@
+ 
+ qt_add_dbus_interface(screenlocker_kcm_SRCS ../dbus/org.kde.screensaver.xml screenlocker_interface)
+ 
++find_package(PolkitQt6-1 REQUIRED)
++
+ kcmutils_add_qml_kcm(kcm_screenlocker SOURCES ${screenlocker_kcm_SRCS})
+ 
+ target_link_libraries(kcm_screenlocker PRIVATE
+@@ -19,4 +23,6 @@
      KF6::KCMUtilsQuick # KQuickManagedConfigModule
      KF6::I18n
      KF6::GlobalAccel
 +    crypt
++    PolkitQt6-1::Agent
  )
 diff -ruN a/kcm/kcm.cpp b/kcm/kcm.cpp
 --- a/kcm/kcm.cpp
@@ -92,16 +102,149 @@ diff -ruN a/kcm/kcm_screenlocker.json b/kcm/kcm_screenlocker.json
          "Name[sa]": "स्क्रीन लॉकिंग",
          "Name[sk]": "Zamykanie obrazovky",
          "Name[sl]": "Zaklep zaslona",
+diff -ruN a/kcm/pinagent.cpp b/kcm/pinagent.cpp
+--- a/kcm/pinagent.cpp
++++ b/kcm/pinagent.cpp
+@@ -0,0 +1,84 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#include "pinagent.h"
++
++#include <QCoreApplication>
++
++#include <PolkitQt1/Identity>
++#include <PolkitQt1/Subject>
++
++#include <unistd.h>
++
++PinAgent::PinAgent(const QString &password, QObject *parent)
++    : PolkitQt1::Agent::Listener(parent)
++    , m_password(password)
++{
++}
++
++bool PinAgent::registerForThisProcess()
++{
++    // Агент процесса важнее агента сеанса: polkit спросит его, а не
++    // системное окно
++    return registerListener(PolkitQt1::UnixProcessSubject(QCoreApplication::applicationPid()),
++                            QStringLiteral("/org/altmobile/PinAgent"));
++}
++
++void PinAgent::initiateAuthentication(const QString &actionId,
++                                      const QString &message,
++                                      const QString &iconName,
++                                      const PolkitQt1::Details &details,
++                                      const QString &cookie,
++                                      const PolkitQt1::Identity::List &identities,
++                                      PolkitQt1::Agent::AsyncResult *result)
++{
++    Q_UNUSED(message)
++    Q_UNUSED(iconName)
++    Q_UNUSED(details)
++
++    // Отвечаем только на смену собственного пароля и только за себя
++    PolkitQt1::Identity self;
++    for (const PolkitQt1::Identity &identity : identities) {
++        if (identity.toString() == QStringLiteral("unix-user:%1").arg(::getuid())) {
++            self = identity;
++        }
++    }
++    if (m_session || actionId != QStringLiteral("org.freedesktop.accounts.change-own-password") || !self.isValid()) {
++        result->setError(QStringLiteral("не то действие"));
++        result->setCompleted();
++        return;
++    }
++
++    m_session = new PolkitQt1::Agent::Session(self, cookie, result, this);
++    connect(m_session, &PolkitQt1::Agent::Session::request, this, [this](const QString &, bool) {
++        // Код отдаётся один раз: если PAM спросит снова, код не подошёл
++        const QString password = m_password;
++        m_password.clear();
++        if (password.isEmpty()) {
++            m_session->cancel();
++        } else {
++            m_session->setResponse(password);
++        }
++    });
++    connect(m_session, &PolkitQt1::Agent::Session::completed, this, [this](bool) {
++        m_session->result()->setCompleted();
++        m_session->deleteLater();
++    });
++    m_session->initiate();
++}
++
++bool PinAgent::initiateAuthenticationFinish()
++{
++    return true;
++}
++
++void PinAgent::cancelAuthentication()
++{
++    if (m_session) {
++        m_session->cancel();
++    }
++}
++
++#include "moc_pinagent.cpp"
+diff -ruN a/kcm/pinagent.h b/kcm/pinagent.h
+--- a/kcm/pinagent.h
++++ b/kcm/pinagent.h
+@@ -0,0 +1,40 @@
++/*
++SPDX-FileCopyrightText: 2026 morgonf
++
++SPDX-License-Identifier: GPL-2.0-or-later
++*/
++#pragma once
++
++#include <PolkitQt1/Agent/Listener>
++#include <PolkitQt1/Agent/Session>
++
++// Агент polkit только для процесса настроек и только на время смены PIN.
++// AccountsService спрашивает у polkit право change-own-password (auth_self),
++// и без своего агента системный агент открывал окно «Требуется
++// аутентификация», хотя текущий PIN пользователь уже ввёл. Агент отвечает
++// polkit этим кодом. Пароль по-прежнему проверяет polkit (PAM), правила
++// polkit не ослабляются.
++class PinAgent : public PolkitQt1::Agent::Listener
++{
++    Q_OBJECT
++
++public:
++    PinAgent(const QString &password, QObject *parent = nullptr);
++
++    bool registerForThisProcess();
++
++public Q_SLOTS:
++    void initiateAuthentication(const QString &actionId,
++                                const QString &message,
++                                const QString &iconName,
++                                const PolkitQt1::Details &details,
++                                const QString &cookie,
++                                const PolkitQt1::Identity::List &identities,
++                                PolkitQt1::Agent::AsyncResult *result) override;
++    bool initiateAuthenticationFinish() override;
++    void cancelAuthentication() override;
++
++private:
++    QString m_password;
++    PolkitQt1::Agent::Session *m_session = nullptr;
++};
 diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 --- a/kcm/pinmanager.cpp
 +++ b/kcm/pinmanager.cpp
-@@ -0,0 +1,280 @@
+@@ -0,0 +1,287 @@
 +/*
 +SPDX-FileCopyrightText: 2026 morgonf
 +
 +SPDX-License-Identifier: GPL-2.0-or-later
 +*/
 +#include "pinmanager.h"
++#include "pinagent.h"
 +
 +#include <QCoreApplication>
 +#include <QDBusConnection>
@@ -320,7 +463,7 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +    QThread *thread = QThread::create([self, currentUtf8, pinUtf8]() {
 +        const CheckResult check = checkPassword(currentUtf8);
 +        const QByteArray hash = check == CheckOk ? hashPin(pinUtf8) : QByteArray();
-+        QMetaObject::invokeMethod(qApp, [self, check, hash]() {
++        QMetaObject::invokeMethod(qApp, [self, check, hash, currentUtf8]() {
 +            if (!self) {
 +                return;
 +            }
@@ -334,7 +477,7 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +                self->setBusy(false);
 +                Q_EMIT self->failed(false, QStringLiteral("не удалось зашифровать новый PIN-код"));
 +            } else {
-+                self->setPassword(hash);
++                self->setPassword(hash, QString::fromUtf8(currentUtf8));
 +            }
 +        });
 +    });
@@ -342,7 +485,7 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +    thread->start();
 +}
 +
-+void PinManager::setPassword(const QByteArray &hash)
++void PinManager::setPassword(const QByteArray &hash, const QString &current)
 +{
 +    const QString service = QStringLiteral("org.freedesktop.Accounts");
 +    auto find = QDBusMessage::createMethodCall(service,
@@ -360,11 +503,17 @@ diff -ruN a/kcm/pinmanager.cpp b/kcm/pinmanager.cpp
 +
 +    auto set = QDBusMessage::createMethodCall(service, path, QStringLiteral("org.freedesktop.Accounts.User"), QStringLiteral("SetPassword"));
 +    set << QString::fromLatin1(hash) << QString();
-+    // polkit может спросить подтверждение через своего агента
++    // polkit спросит пароль (auth_self) у агента этого процесса, тот
++    // ответит уже проверенным текущим PIN-кодом (pinagent.h)
++    auto agent = new PinAgent(current, this);
++    if (!agent->registerForThisProcess()) {
++        qWarning("PinAgent: не удалось зарегистрировать агента polkit");
++    }
 +    set.setInteractiveAuthorizationAllowed(true);
 +    auto watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(set, 120000), this);
-+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, agent](QDBusPendingCallWatcher *w) {
 +        w->deleteLater();
++        agent->deleteLater();
 +        const QDBusPendingReply<> reply = *w;
 +        setBusy(false);
 +        if (reply.isError()) {
@@ -411,7 +560,7 @@ diff -ruN a/kcm/pinmanager.h b/kcm/pinmanager.h
 +
 +private:
 +    void setBusy(bool busy);
-+    void setPassword(const QByteArray &hash);
++    void setPassword(const QByteArray &hash, const QString &current);
 +
 +    bool m_busy = false;
 +};
