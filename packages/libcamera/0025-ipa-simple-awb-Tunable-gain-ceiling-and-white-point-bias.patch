@@ -1,0 +1,115 @@
+From: morgonf <morgonf@altlinux.org>
+Subject: [PATCH] ipa: simple: awb: Tunable gain ceiling and white point bias
+
+Add two optional tuning values to Awb: maxGain (the 4x ceiling of the red
+and blue gains) and gainBias [ red, blue ], a correction of the grey world
+gains. The IMX376 of the OnePlus 6T gave a blue to green ratio of 0.59
+against 0.9..1.0 for the IMX519 with its CCM on the same scenes, at every
+brightness, so its photos came out yellow. Set maxGain 8 and gainBias
+[ 0.96, 1.5 ] for it, measured on photos, not in a lab.
+---
+--- a/src/ipa/simple/algorithms/awb.h
++++ b/src/ipa/simple/algorithms/awb.h
+@@ -19,6 +19,7 @@
+ 	Awb() = default;
+ 	~Awb() = default;
+ 
++	int init(IPAContext &context, const ValueNode &tuningData) override;
+ 	int configure(IPAContext &context, const IPAConfigInfo &configInfo) override;
+ 	void prepare(IPAContext &context,
+ 		     const uint32_t frame,
+@@ -29,6 +30,11 @@
+ 		     IPAFrameContext &frameContext,
+ 		     const SwIspStats *stats,
+ 		     ControlList &metadata) override;
++
++private:
++	float maxGain_ = 4.0f;
++	float biasR_ = 1.0f;
++	float biasB_ = 1.0f;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+--- a/src/ipa/simple/algorithms/awb.cpp
++++ b/src/ipa/simple/algorithms/awb.cpp
+@@ -7,6 +7,7 @@
+ 
+ #include "awb.h"
+ 
++#include <algorithm>
+ #include <numeric>
+ #include <stdint.h>
+ 
+@@ -23,6 +24,26 @@
+ 
+ namespace ipa::soft::algorithms {
+ 
++int Awb::init([[maybe_unused]] IPAContext &context, const ValueNode &tuningData)
++{
++	/*
++	 * Optional ceiling for the red and blue gains. Under warm indoor light
++	 * the blue channel of the IMX376 is weaker than a quarter of green,
++	 * and the default 4x leaves the picture yellow.
++	 */
++	maxGain_ = tuningData["maxGain"].get<double>(4.0);
++	/*
++	 * Optional white point correction of the grey world gains, measured
++	 * against a calibrated camera on the same scenes: [ red, blue ].
++	 */
++	const ValueNode &bias = tuningData["gainBias"];
++	if (bias.size() == 2) {
++		biasR_ = bias[0].get<double>(1.0);
++		biasB_ = bias[1].get<double>(1.0);
++	}
++	return 0;
++}
++
+ int Awb::configure(IPAContext &context,
+ 		   [[maybe_unused]] const IPAConfigInfo &configInfo)
+ {
+@@ -76,14 +97,15 @@
+ 
+ 	/*
+ 	 * Calculate red and blue gains for AWB.
+-	 * Clamp max gain at 4.0, this also avoids 0 division.
++	 * Clamp max gain at maxGain_ (4.0 by default), this also avoids 0
++	 * division.
+ 	 */
+ 	auto &gains = context.activeState.awb.gains;
+-	gains = { {
+-		sum.r() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.r(),
+-		1.0,
+-		sum.b() <= sum.g() / 4 ? 4.0f : static_cast<float>(sum.g()) / sum.b(),
+-	} };
++	auto gain = [this](uint64_t g, uint64_t c) {
++		return c * maxGain_ <= g ? maxGain_ : static_cast<float>(g) / c;
++	};
++	gains = { { std::min(gain(sum.g(), sum.r()) * biasR_, maxGain_), 1.0,
++		    std::min(gain(sum.g(), sum.b()) * biasB_, maxGain_) } };
+ 
+ 	RGB<double> rgbGains{ { 1 / gains.r(), 1 / gains.g(), 1 / gains.b() } };
+ 	context.activeState.awb.temperatureK = estimateCCT(rgbGains);
+--- a/src/ipa/simple/data/imx376.yaml
++++ b/src/ipa/simple/data/imx376.yaml
+@@ -4,12 +4,21 @@
+ # The analogue gain is capped at 8x: at 16x the read noise is five
+ # times that at 1x (measured on the IMX371) and shows as coloured grain,
+ # a darker picture looks better.
++# The white balance gains may go up to 8x: under warm indoor light the blue
++# channel is weaker than a quarter of green, and the default 4x ceiling left
++# the picture yellow.
++# gainBias corrects the grey world white point: on the same scenes as the
++# IMX519 (with its CCM) the blue to green ratio was 0.59 against 0.9..1.0
++# at every brightness, red about 4 % higher (photos of 02.10.2026). Not a
++# lab calibration.
+ %YAML 1.1
+ ---
+ version: 1
+ algorithms:
+   - BlackLevel:
+   - Awb:
++      maxGain: 8.0
++      gainBias: [ 0.96, 1.5 ]
+   - Adjust:
+   - Agc:
+       maxAnalogueGain: 8.0

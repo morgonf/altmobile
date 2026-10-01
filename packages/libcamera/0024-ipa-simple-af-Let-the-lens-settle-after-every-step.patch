@@ -1,0 +1,98 @@
+From: morgonf <morgonf@altlinux.org>
+Subject: [PATCH] ipa: simple: af: Let the lens settle after every step
+
+The software ISP runs behind the sensor: the statistics that arrive right
+after a lens move still come from a frame taken at the old position. The
+sweep credited the sharpness to the wrong position, the best position came
+out at random (96, 56, 38, 58, 98 on a still scene) and the reference
+sharpness was a maximum the lens never had. Focus loss then fired half a
+second later and the viewfinder pumped forever.
+
+Skip one statistics period after every step (two after a jump), measure
+the reference sharpness again at the chosen position, and need a 50 %
+deviation for four statistics to call focus lost. Coarse steps of 10 %
+and a fine span of 6 % keep the sweep at about 2.5 s. Each sweep step is
+logged at debug level.
+---
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -35,16 +35,25 @@
+  *
+  * A search has two passes: coarse with kCoarseStep over the whole travel,
+  * then fine with kFineStep within kFineSpan of the best coarse position.
+- * Only frames with fresh statistics count, and one statistics period is
+- * skipped after a lens jump. In continuous mode focus is considered lost
+- * when the sharpness differs from the focused value by more than kLostRatio
+- * for kLostCount statistics in a row.
++ * Only frames with fresh statistics count. The software ISP runs behind
++ * the sensor, so the statistics that arrive right after a lens move still
++ * come from a frame taken at the old position: kSettleStats statistics are
++ * skipped after every step, and one more after a jump. Without this the
++ * sharpness was credited to the wrong position, the best position came out
++ * at random and the focus never settled.
++ *
++ * After a sweep the reference sharpness is measured again at the chosen
++ * position (it is lower than the sweep maximum when the scene is noisy).
++ * In continuous mode focus is considered lost when the sharpness differs
++ * from the reference by more than kLostRatio for kLostCount statistics in
++ * a row.
+  */
+-static constexpr double kCoarseStep = 8.0;
++static constexpr double kCoarseStep = 10.0;
+ static constexpr double kFineStep = 2.0;
+-static constexpr double kFineSpan = 8.0;
+-static constexpr double kLostRatio = 0.4;
+-static constexpr unsigned int kLostCount = 3;
++static constexpr double kFineSpan = 6.0;
++static constexpr unsigned int kSettleStats = 1;
++static constexpr double kLostRatio = 0.5;
++static constexpr unsigned int kLostCount = 4;
+ 
+ /*
+  * Statistics used to measure the reference sharpness again after a
+@@ -196,7 +205,7 @@
+ 	f.start = 0;
+ 	f.stop = 100;
+ 	f.step = kCoarseStep;
+-	f.skip = 1;
++	f.skip = kSettleStats + 1;
+ 	k.focus_pos = 0;
+ 	k.focus_sweep = true;
+ 	k.afState = controls::AfStateScanning;
+@@ -253,21 +262,24 @@
+ 		return;
+ 	}
+ 
++	LOG(IPASoftAutoFocus, Debug) << "Sweep pos " << focus_pos << " sharpness " << sharp;
+ 	if (sharp > f.sharpness_max) {
+ 		f.sharpness_max = sharp;
+ 		f.focus_max_pos = focus_pos;
+ 	}
+ 
+ 	focus_pos += f.step;
+-	if (focus_pos <= f.stop)
++	if (focus_pos <= f.stop) {
++		f.skip = kSettleStats;
+ 		return;
++	}
+ 
+ 	if (f.phase == 0) {
+ 		f.phase = 1;
+ 		f.start = std::clamp(f.focus_max_pos - kFineSpan, 0.0, 100.0);
+ 		f.stop = std::clamp(f.focus_max_pos + kFineSpan, 0.0, 100.0);
+ 		f.step = kFineStep;
+-		f.skip = 1;
++		f.skip = kSettleStats + 1;
+ 		f.sharpness_max = 0;
+ 		focus_pos = f.start;
+ 		return;
+@@ -276,7 +288,8 @@
+ 	/* Done: keep sharpness_max to detect a scene change */
+ 	sweep = false;
+ 	f.lost = 0;
+-	f.skip = 1;
++	f.skip = kSettleStats + 1;
++	rebase_ = kRebaseStats;
+ 	focus_pos = f.focus_max_pos;
+ 	k.afState = f.sharpness_max > kFlatSharpness ? controls::AfStateFocused
+ 						     : controls::AfStateFailed;
