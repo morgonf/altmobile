@@ -1,0 +1,16 @@
+--- a/ucm2/OnePlus/fajita/fajita.conf
++++ b/ucm2/OnePlus/fajita/fajita.conf
+@@ -27,9 +27,12 @@
+ 
+ 	# Phone Bottom Mic Analog and Digital Volumes
+ 	cset "name='ADC4 Volume' 16"
+-	cset "name='DEC7 Volume' 75"
++	cset "name='DEC7 Volume' 81"
+ 	
+ 	# Phone Top Mic Analog and Digital Volumes
+ 	cset "name='ADC3 Volume' 16"
+ 	cset "name='DEC6 Volume' 75"
++	
++	# оконечный каскад разговорного динамика без усиления, против акустического эха
++	cset "name='EAR PA Volume' 2"
+ ]
