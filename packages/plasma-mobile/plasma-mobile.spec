@@ -11,7 +11,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile1
+Release: alt1.mobile2
 %K6init
 
 Group: Graphical desktop/KDE
@@ -37,6 +37,8 @@ Patch3: alt-no-dialer.patch
 Source900: plasma-mobile-alt.patch
 Source901: envmanager-alt-lnf.patch
 Source902: info-device-name.patch
+Source903: plasma-mobile-shell-qml.patch
+Source950: kcm_mobile_info.ru-add.po
 
 BuildRequires(pre): rpm-build-kf6 rpm-build-ubt
 BuildRequires: libvulkan-devel libdrm-devel
@@ -104,6 +106,10 @@ done
 patch -p1 -s < %SOURCE900
 patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
+patch -p1 -s < %SOURCE903
+msgcat --use-first %SOURCE950 po/ru/kcm_mobile_info.po > po/ru/kcm_mobile_info.po.tmp
+cat po/ru/kcm_mobile_info.po.tmp > po/ru/kcm_mobile_info.po
+rm -f po/ru/kcm_mobile_info.po.tmp
 
 %build
 %K6build \
@@ -160,10 +166,12 @@ patch -p1 -s < %SOURCE902
 #/usr/share/dbus-1/interfaces/org.kde.plasmashell.*.xml
 
 %changelog
-* Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile1
+* Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - ALT Mobile for the OnePlus 6T: status bar and navigation, Folio dock,
 -   task switcher strings, startup feedback fix, ALT Mobile look-and-feel
 -   in envmanager, device name and model in System Information
+- - widget settings without the Binding that crashed plasmashell in Qt 6.11.2,
+-   lock screen PIN labels from the shell catalog (Russian)
 
 * Fri Sep 11 2026 Sergey V Turchin <zerg@altlinux.org> 6.7.5-alt1
 - new version

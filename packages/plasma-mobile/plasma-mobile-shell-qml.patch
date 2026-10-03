@@ -1,0 +1,42 @@
+--- a/shell/contents/configuration/AppletConfiguration.qml
++++ b/shell/contents/configuration/AppletConfiguration.qml
+@@ -59,10 +59,22 @@
+         }
+     }
+ 
+-    Binding {
+-        // Window bindings
+-        root.Window.window.flags: Qt.FramelessWindowHint
+-        root.Window.window.visibility: Window.Maximized
++    // Раньше здесь был Binding с группированными целями root.Window.window.*.
++    // В Qt 6.11.2 он роняет plasmashell при открытии настроек любого виджета:
++    // SIGSEGV в QV4::ExecutionEngine::toVariant из QQmlBindPrivate::postEvalEntry
++    // (qqmlbind.cpp:1456) при QQmlBind::componentComplete. Те же свойства окна
++    // выставляются обычным кодом, когда окно появляется.
++    function applyWindowProperties() {
++        const w = root.Window.window;
++        if (w) {
++            w.flags = Qt.FramelessWindowHint;
++            w.visibility = Window.Maximized;
++        }
++    }
++    Component.onCompleted: applyWindowProperties()
++    Connections {
++        target: root.Window
++        function onWindowChanged() { root.applyWindowProperties(); }
+     }
+ 
+     Component {
+--- a/shell/contents/lockscreen/LockScreenState.qml
++++ b/shell/contents/lockscreen/LockScreenState.qml
+@@ -28,8 +28,8 @@
+     property bool isKeyboardMode: false
+ 
+     property string pinLabel: enterPinLabel
+-    readonly property string enterPinLabel: i18n("Enter PIN")
+-    readonly property string wrongPinLabel: i18n("Wrong PIN")
++    readonly property string enterPinLabel: i18nd("plasma_shell_org.kde.plasma.phone", "Enter PIN")
++    readonly property string wrongPinLabel: i18nd("plasma_shell_org.kde.plasma.phone", "Wrong PIN")
+ 
+     signal reset()
+     signal unlockSucceeded()

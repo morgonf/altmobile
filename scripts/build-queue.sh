@@ -10,7 +10,7 @@ export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
 S=$(rpm --eval %_sourcedir)
 for N in "$@"; do
 	D=$HOME/altmobile-pkg/$N
-	cp "$D"/*.patch "$S"/ 2>/dev/null
+	cp "$D"/*.patch "$D"/*.po "$S"/ 2>/dev/null
 	echo "$(date +%T) $N начало" >> ~/queue.log
 	if rpmbuild -ba --define "_smp_mflags -j2" --define "__ubt_branch_id M110" "$D/$N.spec" > ~/queue-$N.log 2>&1; then
 		echo "$(date +%T) $N готов: $(grep -c '^Wrote' ~/queue-$N.log) файлов" >> ~/queue.log
