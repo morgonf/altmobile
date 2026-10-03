@@ -1,5 +1,30 @@
 # Пакеты, пересобранные или добавленные на телефоне
 
+## Свои RPM (пункт 2.7 `docs/phosh-exit-and-tuning.md`)
+
+С 04.10.2026 правки ставятся пакетами, а не файлами поверх чужих пакетов.
+Спецификация каждого лежит в каталоге пакета: спецификация ALT плюс наши
+патчи (`scripts/mkspec-altmobile.py` для пакетов Plasma, Source900+
+накладываются в конце `%prep`). Выпуск `<выпуск ALT>.mobileN`: новее
+штатного, но любое обновление ALT новее нашего, поэтому пакеты остаются в
+`RPM::Hold` (`system/apt`). Собирать на телефоне `scripts/build-queue.sh`
+одной службой со сторожами `build-thermal-guard.sh` и `batt-guard.sh`.
+
+| Пакет | Выпуск | Состояние |
+|---|---|---|
+| libcamera | 0.7.2-alt1.mobile4 | установлен 04.10, `rpm -V` чистый |
+| plasma-camera | 2.1.1-alt2.mobile1 | установлен 04.10 |
+| iio-sensor-proxy | 3.9-alt1.2 | установлен 04.10, SSC включён в спецификации |
+| plasma-settings | 26.08.1-alt0.3 | установлен 04.10, с раскладкой групп |
+| kernel-modules-altmobile-qualcomm-sdm845 | 1.0-alt1.mobile1 | установлен 04.10, работа модулей проверяется после перезагрузки; прежние в `/var/lib/altmobile/updates-backup-<ядро>` |
+| neard | 0.20-alt1.1 | пакет с 01.10 |
+| plasma-pa, kscreen, bluedevil, kaccounts-integration, kscreenlocker, plasma-mobile, kwin, plasma-workspace | `.mobile1` | спецификации готовы, деревья по ним совпали с рабочими (`scripts/bp-compare.sh`), собираются очередью с 04.10 01:41 |
+| kf6-kirigami, plasma-keyboard, gnome-compass, alsa-ucm-conf-sdm845 | | правки файлами поверх пакетов, спецификаций ещё нет |
+
+Пакетная сборка libcamera ALT идёт с включёнными проверками (ASSERT) и
+вскрыла три гонки при остановке камеры, которые сборка `buildtype=release`
+пропускала (0031-0033).
+
 Собираются прямо на телефоне `rpmbuild` от пользователя, сборочные
 зависимости ставятся из Sisyphus по `rpm -qpR` исходного пакета ALT.
 
