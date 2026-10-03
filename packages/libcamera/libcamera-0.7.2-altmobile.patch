@@ -1502,7 +1502,7 @@ index 629e1a32d..a05851692 100644
  
  std::string IPASoftSimple::logPrefix() const
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index e26f438d9..d5a385a9c 100644
+index e26f438d9..faeecd08f 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
 @@ -33,6 +33,7 @@
@@ -1522,7 +1522,30 @@ index e26f438d9..d5a385a9c 100644
  namespace libcamera {
  
  LOG_DEFINE_CATEGORY(SimplePipeline)
-@@ -371,7 +374,7 @@ private:
+@@ -206,6 +209,7 @@ public:
+ 	void create(Request *request, bool metadataRequested);
+ 	void destroy(uint32_t frame);
+ 	void clear();
++	std::vector<Request *> requests() const;
+ 
+ 	SimpleFrameInfo *find(uint32_t frame);
+ 
+@@ -230,6 +234,14 @@ void SimpleFrames::clear()
+ 	frameInfo_.clear();
+ }
+ 
++std::vector<Request *> SimpleFrames::requests() const
++{
++	std::vector<Request *> requests;
++	for (const auto &[frame, info] : frameInfo_)
++		requests.push_back(info.request);
++	return requests;
++}
++
+ SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
+ {
+ 	auto info = frameInfo_.find(frame);
+@@ -371,7 +383,7 @@ private:
  
  	void ispStatsReady(uint32_t frame, uint32_t bufferId);
  	void metadataReady(uint32_t frame, const ControlList &metadata);
@@ -1531,7 +1554,7 @@ index e26f438d9..d5a385a9c 100644
  };
  
  class SimpleCameraConfiguration : public CameraConfiguration
-@@ -570,6 +573,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+@@ -570,6 +582,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
  		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
  	};
@@ -1544,7 +1567,7 @@ index e26f438d9..d5a385a9c 100644
  	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
  
  	LOG(SimplePipeline, Debug)
-@@ -1041,7 +1050,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
+@@ -1041,7 +1059,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
  	tryCompleteRequest(info->request);
  }
  
@@ -1553,7 +1576,7 @@ index e26f438d9..d5a385a9c 100644
  {
  	delayedCtrls_->push(sensorControls);
  	/*
-@@ -1052,10 +1061,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+@@ -1052,10 +1070,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
  	 * but it also bypasses delayedCtrls_, creating AGC regulation issues.
  	 * Both problems should be fixed.
  	 */
@@ -1579,7 +1602,7 @@ index e26f438d9..d5a385a9c 100644
  }
  
  /* Retrieve all source pads connected to a sink pad through active routes. */
-@@ -1605,6 +1625,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+@@ -1605,6 +1634,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
  	} else {
  		ipa::soft::IPAConfigInfo configInfo;
  		configInfo.sensorControls = data->sensor_->controls();
@@ -1592,6 +1615,26 @@ index e26f438d9..d5a385a9c 100644
  		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
  	}
  }
+@@ -1727,8 +1762,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
+ 
+ 	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
+ 
+-	data->frameInfo_.clear();
+ 	data->clearIncompleteRequests();
++	/*
++	 * A request whose buffers are done but whose metadata the IPA had not
++	 * delivered yet stayed queued, and PipelineHandler::stop() failed
++	 * its assertion (plasma-camera on a camera switch or a photo at full
++	 * size). Cancel what is still pending.
++	 */
++	for (Request *request : data->frameInfo_.requests()) {
++		if (request->status() == Request::RequestPending)
++			cancelRequest(request);
++	}
++	data->frameInfo_.clear();
+ 	data->conversionBuffers_.clear();
+ 
+ 	releasePipeline(data);
 diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
 index 0b641a5f3..6d621f6aa 100644
 --- a/src/libcamera/shaders/bayer_1x_packed.frag

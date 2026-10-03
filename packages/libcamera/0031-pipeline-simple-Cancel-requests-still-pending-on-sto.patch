@@ -1,0 +1,65 @@
+From 6141011b9674537edd7c049b8c1a4914a90dc55f Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 16:58:58 -0400
+Subject: [PATCH] pipeline: simple: Cancel requests still pending on stop
+
+stopDevice() cancelled only the requests waiting for conversion. A
+request whose buffers were done but whose metadata the IPA had not
+delivered yet stayed in queuedRequests_, and PipelineHandler::stop()
+failed its assertion: plasma-camera aborted on a camera switch with
+assertions enabled (the distribution build). Pending requests are now
+cancelled before the frame information is cleared.
+---
+ src/libcamera/pipeline/simple/simple.cpp | 21 ++++++++++++++++++++-
+ 1 file changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index d5a385a9c..faeecd08f 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -209,6 +209,7 @@ public:
+ 	void create(Request *request, bool metadataRequested);
+ 	void destroy(uint32_t frame);
+ 	void clear();
++	std::vector<Request *> requests() const;
+ 
+ 	SimpleFrameInfo *find(uint32_t frame);
+ 
+@@ -233,6 +234,14 @@ void SimpleFrames::clear()
+ 	frameInfo_.clear();
+ }
+ 
++std::vector<Request *> SimpleFrames::requests() const
++{
++	std::vector<Request *> requests;
++	for (const auto &[frame, info] : frameInfo_)
++		requests.push_back(info.request);
++	return requests;
++}
++
+ SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
+ {
+ 	auto info = frameInfo_.find(frame);
+@@ -1753,8 +1762,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
+ 
+ 	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
+ 
+-	data->frameInfo_.clear();
+ 	data->clearIncompleteRequests();
++	/*
++	 * A request whose buffers are done but whose metadata the IPA had not
++	 * delivered yet stayed queued, and PipelineHandler::stop() failed
++	 * its assertion (plasma-camera on a camera switch or a photo at full
++	 * size). Cancel what is still pending.
++	 */
++	for (Request *request : data->frameInfo_.requests()) {
++		if (request->status() == Request::RequestPending)
++			cancelRequest(request);
++	}
++	data->frameInfo_.clear();
+ 	data->conversionBuffers_.clear();
+ 
+ 	releasePipeline(data);
+-- 
+2.50.1
+

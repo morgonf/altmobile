@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile1
+Release: alt1.mobile2
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -18,7 +18,7 @@ Url: https://libcamera.org/
 
 Source: %name-%version.tar
 # ALT Mobile, OnePlus 6T: autofocus, AGC, sensor tuning and Quad Bayer for
-# the software ISP, packages/libcamera/0001-0030 of the oneplus6t repository
+# the software ISP, packages/libcamera/0001-0031 of the oneplus6t repository
 Patch1: %name-%version-altmobile.patch
 
 BuildRequires(pre): rpm-macros-meson
@@ -172,6 +172,10 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile2
+- simple pipeline: cancel requests still pending on stop (assertion
+  failure on a camera switch with assertions enabled)
+
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile1
 - ALT Mobile for the OnePlus 6T (simple pipeline, software ISP):
   + lens control and contrast autofocus with AfWindows, AfMode, AfTrigger
