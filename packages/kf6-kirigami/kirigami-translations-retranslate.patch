@@ -1,0 +1,16 @@
+--- a/src/controls/kirigamicontrolsplugin.cpp
++++ b/src/controls/kirigamicontrolsplugin.cpp
+@@ -134,6 +134,13 @@
+ {
+     Q_UNUSED(uri);
+     connect(this, &KirigamiControlsPlugin::languageChangeEvent, engine, &QQmlEngine::retranslate);
++    // ALT Mobile: the QML type loader thread loads libKirigami, so the ECM
++    // loader defers the installation of the libkirigami6_qt translator to
++    // the main thread, after the first components took their English
++    // strings, and the language change above did not reach this engine
++    // ("Search…" stayed in English in plasmashell and plasma-settings).
++    // Retranslate once after the deferred installation.
++    QMetaObject::invokeMethod(engine, &QQmlEngine::retranslate, Qt::QueuedConnection);
+ }
+ 
+ #ifdef KIRIGAMI_BUILD_TYPE_STATIC

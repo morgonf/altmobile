@@ -33,6 +33,7 @@ Requires: qt6-declarative
 Source0: %rname-%version.tar
 # ALT Mobile, OnePlus 6T (oneplus6t repository, packages/)
 Source900: kirigami-titlesubtitle-wrap.patch
+Source901: kirigami-translations-retranslate.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: libgomp-devel
@@ -186,6 +187,7 @@ sed -i "s/_MSC_VER/__e2k__/" src/imagecolors.cpp
 
 # ALT Mobile patches, after the whole ALT %prep
 patch -p1 -s < %SOURCE900
+patch -p1 -s < %SOURCE901
 
 %build
 %K6build
@@ -259,6 +261,8 @@ patch -p1 -s < %SOURCE900
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.30.0-alt1.mobile1
 - ALT Mobile: TitleSubtitle wraps by words by default instead of eliding
 -   (narrow phone screen)
+- - retranslate once after the deferred installation of the libkirigami6_qt
+-   translator (built-in Kirigami strings such as Search… stayed in English)
 
 * Mon Sep 14 2026 Sergey V Turchin <zerg@altlinux.org> 6.30.0-alt1
 - new version
