@@ -282,6 +282,15 @@ PIN, без окон plasma-nm, мобильный интернет подним
    удалять. В пункте 2.2 только убрать службу из автозапуска. Потом
    `waydroid init`, проверить графику на Adreno 630, звук, сеть,
    масштаб окон под экран 6T и вид приложений в Plasma.
+   Изоляция (разобрано 03.10 по конфигу пакета). Контейнер
+   привилегированный (нет `lxc.idmap`, root Android равен root телефона),
+   оставлены sys_admin, sys_ptrace, dac_override, net_admin, mknod,
+   seccomp запрещает только модули, kexec и перезагрузку. В ядре ALT нет
+   AppArmor и SELinux (`/sys/kernel/security/lsm` = capability,bpf).
+   Пробрасываются `/dev/video*`, `/sys/kernel/debug`, `/dev/uhid`,
+   сокеты Wayland и PulseAudio, есть синхронизация буфера обмена. При
+   настройке взять образ без root, убрать проброс debugfs, uhid и камер,
+   выключить буфер обмена, закрыть `waydroid0` доступ к sshd телефона.
 
 ## Открыто
 
