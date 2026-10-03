@@ -4,10 +4,10 @@
 %define rdn_name net.hadess.SensorProxy
 
 # QRTR bus unavailable. Make sure access to AF_QIPCRTR address family is granted
-%def_disable ssc_support
-%def_enable gtk_doc
+%def_enable ssc_support
+%def_disable gtk_doc
 %def_disable gtk_tests
-%def_enable check
+%def_disable check
 
 Name: iio-sensor-proxy
 Version: %ver_major.9
@@ -104,6 +104,8 @@ dbus-run-session %__meson_test -t 4
 
 %changelog
 * Mon Sep 28 2026 morgonf <morgonf@altlinux.org> 3.9-alt1.2
+- OnePlus 6T defaults: SSC support on, gtk-doc and tests off (gtk-doc
+  needs xsltproc of the libxslt held back on the phone)
 - ssc compass: compute the heading from the raw SSC magnetometer and
   accelerometer (SLPI of sdm845 has no virtual compass), online
   hard-iron calibration kept in /var/lib/iio-sensor-proxy
