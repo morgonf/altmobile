@@ -147,6 +147,11 @@ install -m 0644 %SOURCE12 %buildroot/%_sysconfdir/pam.d/kde-smartcard
 %_datadir/qlogging-categories6/*.*categories
 
 %files
+# ALT Mobile: password policy helper of the Lock and PIN code module
+/usr/libexec/kf6/kauth/passwordpolicyhelper
+%_datadir/dbus-1/system-services/org.altmobile.passwordpolicy.service
+%_datadir/dbus-1/system.d/org.altmobile.passwordpolicy.conf
+%_datadir/polkit-1/actions/org.altmobile.passwordpolicy.policy
 %config(noreplace) %_sysconfdir/pam.d/kde
 %config(noreplace) %_sysconfdir/pam.d/kde-fingerprint
 %config(noreplace) %_sysconfdir/pam.d/kde-smartcard
@@ -177,7 +182,8 @@ install -m 0644 %SOURCE12 %buildroot/%_sysconfdir/pam.d/kde-smartcard
 %changelog
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile1
 - ALT Mobile: greeter asks for the PIN again after sleep cancelled it;
--   Screen Locking module as Lock and PIN code: PIN change, password policy
+-   Screen Locking module as Lock and PIN code: PIN change, password policy (KAuth helper
+  org.altmobile.passwordpolicy packaged)
 
 * Fri Sep 11 2026 Sergey V Turchin <zerg@altlinux.org> 6.7.5-alt1
 - new version
