@@ -1,0 +1,40 @@
+From eb7de05353e7de6a555cd58cd795d7ac1231d2da Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 17:21:18 -0400
+Subject: [PATCH] software_isp: Drop the debayer calls left queued at stop
+
+Calls to Debayer::process() posted before a stop stayed in the worker
+thread queue and ran first after the next start, before Debayer::start()
+created the EGL context: on stale buffers and with the context of the
+previous thread. With assertions enabled plasma-camera aborted in
+eGL::makeCurrent() at the first photo at full size (stop, configure,
+start). The messages are removed after the thread stops, their buffers
+are cancelled as before.
+---
+ src/libcamera/software_isp/software_isp.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index db22060d7..027a70ff6 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -426,6 +426,16 @@ void SoftwareIsp::stop()
+ 	ispWorkerThread_.exit();
+ 	ispWorkerThread_.wait();
+ 
++	/*
++	 * Frames queued to the debayer before the stop stay posted to the
++	 * worker thread and ran first after the next start, before
++	 * Debayer::start() created the EGL context: on stale buffers, with
++	 * the context of the previous thread (an assertion failure in
++	 * eGL::makeCurrent() at the first photo at full size). Their buffers
++	 * are cancelled below.
++	 */
++	ispWorkerThread_.removeMessages(debayer_.get());
++
+ 	Thread::current()->dispatchMessages(Message::Type::InvokeMessage, this);
+ 
+ 	ipa_->stop();
+-- 
+2.50.1
+

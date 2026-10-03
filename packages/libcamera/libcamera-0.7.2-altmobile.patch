@@ -1763,7 +1763,7 @@ index 02651fe87..8ac8f1587 100644
  		return -EINVAL;
  
 diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
-index c73a16ce0..db22060d7 100644
+index c73a16ce0..027a70ff6 100644
 --- a/src/libcamera/software_isp/software_isp.cpp
 +++ b/src/libcamera/software_isp/software_isp.cpp
 @@ -7,10 +7,13 @@
@@ -1826,7 +1826,24 @@ index c73a16ce0..db22060d7 100644
  	ret = debayer_->configure(inputCfg, outputCfgs, ccmEnabled_);
  	if (ret < 0)
  		return ret;
-@@ -436,9 +461,9 @@ void SoftwareIsp::saveIspParams()
+@@ -401,6 +426,16 @@ void SoftwareIsp::stop()
+ 	ispWorkerThread_.exit();
+ 	ispWorkerThread_.wait();
+ 
++	/*
++	 * Frames queued to the debayer before the stop stay posted to the
++	 * worker thread and ran first after the next start, before
++	 * Debayer::start() created the EGL context: on stale buffers, with
++	 * the context of the previous thread (an assertion failure in
++	 * eGL::makeCurrent() at the first photo at full size). Their buffers
++	 * are cancelled below.
++	 */
++	ispWorkerThread_.removeMessages(debayer_.get());
++
+ 	Thread::current()->dispatchMessages(Message::Type::InvokeMessage, this);
+ 
+ 	ipa_->stop();
+@@ -436,9 +471,9 @@ void SoftwareIsp::saveIspParams()
  	debayerParams_ = *sharedParams_;
  }
  
