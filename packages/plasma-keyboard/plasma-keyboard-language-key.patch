@@ -1,0 +1,11 @@
+--- a/src/styles/breeze/style.qml
++++ b/src/styles/breeze/style.qml
+@@ -929,7 +929,7 @@
+ 
+     popupListRemove: Transition {}
+ 
+-    languagePopupListEnabled: true
++    languagePopupListEnabled: false
+ 
+     languageListDelegate: SelectionListItem {
+         id: languageListItem

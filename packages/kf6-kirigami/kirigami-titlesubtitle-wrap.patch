@@ -1,0 +1,11 @@
+--- a/src/delegates/TitleSubtitle.qml
++++ b/src/delegates/TitleSubtitle.qml
+@@ -84,7 +84,7 @@
+     /*!
+       The text wrap mode used for both the title and subtitle.
+      */
+-    property int wrapMode: Text.NoWrap
++    property int wrapMode: Text.WordWrap // ALT Mobile: wrap by words instead of eliding on a narrow phone screen
+     /*!
+       Make the implicit height use the subtitle's height even if no subtitle is set.
+      */
