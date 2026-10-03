@@ -14,6 +14,11 @@ assert n == 1, 'нет Release'
 # Источники после последней строки Source/Patch шапки
 lines = s.split('\n')
 last = max(i for i, l in enumerate(lines) if re.match(r'(Source|Patch)\d*:', l))
+# Не внутри условного блока (%if ... %else Source ... %endif)
+while last + 1 < len(lines) and lines[last + 1].startswith(('%else', '%endif')):
+    last += 1
+    while not lines[last].startswith('%endif'):
+        last += 1
 add = ['# ALT Mobile, OnePlus 6T (oneplus6t repository, packages/)']
 add += ['Source%d: %s' % (900 + i, p) for i, p in enumerate(patches)]
 lines[last + 1:last + 1] = add

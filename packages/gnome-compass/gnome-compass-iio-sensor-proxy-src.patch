@@ -1,0 +1,127 @@
+--- a/src/compass.py
++++ b/src/compass.py
+@@ -27,6 +27,44 @@
+ import subprocess
+ import time
+ 
++PROXY_ID = 100
++
++
++class sensor_proxy_compass:
++    '''Heading from iio-sensor-proxy (net.hadess.SensorProxy.Compass).'''
++
++    def __new__(cls):
++        try:
++            from gi.repository import Gio
++            proxy = Gio.DBusProxy.new_for_bus_sync(
++                Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
++                "net.hadess.SensorProxy", "/net/hadess/SensorProxy/Compass",
++                "net.hadess.SensorProxy.Compass", None)
++            has = proxy.get_cached_property("HasCompass")
++            if has is None or not has.unpack():
++                return None
++            proxy.call_sync("ClaimCompass", None, Gio.DBusCallFlags.NONE, 5000, None)
++        except Exception as e:
++            print("* iio-sensor-proxy compass not available:", e)
++            return None
++        self = super().__new__(cls)
++        self.proxy = proxy
++        return self
++
++    def heading(self):
++        # Asked directly each time: the app polls from a worker thread, and
++        # the proxy's property cache is only refreshed by the main loop.
++        from gi.repository import Gio, GLib
++        try:
++            v = self.proxy.call_sync("org.freedesktop.DBus.Properties.Get",
++                                     GLib.Variant("(ss)", ("net.hadess.SensorProxy.Compass",
++                                                           "CompassHeading")),
++                                     Gio.DBusCallFlags.NONE, 1000, None)
++            return v.unpack()[0]
++        except Exception:
++            return 0.0
++
++
+ class device:
+     
+     def __init__(self, testmode=0):
+@@ -76,6 +114,16 @@
+                         
+                     devices.append([i, name, f_list, mount_matrix, mount_matrix_from_driver])
+ 
++        # ALT Mobile: no magnetometer in sysfs (OnePlus 6T and other Qualcomm
++        # phones keep it behind the sensor DSP), but iio-sensor-proxy may
++        # provide a ready tilt-compensated heading on its Compass interface.
++        self.proxy = None
++        if len(devices) == 0 and testmode == 0:
++            self.proxy = sensor_proxy_compass()
++            if self.proxy is not None:
++                self.id = PROXY_ID
++                self.name = "iio-sensor-proxy"
++
+         if len(devices)>0 and testmode==0:
+             j = 0
+ 
+@@ -88,6 +136,11 @@
+ 
+     def getMagnValues(self):
+         # First get magnetic field in chip coordinates
++        if self.proxy is not None:
++            # North as a horizontal vector in phone coordinates: the heading
++            # is the azimuth of the top edge, so north lies at -heading.
++            h = np.radians(self.proxy.heading())
++            return np.array([-np.sin(h), np.cos(h), 0.0]) * self.MAGN_SCALE
+         if self.id in range(4):
+             chipBx = int(open(os.path.join(self.path, "in_magn_x_raw")).read())
+             chipBy = int(open(os.path.join(self.path, "in_magn_y_raw")).read())
+--- a/src/main.py
++++ b/src/main.py
+@@ -56,7 +56,7 @@
+ 
+     def delete_event(self, widget, event, donnees=None):
+         self.cmp.on_close()
+-        self.timer.cancel()
++        GLib.source_remove(self.timer)
+         self.quit()
+ 
+         return False
+@@ -64,6 +64,7 @@
+     def refresh(self):
+         self.cmp.updateBearing(0)
+         self.canvas.draw()
++        return True
+ 
+     def setDarkTheme(self, dark=True):
+         win = self.props.active_window
+@@ -135,6 +136,9 @@
+         self.load_config(output=True)
+ 
+         self.cmp=compass(updater=self.update_label, testmode=self.testmode, offset=[self.MAGN_X_OFFSET, self.MAGN_Y_OFFSET, self.MAGN_Z_OFFSET])
++        if self.cmp.magn.proxy is not None:
++            # Heading from iio-sensor-proxy is already calibrated there
++            self.cmp.setOffset([0, 0, 0])
+ 
+         self.save_config(section="device",key="NAME",value=self.cmp.magn.name, reload=True)
+ 
+@@ -158,11 +162,19 @@
+ 
+         win.connect("delete_event", self.delete_event)
+ 
+-        self.timer = RepeatTimer(0.3, self.refresh)
+-        self.timer.start()
++        # ALT Mobile: redraw from the GTK main loop. A worker thread
++        # (RepeatTimer) left the canvas unrepainted on Wayland, and the
++        # needle looked glued to the phone. With the iio-sensor-proxy
++        # heading the update is cheap, so 10 per second.
++        self.timer = GLib.timeout_add(100 if self.cmp.magn.proxy is not None else 300, self.refresh)
+ 
+         win.show_all()
+ 
++        if self.cmp.magn.proxy is not None:
++            # update_label() needs the active window, which is not set yet
++            win.toplabel1.set_markup("<span foreground='green'>Calibrated by iio-sensor-proxy</span>")
++            win.toplabel2.set_markup("<span foreground='green'>Magnetometer found: iio-sensor-proxy</span>")
++
+ 
+ def main(version):
+     print('Compass v%s\nhttps://gitlab.com/lgtrombetta/compass\nReleased under the GPLv3 license\n' % version)
