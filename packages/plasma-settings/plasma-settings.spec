@@ -2,7 +2,7 @@
 
 Name: %rname
 Version: 26.08.1
-Release: alt0.2
+Release: alt0.3
 %K6init
 
 Group: Graphical desktop/KDE
@@ -17,6 +17,8 @@ Obsoletes: kde5-plasma-settings < %EVR
 
 Source: %rname-%version.tar
 Patch1: plasma-settings-mobile-page-header.patch
+# Groups and order from /etc/xdg/plasma-settings-alt-layoutrc (system/plasma/settings-layout)
+Patch2: plasma-settings-alt-layout.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: extra-cmake-modules qt6-base-devel
@@ -50,6 +52,7 @@ Core files needed for %rname
 %prep
 %setup -n %rname-%version
 %patch1 -p1
+%patch2 -p1
 
 %build
 %K6build
@@ -73,6 +76,10 @@ Core files needed for %rname
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 26.08.1-alt0.3
+- groups and order of the modules from plasma-settings-alt-layoutrc
+  (ALT Mobile layout, Android-like groups)
+
 * Sun Sep 27 2026 morgonf <morgonf@altlinux.org> 26.08.1-alt0.2
 - page header: title fills available width and wraps by words
 
