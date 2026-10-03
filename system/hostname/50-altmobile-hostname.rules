@@ -1,0 +1,11 @@
+// ALT Mobile: the owner of the phone renames it in «Сведения о системе»
+// without the root password, as on Android. Only a local active session
+// of a user in wheel; the network and pretty names, nothing else.
+polkit.addRule(function(action, subject) {
+	if ((action.id == "org.freedesktop.hostname1.set-hostname" ||
+	     action.id == "org.freedesktop.hostname1.set-static-hostname" ||
+	     action.id == "org.freedesktop.hostname1.set-machine-info") &&
+	    subject.local && subject.active && subject.isInGroup("wheel")) {
+		return polkit.Result.YES;
+	}
+});

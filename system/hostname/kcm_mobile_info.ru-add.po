@@ -1,0 +1,22 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: ru\n"
+
+msgid "Device name"
+msgstr "Имя устройства"
+
+msgid "Model"
+msgstr "Модель"
+
+msgid "Other devices see this name over Bluetooth and on the network."
+msgstr "Это имя видят другие устройства по Bluetooth и в сети."
+
+msgid "Network name: %1"
+msgstr "Имя в сети: %1"
+
+msgid "Could not rename the device: %1"
+msgstr "Не удалось переименовать устройство: %1"
+
+msgid "Could not set the network name: %1"
+msgstr "Не удалось задать имя в сети: %1"

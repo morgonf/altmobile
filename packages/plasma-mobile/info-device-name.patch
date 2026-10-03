@@ -1,0 +1,398 @@
+diff --git a/kcms/info/CMakeLists.txt b/kcms/info/CMakeLists.txt
+index 38dc65d..c568856 100644
+--- a/kcms/info/CMakeLists.txt
++++ b/kcms/info/CMakeLists.txt
+@@ -5,6 +5,7 @@ kcmutils_add_qml_kcm(kcm_mobile_info)
+ 
+ target_sources(kcm_mobile_info PRIVATE
+     info.cpp
++    devicename.cpp
+     distroinfo.cpp
+     softwareinfo.cpp
+     hardwareinfo.cpp
+@@ -12,6 +13,7 @@ target_sources(kcm_mobile_info PRIVATE
+ target_link_libraries(kcm_mobile_info PRIVATE
+     Qt::Core
+     Qt::Gui
++    Qt::DBus
+     KF6::CoreAddons
+     KF6::I18n
+     KF6::KCMUtilsQuick
+diff --git a/kcms/info/devicename.cpp b/kcms/info/devicename.cpp
+new file mode 100644
+index 0000000..070fb58
+--- /dev/null
++++ b/kcms/info/devicename.cpp
+@@ -0,0 +1,165 @@
++/*
++    SPDX-FileCopyrightText: 2026 morgonf <morgonf@altlinux.org>
++
++    SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++*/
++
++#include "devicename.h"
++
++#include <QDBusConnection>
++#include <QDBusInterface>
++#include <QDBusMessage>
++#include <QDBusPendingCallWatcher>
++#include <QDBusPendingReply>
++#include <QDBusVariant>
++#include <QFile>
++#include <QHash>
++
++#include <KLocalizedString>
++
++namespace
++{
++const QString kService = QStringLiteral("org.freedesktop.hostname1");
++const QString kPath = QStringLiteral("/org/freedesktop/hostname1");
++const QString kInterface = QStringLiteral("org.freedesktop.hostname1");
++
++// Russian letters for the network name (GOST 7.79 B without diacritics)
++const QHash<QChar, QString> &translit()
++{
++    static const QHash<QChar, QString> table = {
++        {u'а', QStringLiteral("a")},  {u'б', QStringLiteral("b")},   {u'в', QStringLiteral("v")},  {u'г', QStringLiteral("g")},
++        {u'д', QStringLiteral("d")},  {u'е', QStringLiteral("e")},   {u'ё', QStringLiteral("yo")}, {u'ж', QStringLiteral("zh")},
++        {u'з', QStringLiteral("z")},  {u'и', QStringLiteral("i")},   {u'й', QStringLiteral("j")},  {u'к', QStringLiteral("k")},
++        {u'л', QStringLiteral("l")},  {u'м', QStringLiteral("m")},   {u'н', QStringLiteral("n")},  {u'о', QStringLiteral("o")},
++        {u'п', QStringLiteral("p")},  {u'р', QStringLiteral("r")},   {u'с', QStringLiteral("s")},  {u'т', QStringLiteral("t")},
++        {u'у', QStringLiteral("u")},  {u'ф', QStringLiteral("f")},   {u'х', QStringLiteral("x")},  {u'ц', QStringLiteral("cz")},
++        {u'ч', QStringLiteral("ch")}, {u'ш', QStringLiteral("sh")},  {u'щ', QStringLiteral("shh")}, {u'ъ', QString()},
++        {u'ы', QStringLiteral("y")},  {u'ь', QString()},             {u'э', QStringLiteral("e")},  {u'ю', QStringLiteral("yu")},
++        {u'я', QStringLiteral("ya")},
++    };
++    return table;
++}
++}
++
++DeviceName::DeviceName(QObject *parent)
++    : QObject(parent)
++{
++    // The device tree names the phone ("OnePlus 6T"), with a trailing NUL
++    QFile f(QStringLiteral("/sys/firmware/devicetree/base/model"));
++    if (f.open(QIODevice::ReadOnly)) {
++        m_model = QString::fromUtf8(f.readAll()).remove(QChar(0)).trimmed();
++    }
++    load();
++}
++
++void DeviceName::load()
++{
++    QDBusInterface hostnamed(kService, kPath, kInterface, QDBusConnection::systemBus());
++    const QString pretty = hostnamed.property("PrettyHostname").toString();
++    m_hostname = hostnamed.property("Hostname").toString();
++    m_name = pretty.isEmpty() ? hostnamed.property("StaticHostname").toString() : pretty;
++    // Nothing set yet: the kernel hostname ("localhost")
++    if (m_name.isEmpty()) {
++        m_name = m_hostname;
++    }
++    Q_EMIT nameChanged();
++}
++
++QString DeviceName::name() const
++{
++    return m_name;
++}
++
++QString DeviceName::hostname() const
++{
++    return m_hostname;
++}
++
++QString DeviceName::model() const
++{
++    return m_model;
++}
++
++QString DeviceName::error() const
++{
++    return m_error;
++}
++
++QString DeviceName::hostnameFor(const QString &name) const
++{
++    QString out;
++    for (const QChar c : name.toLower()) {
++        if ((c >= u'a' && c <= u'z') || (c >= u'0' && c <= u'9')) {
++            out += c;
++        } else if (translit().contains(c)) {
++            out += translit().value(c);
++        } else if (!out.endsWith(u'-')) {
++            out += u'-';
++        }
++    }
++    // A hostname label: at most 63 characters, no hyphen at either end
++    out = out.left(63);
++    while (out.startsWith(u'-')) {
++        out.remove(0, 1);
++    }
++    while (out.endsWith(u'-')) {
++        out.chop(1);
++    }
++    return out.isEmpty() ? QStringLiteral("phone") : out;
++}
++
++// BlueZ keeps the adapter alias it was given once (localhost.localdomain)
++// and does not follow the hostname: set it on every adapter
++void DeviceName::setBluetoothAlias(const QString &name)
++{
++    for (int i = 0; i < 4; i++) {
++        QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("org.bluez"),
++                                                          QStringLiteral("/org/bluez/hci%1").arg(i),
++                                                          QStringLiteral("org.freedesktop.DBus.Properties"),
++                                                          QStringLiteral("Set"));
++        msg << QStringLiteral("org.bluez.Adapter1") << QStringLiteral("Alias") << QVariant::fromValue(QDBusVariant(name));
++        // No adapter or Bluetooth stopped: nothing to rename
++        QDBusConnection::systemBus().asyncCall(msg);
++    }
++}
++
++void DeviceName::setName(const QString &name)
++{
++    const QString pretty = name.simplified();
++    if (pretty.isEmpty()) {
++        return;
++    }
++    m_error.clear();
++    Q_EMIT errorChanged();
++
++    // Pretty name first, then the network name; interactive for polkit
++    auto call = [](const QString &method, const QString &value) {
++        QDBusMessage msg = QDBusMessage::createMethodCall(kService, kPath, kInterface, method);
++        msg << value << true;
++        // hostnamed asks polkit interactively only with this flag set
++        msg.setInteractiveAuthorizationAllowed(true);
++        return QDBusConnection::systemBus().asyncCall(msg);
++    };
++    auto *watcher = new QDBusPendingCallWatcher(call(QStringLiteral("SetPrettyHostname"), pretty), this);
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher, pretty, call]() {
++        watcher->deleteLater();
++        QDBusPendingReply<> reply = *watcher;
++        if (reply.isError()) {
++            m_error = i18nd("kcm_mobile_info", "Could not rename the device: %1", reply.error().message());
++            Q_EMIT errorChanged();
++            load();
++            return;
++        }
++        auto *second = new QDBusPendingCallWatcher(call(QStringLiteral("SetStaticHostname"), hostnameFor(pretty)), this);
++        connect(second, &QDBusPendingCallWatcher::finished, this, [this, second]() {
++            second->deleteLater();
++            QDBusPendingReply<> reply = *second;
++            if (reply.isError()) {
++                m_error = i18nd("kcm_mobile_info", "Could not set the network name: %1", reply.error().message());
++                Q_EMIT errorChanged();
++            }
++            load();
++            setBluetoothAlias(m_name);
++        });
++    });
++}
+diff --git a/kcms/info/devicename.h b/kcms/info/devicename.h
+new file mode 100644
+index 0000000..83212b4
+--- /dev/null
++++ b/kcms/info/devicename.h
+@@ -0,0 +1,50 @@
++/*
++    SPDX-FileCopyrightText: 2026 morgonf <morgonf@altlinux.org>
++
++    SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++*/
++
++#include <QObject>
++
++#ifndef DEVICENAME_H
++#define DEVICENAME_H
++
++// ALT Mobile: device name and model. The name is the pretty hostname of
++// systemd-hostnamed (shown to Bluetooth devices), the static hostname
++// (network) is derived from it in Latin letters.
++class DeviceName : public QObject
++{
++    Q_OBJECT
++
++    Q_PROPERTY(QString name READ name NOTIFY nameChanged)
++    Q_PROPERTY(QString hostname READ hostname NOTIFY nameChanged)
++    Q_PROPERTY(QString model READ model CONSTANT)
++    Q_PROPERTY(QString error READ error NOTIFY errorChanged)
++
++public:
++    DeviceName(QObject *parent = nullptr);
++
++    QString name() const;
++    QString hostname() const;
++    QString model() const;
++    QString error() const;
++
++    // Network name for a device name: Latin letters, digits and hyphens
++    Q_INVOKABLE QString hostnameFor(const QString &name) const;
++    Q_INVOKABLE void setName(const QString &name);
++
++Q_SIGNALS:
++    void nameChanged();
++    void errorChanged();
++
++private:
++    void load();
++    void setBluetoothAlias(const QString &name);
++
++    QString m_name;
++    QString m_hostname;
++    QString m_model;
++    QString m_error;
++};
++
++#endif // DEVICENAME_H
+diff --git a/kcms/info/info.cpp b/kcms/info/info.cpp
+index 5bc9d06..de18ed0 100644
+--- a/kcms/info/info.cpp
++++ b/kcms/info/info.cpp
+@@ -17,6 +17,7 @@ K_PLUGIN_CLASS_WITH_JSON(Info, "kcm_mobile_info.json")
+ 
+ Info::Info(QObject *parent, const KPluginMetaData &metaData)
+     : KQuickConfigModule(parent, metaData)
++    , m_deviceName(new DeviceName(this))
+     , m_distroInfo(new DistroInfo(this))
+     , m_softwareInfo(new SoftwareInfo(this))
+     , m_hardwareInfo(new HardwareInfo(this))
+@@ -34,7 +35,8 @@ Info::Info(QObject *parent, const KPluginMetaData &metaData)
+ 
+ void Info::copyInfoToClipboard() const
+ {
+-    QString clipboardText = QStringLiteral(
++    QString clipboardText = QStringLiteral("Device: %1\nModel: %2\n").arg(deviceName()->name(), deviceName()->model());
++    clipboardText += QStringLiteral(
+                                       "Operating System: %1\n"
+                                       "KDE Plasma Version: %2\n"
+                                       "KDE Frameworks Version: %3\n"
+@@ -66,6 +68,11 @@ void Info::copyInfoToClipboard() const
+     QGuiApplication::clipboard()->setText(clipboardText);
+ }
+ 
++DeviceName *Info::deviceName() const
++{
++    return m_deviceName;
++}
++
+ DistroInfo *Info::distroInfo() const
+ {
+     return m_distroInfo;
+diff --git a/kcms/info/info.h b/kcms/info/info.h
+index 45c3721..5a255b6 100644
+--- a/kcms/info/info.h
++++ b/kcms/info/info.h
+@@ -4,6 +4,7 @@
+     SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+ */
+ 
++#include "devicename.h"
+ #include "distroinfo.h"
+ #include "hardwareinfo.h"
+ #include "softwareinfo.h"
+@@ -18,12 +19,14 @@ class Info : public KQuickConfigModule
+ {
+     Q_OBJECT
+ 
++    Q_PROPERTY(DeviceName *deviceName READ deviceName CONSTANT)
+     Q_PROPERTY(DistroInfo *distroInfo READ distroInfo NOTIFY distroInfoChanged)
+     Q_PROPERTY(SoftwareInfo *softwareInfo READ softwareInfo NOTIFY softwareInfoChanged)
+     Q_PROPERTY(HardwareInfo *hardwareInfo READ hardwareInfo NOTIFY hardwareInfoChanged)
+     Q_PROPERTY(QVariantList vendorInfo READ vendorInfo CONSTANT)
+     Q_PROPERTY(QString vendorInfoTitle READ vendorInfoTitle CONSTANT)
+ 
++    DeviceName *deviceName() const;
+     DistroInfo *distroInfo() const;
+     SoftwareInfo *softwareInfo() const;
+     HardwareInfo *hardwareInfo() const;
+@@ -42,6 +45,7 @@ Q_SIGNALS:
+     void hardwareInfoChanged();
+ 
+ private:
++    DeviceName *m_deviceName;
+     DistroInfo *m_distroInfo;
+     SoftwareInfo *m_softwareInfo;
+     HardwareInfo *m_hardwareInfo;
+diff --git a/kcms/info/ui/main.qml b/kcms/info/ui/main.qml
+index 24e4613..579af4e 100644
+--- a/kcms/info/ui/main.qml
++++ b/kcms/info/ui/main.qml
+@@ -40,8 +40,77 @@ KCM.SimpleKCM {
+             source: kcm.distroInfo.logo ? kcm.distroInfo.logo : "kde"
+         }
+ 
++        // ALT Mobile: device name (Bluetooth, network) and model
++        Kirigami.InlineMessage {
++            Layout.fillWidth: true
++            Layout.margins: Kirigami.Units.largeSpacing
++            type: Kirigami.MessageType.Error
++            text: kcm.deviceName.error
++            visible: text !== ""
++        }
++
++        FormCard.FormCard {
++            Layout.fillWidth: true
++
++            FormCard.FormButtonDelegate {
++                id: deviceNameDelegate
++                text: i18n("Device name")
++                description: kcm.deviceName.name
++                onClicked: {
++                    // Never named: offer the model ("OnePlus 6T")
++                    const unnamed = kcm.deviceName.name === "" || kcm.deviceName.name.startsWith("localhost")
++                    nameField.text = unnamed && kcm.deviceName.model !== "" ? kcm.deviceName.model : kcm.deviceName.name
++                    nameDialog.open()
++                    nameField.cursorPosition = nameField.length
++                    nameField.forceActiveFocus()
++                }
++            }
++
++            FormCard.FormDelegateSeparator {
++                visible: modelDelegate.visible
++            }
++
++            FormCard.FormTextDelegate {
++                id: modelDelegate
++                visible: kcm.deviceName.model !== ""
++                text: i18n("Model")
++                description: kcm.deviceName.model
++            }
++        }
++
++        Kirigami.PromptDialog {
++            id: nameDialog
++            title: i18n("Device name")
++            subtitle: i18n("Other devices see this name over Bluetooth and on the network.")
++            standardButtons: Kirigami.Dialog.Save | Kirigami.Dialog.Cancel
++            // At the top: the on-screen keyboard covers the lower half
++            y: Kirigami.Units.gridUnit * 2
++
++            onAccepted: kcm.deviceName.setName(nameField.text)
++
++            ColumnLayout {
++                spacing: Kirigami.Units.smallSpacing
++
++                Controls.TextField {
++                    id: nameField
++                    Layout.fillWidth: true
++                    maximumLength: 64
++                    onAccepted: nameDialog.accept()
++                }
++
++                Controls.Label {
++                    Layout.fillWidth: true
++                    wrapMode: Text.WordWrap
++                    font: Kirigami.Theme.smallFont
++                    color: Kirigami.Theme.disabledTextColor
++                    text: i18n("Network name: %1", kcm.deviceName.hostnameFor(nameField.text))
++                }
++            }
++        }
++
+         FormCard.FormCard {
+             Layout.fillWidth: true
++            Layout.topMargin: Kirigami.Units.largeSpacing
+ 
+             FormCard.FormTextDelegate {
+                 text: i18n("Operating System")
