@@ -1,5 +1,5 @@
 diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
-index 4f72dce9b..263f49c76 100644
+index 4f72dce9b..11ee9f247 100644
 --- a/include/libcamera/internal/software_isp/software_isp.h
 +++ b/include/libcamera/internal/software_isp/software_isp.h
 @@ -86,11 +86,11 @@ public:
@@ -16,10 +16,12 @@ index 4f72dce9b..263f49c76 100644
  	void statsReady(uint32_t frame, uint32_t bufferId);
  	void inputReady(FrameBuffer *input);
  	void outputReady(FrameBuffer *output);
-@@ -100,6 +100,9 @@ private:
+@@ -100,6 +100,11 @@ private:
  	DebayerParams debayerParams_;
  	DmaBufAllocator dmaHeap_;
  	bool ccmEnabled_;
++	/* Between start() and stop(): frames may be processed */
++	bool running_ = false;
 +	/* Quad Bayer sensor and its pixel array width, see configure() */
 +	bool quadBayerSensor_ = false;
 +	unsigned int pixelArrayWidth_ = 0;
@@ -1763,7 +1765,7 @@ index 02651fe87..8ac8f1587 100644
  		return -EINVAL;
  
 diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
-index c73a16ce0..027a70ff6 100644
+index c73a16ce0..f432025ff 100644
 --- a/src/libcamera/software_isp/software_isp.cpp
 +++ b/src/libcamera/software_isp/software_isp.cpp
 @@ -7,10 +7,13 @@
@@ -1826,7 +1828,51 @@ index c73a16ce0..027a70ff6 100644
  	ret = debayer_->configure(inputCfg, outputCfgs, ccmEnabled_);
  	if (ret < 0)
  		return ret;
-@@ -401,6 +426,16 @@ void SoftwareIsp::stop()
+@@ -361,6 +386,22 @@ int SoftwareIsp::queueBuffers(uint32_t frame, FrameBuffer *input,
+ 			return -EINVAL;
+ 	}
+ 
++	/*
++	 * Stopped: the pipeline stops the ISP before the video device, frames
++	 * still arrive in between. Processing them was posted to the stopped
++	 * worker thread and ran after the next start, before Debayer::start()
++	 * created the EGL context. Return them cancelled, as stop() does.
++	 */
++	if (!running_) {
++		for (const auto &[stream, buffer] : outputs) {
++			buffer->_d()->cancel();
++			outputBufferReady.emit(buffer);
++		}
++		input->_d()->cancel();
++		inputBufferReady.emit(input);
++		return 0;
++	}
++
+ 	queuedInputBuffers_.push_back(input);
+ 
+ 	for (const auto &[stream, buffer] : outputs) {
+@@ -383,8 +424,10 @@ int SoftwareIsp::start()
+ 
+ 	ispWorkerThread_.start();
+ 
+-	return debayer_->invokeMethod(&Debayer::start,
+-				      ConnectionTypeBlocking);
++	ret = debayer_->invokeMethod(&Debayer::start,
++				     ConnectionTypeBlocking);
++	running_ = ret == 0;
++	return ret;
+ }
+ 
+ /**
+@@ -395,12 +438,24 @@ int SoftwareIsp::start()
+  */
+ void SoftwareIsp::stop()
+ {
++	running_ = false;
++
+ 	debayer_->invokeMethod(&Debayer::stop,
+ 			       ConnectionTypeBlocking);
+ 
  	ispWorkerThread_.exit();
  	ispWorkerThread_.wait();
  
@@ -1843,7 +1889,7 @@ index c73a16ce0..027a70ff6 100644
  	Thread::current()->dispatchMessages(Message::Type::InvokeMessage, this);
  
  	ipa_->stop();
-@@ -436,9 +471,9 @@ void SoftwareIsp::saveIspParams()
+@@ -436,9 +491,9 @@ void SoftwareIsp::saveIspParams()
  	debayerParams_ = *sharedParams_;
  }
  

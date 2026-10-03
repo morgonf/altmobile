@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile3
+Release: alt1.mobile4
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -18,7 +18,7 @@ Url: https://libcamera.org/
 
 Source: %name-%version.tar
 # ALT Mobile, OnePlus 6T: autofocus, AGC, sensor tuning and Quad Bayer for
-# the software ISP, packages/libcamera/0001-0032 of the oneplus6t repository
+# the software ISP, packages/libcamera/0001-0033 of the oneplus6t repository
 Patch1: %name-%version-altmobile.patch
 
 BuildRequires(pre): rpm-macros-meson
@@ -172,6 +172,10 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile4
+- software ISP: cancel frames queued while stopped (they still reached the
+  stopped worker thread, assertion failure at a photo at full size)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile3
 - software ISP: drop the debayer calls left queued at stop (stale frames
   ran before the EGL context of the new start, assertion failure at the

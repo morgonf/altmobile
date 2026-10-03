@@ -1,0 +1,81 @@
+From 6f1f254d72cc58a47e170df3a2083257b1a42036 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 18:00:31 -0400
+Subject: [PATCH] software_isp: Cancel frames queued while stopped
+
+The simple pipeline stops the software ISP before the video device, and
+frames still arrive in between. Their processing was posted to the
+stopped worker thread and ran after the next start, before
+Debayer::start() created the EGL context: with assertions enabled
+plasma-camera still aborted in eGL::makeCurrent() at a photo at full
+size. queueBuffers() now returns such frames cancelled, as stop() does.
+---
+ .../internal/software_isp/software_isp.h      |  2 ++
+ src/libcamera/software_isp/software_isp.cpp   | 24 +++++++++++++++++--
+ 2 files changed, 24 insertions(+), 2 deletions(-)
+
+diff --git a/include/libcamera/internal/software_isp/software_isp.h b/include/libcamera/internal/software_isp/software_isp.h
+index 263f49c76..11ee9f247 100644
+--- a/include/libcamera/internal/software_isp/software_isp.h
++++ b/include/libcamera/internal/software_isp/software_isp.h
+@@ -100,6 +100,8 @@ private:
+ 	DebayerParams debayerParams_;
+ 	DmaBufAllocator dmaHeap_;
+ 	bool ccmEnabled_;
++	/* Between start() and stop(): frames may be processed */
++	bool running_ = false;
+ 	/* Quad Bayer sensor and its pixel array width, see configure() */
+ 	bool quadBayerSensor_ = false;
+ 	unsigned int pixelArrayWidth_ = 0;
+diff --git a/src/libcamera/software_isp/software_isp.cpp b/src/libcamera/software_isp/software_isp.cpp
+index 027a70ff6..f432025ff 100644
+--- a/src/libcamera/software_isp/software_isp.cpp
++++ b/src/libcamera/software_isp/software_isp.cpp
+@@ -386,6 +386,22 @@ int SoftwareIsp::queueBuffers(uint32_t frame, FrameBuffer *input,
+ 			return -EINVAL;
+ 	}
+ 
++	/*
++	 * Stopped: the pipeline stops the ISP before the video device, frames
++	 * still arrive in between. Processing them was posted to the stopped
++	 * worker thread and ran after the next start, before Debayer::start()
++	 * created the EGL context. Return them cancelled, as stop() does.
++	 */
++	if (!running_) {
++		for (const auto &[stream, buffer] : outputs) {
++			buffer->_d()->cancel();
++			outputBufferReady.emit(buffer);
++		}
++		input->_d()->cancel();
++		inputBufferReady.emit(input);
++		return 0;
++	}
++
+ 	queuedInputBuffers_.push_back(input);
+ 
+ 	for (const auto &[stream, buffer] : outputs) {
+@@ -408,8 +424,10 @@ int SoftwareIsp::start()
+ 
+ 	ispWorkerThread_.start();
+ 
+-	return debayer_->invokeMethod(&Debayer::start,
+-				      ConnectionTypeBlocking);
++	ret = debayer_->invokeMethod(&Debayer::start,
++				     ConnectionTypeBlocking);
++	running_ = ret == 0;
++	return ret;
+ }
+ 
+ /**
+@@ -420,6 +438,8 @@ int SoftwareIsp::start()
+  */
+ void SoftwareIsp::stop()
+ {
++	running_ = false;
++
+ 	debayer_->invokeMethod(&Debayer::stop,
+ 			       ConnectionTypeBlocking);
+ 
+-- 
+2.50.1
+
