@@ -1,0 +1,63 @@
+From ecc96030bf8f5fd1f3052a9aa318512eefa44b4f Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 13:59:58 -0400
+Subject: [PATCH 28/30] ipa: simple: Update the sensor information on
+ configure()
+
+The IPA kept the IPACameraSensorInfo given to init(). After a
+reconfiguration to another sensor mode (full size for a photo) the line
+duration and the crop used by the autofocus windows still came from the
+mode at init time. The pipeline now passes the sensor information of the
+mode just set with IPAConfigInfo.
+---
+ include/libcamera/ipa/soft.mojom         | 1 +
+ src/ipa/simple/soft_simple.cpp           | 7 +++++++
+ src/libcamera/pipeline/simple/simple.cpp | 2 ++
+ 3 files changed, 10 insertions(+)
+
+diff --git a/include/libcamera/ipa/soft.mojom b/include/libcamera/ipa/soft.mojom
+index e5767532c..1357850cd 100644
+--- a/include/libcamera/ipa/soft.mojom
++++ b/include/libcamera/ipa/soft.mojom
+@@ -11,6 +11,7 @@ import "include/libcamera/ipa/core.mojom";
+ struct IPAConfigInfo {
+ 	libcamera.ControlInfoMap sensorControls;
+ 	libcamera.ControlInfoMap lensControls;
++	libcamera.IPACameraSensorInfo sensorInfo;
+ };
+ 
+ interface IPASoftInterface {
+diff --git a/src/ipa/simple/soft_simple.cpp b/src/ipa/simple/soft_simple.cpp
+index 713f2b6f2..a05851692 100644
+--- a/src/ipa/simple/soft_simple.cpp
++++ b/src/ipa/simple/soft_simple.cpp
+@@ -204,6 +204,13 @@ int IPASoftSimple::configure(const IPAConfigInfo &configInfo)
+ {
+ 	sensorInfoMap_ = configInfo.sensorControls;
+ 	lensInfoMap_ = configInfo.lensControls;
++	/*
++	 * The sensor information given to init() describes the mode at that
++	 * time; a reconfiguration (e.g. full size for a photo) changes the
++	 * line length and the output size.
++	 */
++	if (configInfo.sensorInfo.pixelRate)
++		context_.sensorInfo = configInfo.sensorInfo;
+ 
+ 	const ControlInfo &exposureInfo = sensorInfoMap_.find(V4L2_CID_EXPOSURE)->second;
+ 	const ControlInfo &gainInfo = sensorInfoMap_.find(V4L2_CID_ANALOGUE_GAIN)->second;
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index 5d4f8178b..d5a385a9c 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -1629,6 +1629,8 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+ 			configInfo.lensControls = data->sensor_->focusLens()->controls();
+ 		else
+ 			configInfo.lensControls = ControlInfoMap();
++		/* The mode just set: line length, crop and output size */
++		data->sensor_->sensorInfo(&configInfo.sensorInfo);
+ 		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
+ 	}
+ }
+-- 
+2.50.1
+

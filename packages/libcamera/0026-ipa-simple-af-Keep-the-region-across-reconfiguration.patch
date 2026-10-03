@@ -1,0 +1,86 @@
+From cd190e9e9ad0d35411f2f1311c5c15acd4b5f946 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 05:48:03 -0400
+Subject: [PATCH 26/30] ipa: simple: af: Keep the region across
+ reconfiguration, no sweep on its return
+
+configure() reset the metering region to the centre. An application that
+sends AfMetering and AfWindows with every request (plasma-camera after a
+tap) then changed the region back with the first request at full size,
+and the lens swept from the near end while the photo was being taken.
+
+A region change without AfTriggerStart (the tap region timing out back to
+the centre) no longer sweeps the whole travel either: the lens stays and
+the reference sharpness is measured again. A sweep under way restarts.
+---
+ src/ipa/simple/algorithms/af.cpp | 30 ++++++++++++++++++++++++------
+ src/ipa/simple/algorithms/af.h   |  1 +
+ 2 files changed, 25 insertions(+), 6 deletions(-)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 5f8bf8838..92008a7a0 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -93,13 +93,19 @@ int Af::configure(IPAContext &context,
+ 	/* A sweep cut short by the reconfiguration is not resumed */
+ 	k.afState = lastPos_ && lastState_ != controls::AfStateScanning
+ 		    ? lastState_ : controls::AfStateIdle;
+-	k.afMask = kCentreMask;
++	/*
++	 * The region stays as the application last chose it. Resetting it to
++	 * the centre made the first request after a reconfiguration (a photo
++	 * at full size after a tap) change the region back and start a sweep
++	 * from the near end while the photo was being taken.
++	 */
++	if (!windowMask_)
++		windowMask_ = kCentreMask;
++	k.afMask = metering_ == controls::AfMeteringWindows ? windowMask_ : kCentreMask;
+ 	rebase_ = lastPos_ ? kRebaseStats : 0;
+ 	context.configuration.focus.skip = 1;
+ 	context.configuration.focus.lost = 0;
+ 	context.configuration.focus.sharpness_max = 0;
+-	metering_ = controls::AfMeteringAuto;
+-	windowMask_ = kCentreMask;
+ 	return 0;
+ }
+ 
+@@ -162,9 +168,21 @@ void Af::queueRequest(typename Module::Context &context,
+ 	const uint32_t mask = metering_ == controls::AfMeteringWindows ? windowMask_ : kCentreMask;
+ 	if (mask != k.afMask) {
+ 		k.afMask = mask;
+-		/* New region in continuous mode: search again */
+-		if (k.afMode == controls::AfModeContinuous)
+-			restart(context);
++		/*
++		 * New region in continuous mode. A sweep under way restarts,
++		 * since its sharpness so far belongs to the old region.
++		 * Otherwise the lens stays and the reference sharpness is
++		 * measured again: a tap comes with AfTriggerStart anyway, and
++		 * a return to the centre (the tap region timing out) swept the
++		 * whole travel for nothing. A scene that changed still triggers
++		 * a sweep through the focus loss detection.
++		 */
++		if (k.afMode == controls::AfModeContinuous) {
++			if (*k.focus_sweep)
++				restart(context);
++			else
++				rebase_ = kRebaseStats;
++		}
+ 	}
+ 
+ 	const auto &pos = controls.get(controls::LensPosition);
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index c828dbbda..fc9196973 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -44,6 +44,7 @@ private:
+ 	uint32_t windowsToMask(const IPAContext &context, Span<const Rectangle> windows) const;
+ 	uint64_t regionSharpness(const IPAContext &context, const SwIspStats *stats) const;
+ 
++	/* Kept across configure() too: the tapped region stays selected */
+ 	int32_t metering_ = 0;
+ 	uint32_t windowMask_ = 0;
+ 	unsigned int steps_ = 0;
+-- 
+2.50.1
+

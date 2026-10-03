@@ -1,0 +1,83 @@
+From 33232f8732632a11d140e8a5a3ddb6bd3ceb37f9 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 05:48:32 -0400
+Subject: [PATCH 27/30] ipa: simple: agc: Line duration correction from the
+ tuning file
+
+The IMX519 driver on the OnePlus 6T reports a pixel rate 1.664 times too
+high. The AGC took the line for 8.07 us instead of 13.4 us in the binned
+mode, the 1/15 s frame limit became 1/8 s: the viewfinder ran at 9 fps,
+autofocus took 0.44 s per lens step and photos in a room were shaken.
+
+lineDurationScale in the Agc section of the tuning file corrects the line
+duration, the frame limit and the reported ExposureTime follow it.
+---
+ src/ipa/simple/algorithms/agc.cpp | 11 +++++++++++
+ src/ipa/simple/algorithms/agc.h   |  1 +
+ src/ipa/simple/data/imx519.yaml   | 10 ++++++++++
+ 3 files changed, 22 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/agc.cpp b/src/ipa/simple/algorithms/agc.cpp
+index 28c594ad2..94721bbe2 100644
+--- a/src/ipa/simple/algorithms/agc.cpp
++++ b/src/ipa/simple/algorithms/agc.cpp
+@@ -93,6 +93,13 @@ int Agc::init(IPAContext &context, const ValueNode &tuningData)
+ 	 * the small sensors mostly add noise, a darker picture looks better.
+ 	 */
+ 	maxAnalogueGain_ = tuningData["maxAnalogueGain"].get<double>(0.0);
++	/*
++	 * Optional correction of the line duration that the sensor driver
++	 * gives through PIXEL_RATE and HBLANK, measured from the frame rate
++	 * at several VBLANK values. Without it the frame length limit and the
++	 * reported exposure time are off by this factor.
++	 */
++	lineDurationScale_ = tuningData["lineDurationScale"].get<double>(1.0);
+ 
+ 	context.ctrlMap[&controls::AeEnable] = ControlInfo(false, true, true);
+ 	context.ctrlMap[&controls::Brightness] = ControlInfo(0.0f, 2.0f, 1.0f);
+@@ -114,6 +121,10 @@ int Agc::configure(IPAContext &context,
+ 	context.activeState.agc.vblank = context.configuration.agc.vblankDef;
+ 
+ 	auto &agc = context.configuration.agc;
++	if (lineDurationScale_ > 0.0)
++		agc.lineDuration = agc.lineDuration * lineDurationScale_;
++	LOG(IPASoftExposure, Debug) << "Line duration " << agc.lineDuration
++				    << " at " << context.sensorInfo.outputSize;
+ 	if (maxAnalogueGain_ > 0.0 && agc.againMax > maxAnalogueGain_) {
+ 		agc.againMax = std::max(maxAnalogueGain_, agc.againMin);
+ 		agc.againMinStep = (agc.againMax - agc.againMin) / 100.0;
+diff --git a/src/ipa/simple/algorithms/agc.h b/src/ipa/simple/algorithms/agc.h
+index e68e53ea5..b70a29ffd 100644
+--- a/src/ipa/simple/algorithms/agc.h
++++ b/src/ipa/simple/algorithms/agc.h
+@@ -35,6 +35,7 @@ private:
+ 	void updateExposure(IPAContext &context, IPAFrameContext &frameContext, double exposureMSV);
+ 
+ 	double maxAnalogueGain_ = 0.0;
++	double lineDurationScale_ = 1.0;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+diff --git a/src/ipa/simple/data/imx519.yaml b/src/ipa/simple/data/imx519.yaml
+index 727ebfdb1..0f93c0793 100644
+--- a/src/ipa/simple/data/imx519.yaml
++++ b/src/ipa/simple/data/imx519.yaml
+@@ -40,5 +40,15 @@ algorithms:
+                  -0.074, -0.5534, 1.6274 ]
+   - Adjust:
+   - Agc:
++      # The driver reports PIXEL_RATE 1143.77 MHz, the sensor runs at about
++      # 686 MHz. Frame time from V4L2 buffer timestamps against VBLANK:
++      #   2328x1748  29.31 ms at 430, 50.55 at 2000, 104.38 at 6000:
++      #              13.48 us per line, 8.07 computed
++      #   3840x2160  45.48 ms at 0, 87.72 at 2000, 171.85 at 6000:
++      #              21.06 us per line, 12.63 computed
++      #   4656x3496  88.06 ms at 75, 111.84 at 1049, 184.52 at 4000:
++      #              24.62 us per line, 14.77 computed
++      # The frame is (height + VBLANK) lines in every mode.
++      lineDurationScale: 1.667
+   - Af:
+ ...
+-- 
+2.50.1
+

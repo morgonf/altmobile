@@ -1,0 +1,84 @@
+From 2b91355d91ebcb5ecd76fe7cd80ee88f70b7009e Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sat, 3 Oct 2026 14:06:40 -0400
+Subject: [PATCH 29/30] ipa: simple: af: No focus loss while the exposure moves
+
+The sharpness of frames taken while AE still changes the exposure is no
+reference and says nothing about the focus. When a tap region timed out
+and AE went from 66 ms to 29 ms, the reference was measured on clipped
+frames and the focus counted as lost three seconds after every photo,
+so a second photo could catch a sweep. Neither the reference nor the
+loss count moves while exposure times gain changes by more than 3 %
+between statistics.
+---
+ src/ipa/simple/algorithms/af.cpp | 17 +++++++++++++++++
+ src/ipa/simple/algorithms/af.h   |  4 ++++
+ 2 files changed, 21 insertions(+)
+
+diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
+index 92008a7a0..8762df2f4 100644
+--- a/src/ipa/simple/algorithms/af.cpp
++++ b/src/ipa/simple/algorithms/af.cpp
+@@ -9,6 +9,7 @@
+ #include "af.h"
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <stdint.h>
+ 
+ #include <libcamera/base/log.h>
+@@ -62,6 +63,8 @@ static constexpr unsigned int kLostCount = 4;
+ static constexpr unsigned int kRebaseStats = 3;
+ /* Below this normalised sharpness the region is flat: report failure */
+ static constexpr uint64_t kFlatSharpness = 2;
++/* Relative change of exposure times gain between statistics: AE settled */
++static constexpr double kAeSteady = 0.03;
+ 
+ static constexpr unsigned int kGrid = SwIspStats::kAfGrid;
+ static constexpr uint32_t kCentreMask = 1u << (kGrid * kGrid / 2);
+@@ -261,6 +264,14 @@ void Af::step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &swee
+ 	if (!sweep) {
+ 		if (k.afMode != controls::AfModeContinuous)
+ 			return;
++		/*
++		 * Exposure still moving: the sharpness of such frames is no
++		 * reference and says nothing about the focus (clipped or noisy
++		 * frames after a tap region timed out lost the focus for
++		 * nothing). Compare again once it settled.
++		 */
++		if (aeMoving_)
++			return;
+ 		/* Kept focus after a reconfiguration: new reference sharpness */
+ 		if (rebase_) {
+ 			rebase_--;
+@@ -324,6 +335,12 @@ void Af::process(IPAContext &context,
+ 	auto &k = context.activeState.knobs;
+ 
+ 	/* Statistics are computed only for some frames */
++	if (stats->valid) {
++		const auto &agc = context.activeState.agc;
++		const double ae = agc.exposure * agc.again;
++		aeMoving_ = lastAe_ > 0.0 && std::abs(ae - lastAe_) > kAeSteady * lastAe_;
++		lastAe_ = ae;
++	}
+ 	if (stats->valid && k.afMode != controls::AfModeManual)
+ 		step(context, k.focus_pos.value(), regionSharpness(context, stats),
+ 		     k.focus_sweep.value());
+diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
+index fc9196973..330f95211 100644
+--- a/src/ipa/simple/algorithms/af.h
++++ b/src/ipa/simple/algorithms/af.h
+@@ -58,6 +58,10 @@ private:
+ 	std::optional<double> lastPos_;
+ 	int32_t lastState_ = 0;
+ 	unsigned int rebase_ = 0;
++
++	/* Exposure times gain at the last statistics, to see AE settle */
++	double lastAe_ = 0.0;
++	bool aeMoving_ = false;
+ };
+ 
+ } /* namespace ipa::soft::algorithms */
+-- 
+2.50.1
+
