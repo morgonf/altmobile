@@ -1,0 +1,200 @@
+--- a/imx371.c
++++ b/imx371.c
+@@ -42,7 +42,8 @@
+ /* Analog gain control */
+ #define IMX371_REG_ANALOG_GAIN		CCI_REG16(0x0204)
+ #define IMX371_ANA_GAIN_MIN		0
+-#define IMX371_ANA_GAIN_MAX		480
++/* Gain is 1024 / (1024 - code): 960 gives 16x, 480 only 1.88x */
++#define IMX371_ANA_GAIN_MAX		960
+ #define IMX371_ANA_GAIN_STEP		1
+ #define IMX371_ANA_GAIN_DEFAULT		0x0
+ 
+@@ -81,6 +82,18 @@
+ #define IMX371_PIXEL_ARRAY_WIDTH	4656U
+ #define IMX371_PIXEL_ARRAY_HEIGHT	3496U
+ 
++/* 2x2 binned output, see mode_2328x1728_regs */
++#define IMX371_BINNED_WIDTH		2328U
++#define IMX371_BINNED_HEIGHT		1728U
++
++/*
++ * Full size output: the digital crop skips 20 lines at the top and sends
++ * 3456 lines, not the 3496 of the pixel array. The Quad Bayer mosaic is
++ * left to the ISP (libcamera remosaics it for the IMX371).
++ */
++#define IMX371_FULL_WIDTH		4656U
++#define IMX371_FULL_HEIGHT		3456U
++
+ /* CCS regs */
+ #define IMX371_REG_PLL_MULT_DRIV                  CCI_REG8(0x0310)
+ #define IMX371_REG_IVTPXCK_DIV                    CCI_REG8(0x0301)
+@@ -321,6 +334,109 @@
+ 	{CCI_REG8(0x5617), 0x0A},
+ };
+ 
++/*
++ * The IMX371 has a Quad Bayer colour filter: every colour covers a 2x2 block
++ * of pixels. Read out at full size without remosaicing, the image looks like
++ * a plain Bayer mosaic with almost no colour. 2x2 binning sums each block and
++ * gives a normal RGGB Bayer image at 2328x1728: the full mode with binning
++ * enabled, output and digital crop halved, and the binning weighting and
++ * the 0x3Fxx/0x5F0A settings of the IMX471 binned mode (same sensor family).
++ */
++static const struct cci_reg_sequence mode_2328x1728_regs[] = {
++	{CCI_REG8(0x0112), 0x0A},
++	{CCI_REG8(0x0113), 0x0A},
++	{CCI_REG8(0x0114), 0x03},
++	{CCI_REG8(0x0342), 0x17},
++	{CCI_REG8(0x0343), 0x90},
++	{CCI_REG8(0x0340), 0x0D},
++	{CCI_REG8(0x0341), 0xE0},
++	{CCI_REG8(0x0344), 0x00},
++	{CCI_REG8(0x0345), 0x00},
++	{CCI_REG8(0x0346), 0x00},
++	{CCI_REG8(0x0347), 0x00},
++	{CCI_REG8(0x0348), 0x12},
++	{CCI_REG8(0x0349), 0x2F},
++	{CCI_REG8(0x034A), 0x0D},
++	{CCI_REG8(0x034B), 0xA7},
++	{CCI_REG8(0x0381), 0x01},
++	{CCI_REG8(0x0383), 0x01},
++	{CCI_REG8(0x0385), 0x01},
++	{CCI_REG8(0x0387), 0x01},
++	{CCI_REG8(0x0900), 0x01},
++	{CCI_REG8(0x0901), 0x22},
++	{CCI_REG8(0x0902), 0x08},
++	{CCI_REG8(0x3F4C), 0x81},
++	{CCI_REG8(0x3F4D), 0x81},
++	{CCI_REG8(0x4254), 0x7F},
++	{CCI_REG8(0x0401), 0x00},
++	{CCI_REG8(0x0404), 0x00},
++	{CCI_REG8(0x0405), 0x10},
++	{CCI_REG8(0x0408), 0x00},
++	{CCI_REG8(0x0409), 0x00},
++	{CCI_REG8(0x040A), 0x00},
++	{CCI_REG8(0x040B), 0x0A},
++	{CCI_REG8(0x040C), 0x09},
++	{CCI_REG8(0x040D), 0x18},
++	{CCI_REG8(0x040E), 0x06},
++	{CCI_REG8(0x040F), 0xC0},
++	{CCI_REG8(0xBC41), 0x01},
++	{CCI_REG8(0x034C), 0x09},
++	{CCI_REG8(0x034D), 0x18},
++	{CCI_REG8(0x034E), 0x06},
++	{CCI_REG8(0x034F), 0xC0},
++	{CCI_REG8(0x0301), 0x05},
++	{CCI_REG8(0x0303), 0x02},
++	{CCI_REG8(0x0305), 0x04},
++	{CCI_REG8(0x0306), 0x01},
++	{CCI_REG8(0x0307), 0x0C},
++	{CCI_REG8(0x030B), 0x01},
++	{CCI_REG8(0x030D), 0x04},
++	{CCI_REG8(0x030E), 0x00},
++	{CCI_REG8(0x030F), 0xDA},
++	{CCI_REG8(0x0310), 0x01},
++	{CCI_REG8(0x0820), 0x14},
++	{CCI_REG8(0x0821), 0x70},
++	{CCI_REG8(0x0822), 0x00},
++	{CCI_REG8(0x0823), 0x00},
++	{CCI_REG8(0x3E20), 0x00},
++	{CCI_REG8(0x3E37), 0x00},
++	{CCI_REG8(0x3E3B), 0x00},
++	{CCI_REG8(0x3614), 0x00},
++	{CCI_REG8(0x3616), 0x0E},
++	{CCI_REG8(0x3617), 0x66},
++	{CCI_REG8(0x0106), 0x00},
++	{CCI_REG8(0x0B00), 0x00},
++	{CCI_REG8(0x0B05), 0x00},
++	{CCI_REG8(0x0B06), 0x00},
++	{CCI_REG8(0x3230), 0x00},
++	{CCI_REG8(0x3602), 0x00},
++	{CCI_REG8(0x3C00), 0x5B},
++	{CCI_REG8(0x3C01), 0x54},
++	{CCI_REG8(0x3C02), 0x77},
++	{CCI_REG8(0x3C03), 0x66},
++	{CCI_REG8(0x3C04), 0xC8},
++	{CCI_REG8(0x3C05), 0x14},
++	{CCI_REG8(0x3C06), 0x01},
++	{CCI_REG8(0x3C07), 0x01},
++	{CCI_REG8(0x3F14), 0x01},
++	{CCI_REG8(0x3F17), 0x00},
++	{CCI_REG8(0x3F3C), 0x01},
++	{CCI_REG8(0x3F78), 0x01},
++	{CCI_REG8(0x3F79), 0x31},
++	{CCI_REG8(0x3F7C), 0x00},
++	{CCI_REG8(0x3F7D), 0x00},
++	{CCI_REG8(0x0202), 0x03},
++	{CCI_REG8(0x0203), 0xE8},
++	{CCI_REG8(0x0204), 0x00},
++	{CCI_REG8(0x0205), 0x00},
++	{CCI_REG8(0x020E), 0x01},
++	{CCI_REG8(0x020F), 0x00},
++	/* Quad Bayer binning settings as in the IMX471 driver */
++	{CCI_REG8(0x3FFE), 0x00},
++	{CCI_REG8(0x3FFF), 0x8A},
++	{CCI_REG8(0x5F0A), 0xB6},
++};
++
+ static const struct cci_reg_sequence mode_4656x3496_regs[] = {
+ 	{CCI_REG8(0x0112), 0x0A},
+ 	{CCI_REG8(0x0113), 0x0A},
+@@ -494,8 +610,25 @@
+ /* Mode configs */
+ static const struct imx371_mode supported_modes[] = {
+ 	{
+-		.width = IMX371_PIXEL_ARRAY_WIDTH,
+-		.height = IMX371_PIXEL_ARRAY_HEIGHT,
++		.width = IMX371_BINNED_WIDTH,
++		.height = IMX371_BINNED_HEIGHT,
++		.vts_def = IMX371_VTS_30FPS,
++		.vts_min = IMX371_VTS_30FPS,
++		.reg_list = {
++			.num_of_regs = ARRAY_SIZE(mode_2328x1728_regs),
++			.regs = mode_2328x1728_regs,
++		},
++		.link_freq_index = IMX371_LINK_FREQ_1308MBPS,
++		.crop = {
++			.left = IMX371_PIXEL_ARRAY_LEFT,
++			.top = IMX371_PIXEL_ARRAY_TOP,
++			.width = IMX371_PIXEL_ARRAY_WIDTH,
++			.height = IMX371_PIXEL_ARRAY_HEIGHT,
++		},
++	},
++	{
++		.width = IMX371_FULL_WIDTH,
++		.height = IMX371_FULL_HEIGHT,
+ 		.vts_def = IMX371_VTS_30FPS,
+ 		.vts_min = IMX371_VTS_30FPS,
+ 		.reg_list = {
+@@ -815,6 +948,8 @@
+ 			IMX371_VTS_MAX - imx371->cur_mode->height, 1,
+ 			vblank_def);
+ 		__v4l2_ctrl_s_ctrl(imx371->vblank, vblank_def);
++		/* s_ctrl is not called when VBLANK keeps its value */
++		imx371_adjust_exposure_range(imx371);
+ 		h_blank =
+ 			imx371->link_freq_configs[mode->link_freq_index].pixels_per_line
+ 			 - imx371->cur_mode->width;
+@@ -1154,7 +1289,8 @@
+ 	imx371->exposure = v4l2_ctrl_new_std(
+ 				ctrl_hdlr, &imx371_ctrl_ops,
+ 				V4L2_CID_EXPOSURE, IMX371_EXPOSURE_MIN,
+-				IMX371_EXPOSURE_MAX, IMX371_EXPOSURE_STEP,
++				imx371->cur_mode->vts_def - IMX371_EXPOSURE_OFFSET,
++				IMX371_EXPOSURE_STEP,
+ 				IMX371_EXPOSURE_DEFAULT);
+ 
+ 	v4l2_ctrl_new_std(ctrl_hdlr, &imx371_ctrl_ops, V4L2_CID_ANALOGUE_GAIN,
+--- a/imx376.c
++++ b/imx376.c
+@@ -42,7 +42,8 @@
+ /* Analog gain control */
+ #define IMX376_REG_ANALOG_GAIN		CCI_REG16(0x0204)
+ #define IMX376_ANA_GAIN_MIN		0
+-#define IMX376_ANA_GAIN_MAX		480
++/* Gain is 1024 / (1024 - code): 960 gives 16x, 480 only 1.88x */
++#define IMX376_ANA_GAIN_MAX		960
+ #define IMX376_ANA_GAIN_STEP		1
+ #define IMX376_ANA_GAIN_DEFAULT		0x0
+ 
