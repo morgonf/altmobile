@@ -54,7 +54,8 @@
    есть программа KDE. Если на Phosh завязан метапакет ALT Mobile, удалить
    метапакет и пометить нужные пакеты установленными вручную.
 3. GTK-программы без замены KDE (Amberol, Livi, Firefox и другие) оставить.
-4. Waydroid не относится к Phosh, оставить.
+4. Waydroid не относится к Phosh, оставить (пользователь хочет его
+   настроить, пункт 23 бэклога `docs/plasma-plan.md`).
 
 ### 1.3. Уборка в репозитории
 
@@ -96,7 +97,7 @@
 
 Для каждой включённой службы решить, нужна ли она постоянно, по запросу
 или совсем. Кандидаты по списку на 29.09 это avahi-daemon, neard (NFC),
-bluetooth (по запросу из шторки), waydroid-container (по запуску Waydroid),
+bluetooth (по запросу из шторки), waydroid-container (по запуску Waydroid; пакет не удалять, пункт 23 бэклога),
 udisks2, индексаторы (Baloo), PackageKit. Службы телефона не трогать, это
 ModemManager, rmtfs, pd-mapper, tqftpserv, hexagonrpcd, q6voiced,
 q6echo-activate, alt-sim-hotplug, iio-sensor-proxy.
