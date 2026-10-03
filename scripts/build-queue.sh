@@ -4,6 +4,9 @@
 # ~/queue-<пакет>.log, итог в ~/queue.log. Запускать одной службой
 # systemd-run --user вместе со сторожами build-thermal-guard.sh и
 # batt-guard.sh: заморозка службы останавливает и текущую сборку.
+# Как в hasher: /usr/bin раньше /bin, иначе в скрипты попадает #!/bin/python3,
+# а apt такого пути не знает
+export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
 S=$(rpm --eval %_sourcedir)
 for N in "$@"; do
 	D=$HOME/altmobile-pkg/$N
