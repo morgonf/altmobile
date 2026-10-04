@@ -1,5 +1,5 @@
 #!/bin/sh
-# Сборка RPM libcamera 0.7.2-alt1.mobile1 на телефоне, от пользователя.
+# Сборка RPM libcamera 0.7.2-alt1.mobile5 на телефоне, от пользователя.
 # Нужны в %_sourcedir (у ALT ~/RPM/SOURCES) тарбол libcamera-0.7.2.tar (git archive
 # --prefix=libcamera-0.7.2/ v0.7.2) и libcamera-0.7.2-altmobile.patch,
 # спецификация рядом со скриптом. Сборочные зависимости проверяются

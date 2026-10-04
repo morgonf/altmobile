@@ -1,0 +1,113 @@
+From 2cb72103104d785b8506bf73c88c211bd4fc343c Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sun, 4 Oct 2026 04:40:06 -0400
+Subject: [PATCH] ipa: simple: Colour matrices for the IMX371 and IMX376
+
+Neither sensor has a colour calibration. Without a CCM the software ISP
+gave faded colours and grey shadows on the front camera. Borrow the
+matrices of the IMX519, a Sony sensor of the same generation, until a
+calibration of their own.
+---
+ src/ipa/simple/data/imx371.yaml | 31 ++++++++++++++++++++++++++++++-
+ src/ipa/simple/data/imx376.yaml | 31 ++++++++++++++++++++++++++++++-
+ 2 files changed, 60 insertions(+), 2 deletions(-)
+
+diff --git a/src/ipa/simple/data/imx371.yaml b/src/ipa/simple/data/imx371.yaml
+index 8a5bfda61..7a3ad9901 100644
+--- a/src/ipa/simple/data/imx371.yaml
++++ b/src/ipa/simple/data/imx371.yaml
+@@ -1,6 +1,6 @@
+ # SPDX-License-Identifier: CC0-1.0
+ #
+-# IMX371 (OnePlus 6T front camera). No colour calibration yet.
++# IMX371 (OnePlus 6T front camera). Colour matrices borrowed from the IMX519.
+ # The analogue gain is capped at 8x: at 16x the read noise is five
+ # times that at 1x (measured on the IMX371) and shows as coloured grain,
+ # a darker picture looks better.
+@@ -10,6 +10,35 @@ version: 1
+ algorithms:
+   - BlackLevel:
+   - Awb:
++  # Not calibrated for this sensor: the matrices of the IMX519 (Sony
++  # colour filters as well) until a calibration of its own. Without a CCM
++  # the colours were faded and the shadows grey.
++  - Ccm:
++      ccms:
++        - ct: 2890
++          ccm: [ 1.3675, -0.1845, -0.1831,
++                 -0.3236, 1.4483, -0.1247,
++                 -0.0041, -0.6994, 1.7035 ]
++        - ct: 2920
++          ccm: [ 1.267, 0.0162, -0.2833,
++                 -0.2852, 1.3893, -0.1042,
++                 -0.0485, -0.8221, 1.8707 ]
++        - ct: 3550
++          ccm: [ 1.4284, -0.2723, -0.156,
++                 -0.2875, 1.4107, -0.1232,
++                 -0.0181, -0.5485, 1.5666 ]
++        - ct: 4500
++          ccm: [ 1.3633, -0.1957, -0.1676,
++                 -0.2525, 1.5225, -0.2699,
++                 -0.0158, -0.5315, 1.5473 ]
++        - ct: 5700
++          ccm: [ 1.4921, -0.3725, -0.1196,
++                 -0.2149, 1.4001, -0.1851,
++                 -0.0378, -0.3878, 1.4256 ]
++        - ct: 7900
++          ccm: [ 1.3485, -0.0542, -0.2942,
++                 -0.2218, 1.7768, -0.555,
++                 -0.074, -0.5534, 1.6274 ]
+   - Adjust:
+   - Agc:
+       maxAnalogueGain: 8.0
+diff --git a/src/ipa/simple/data/imx376.yaml b/src/ipa/simple/data/imx376.yaml
+index 867b88864..acdb0c07f 100644
+--- a/src/ipa/simple/data/imx376.yaml
++++ b/src/ipa/simple/data/imx376.yaml
+@@ -1,6 +1,6 @@
+ # SPDX-License-Identifier: CC0-1.0
+ #
+-# IMX376 (OnePlus 6T second rear camera). No colour calibration yet.
++# IMX376 (OnePlus 6T second rear camera). Colour matrices borrowed from the IMX519.
+ # The analogue gain is capped at 8x: at 16x the read noise is five
+ # times that at 1x (measured on the IMX371) and shows as coloured grain,
+ # a darker picture looks better.
+@@ -19,6 +19,35 @@ algorithms:
+   - Awb:
+       maxGain: 8.0
+       gainBias: [ 0.96, 1.5 ]
++  # Not calibrated for this sensor: the matrices of the IMX519 (Sony
++  # colour filters as well) until a calibration of its own. Without a CCM
++  # the colours were faded and the shadows grey.
++  - Ccm:
++      ccms:
++        - ct: 2890
++          ccm: [ 1.3675, -0.1845, -0.1831,
++                 -0.3236, 1.4483, -0.1247,
++                 -0.0041, -0.6994, 1.7035 ]
++        - ct: 2920
++          ccm: [ 1.267, 0.0162, -0.2833,
++                 -0.2852, 1.3893, -0.1042,
++                 -0.0485, -0.8221, 1.8707 ]
++        - ct: 3550
++          ccm: [ 1.4284, -0.2723, -0.156,
++                 -0.2875, 1.4107, -0.1232,
++                 -0.0181, -0.5485, 1.5666 ]
++        - ct: 4500
++          ccm: [ 1.3633, -0.1957, -0.1676,
++                 -0.2525, 1.5225, -0.2699,
++                 -0.0158, -0.5315, 1.5473 ]
++        - ct: 5700
++          ccm: [ 1.4921, -0.3725, -0.1196,
++                 -0.2149, 1.4001, -0.1851,
++                 -0.0378, -0.3878, 1.4256 ]
++        - ct: 7900
++          ccm: [ 1.3485, -0.0542, -0.2942,
++                 -0.2218, 1.7768, -0.555,
++                 -0.074, -0.5534, 1.6274 ]
+   - Adjust:
+   - Agc:
+       maxAnalogueGain: 8.0
+-- 
+2.50.1
+

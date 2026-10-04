@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile4
+Release: alt1.mobile5
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -172,6 +172,10 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile5
+- IMX371, IMX376 tuning: colour matrices borrowed from the IMX519 (faded
+  colours and grey shadows on the front camera without a CCM)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile4
 - software ISP: cancel frames queued while stopped (they still reached the
   stopped worker thread, assertion failure at a photo at full size)
