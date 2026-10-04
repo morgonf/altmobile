@@ -1,0 +1,12 @@
+// ALT Mobile: страница «Батарея» включает и выключает ограничение заряда
+// только этими двумя службами, и только у того, кто сидит за телефоном
+// (локальный активный сеанс, группа wheel).
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.local && subject.active && subject.isInGroup("wheel")) {
+        var unit = action.lookup("unit"), verb = action.lookup("verb");
+        if ((unit == "alt-charge-limit-on.service" || unit == "alt-charge-limit-off.service") &&
+            verb == "start")
+            return polkit.Result.YES;
+    }
+});

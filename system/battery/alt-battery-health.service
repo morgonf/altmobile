@@ -1,0 +1,6 @@
+[Unit]
+Description=Оценка здоровья батареи от датчика заряда (ALT Mobile)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/alt-mobile/alt-battery-health.sh

@@ -1,0 +1,9 @@
+[Unit]
+Description=Раз в час обновлять оценку здоровья батареи
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

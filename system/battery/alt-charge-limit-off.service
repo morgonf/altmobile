@@ -1,0 +1,6 @@
+[Unit]
+Description=Выключить ограничение заряда батареи
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl disable --now alt-charge-limit.service

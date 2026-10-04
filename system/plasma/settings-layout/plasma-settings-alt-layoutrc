@@ -43,6 +43,7 @@ kcm_altlocation=alt-security,4
 kcm_altssh=alt-security,5
 
 kcm_mobile_power=alt-battery,1
+kcm_altbattery=alt-battery,2
 
 kcm_regionandlang=alt-system,1
 kcm_mobile_time=alt-system,2

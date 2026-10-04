@@ -80,3 +80,16 @@ GPS. Службы `alt-location-net-off` и `alt-location-net-on` из того 
 geoclue, который с файлом пишет `WiFi source: disabled`, `IP source:
 disabled`, `3G source: disabled`.
 
+
+## kcm_altbattery «Здоровье батареи» (04.10.2026)
+
+Раздел «Батарея», после «Энергопотребления» powerdevil. Показывает износ
+по оценке самого датчика заряда (`StateOfHealth` bq27421, его раз в час
+пишет в `/run/alt-mobile/battery-health` таймер `alt-battery-health` из
+`system/battery`). Ёмкость в мА·ч считается от паспортной. FCC ядра для
+этого не годится, потому что датчик снижает её под нагрузкой. Переключатель
+«Ограничить заряд до 80 %» запускает службы `alt-charge-limit-on` и
+`alt-charge-limit-off` (правило polkit `51-alt-mobile-battery.rules`),
+они включают и выключают `alt-charge-limit`. Пороги берутся из
+`/etc/alt-mobile/charge-limit`. Проверено 04.10.2026 снимком экрана и
+запуском служб из сеанса пользователя.

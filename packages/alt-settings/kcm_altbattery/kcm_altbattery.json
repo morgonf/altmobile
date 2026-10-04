@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "Battery health and charge limit",
+        "Description[ru]": "Износ батареи и ограничение заряда",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "battery-good",
+        "Name": "Battery care",
+        "Name[ru]": "Здоровье батареи"
+    },
+    "X-KDE-Keywords": "battery,health,wear,charge,limit",
+    "X-KDE-Keywords[ru]": "батарея,аккумулятор,износ,здоровье,заряд,ограничение",
+    "X-KDE-System-Settings-Parent-Category": "powermanagement",
+    "X-KDE-Weight": 60
+}
