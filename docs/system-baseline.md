@@ -123,3 +123,19 @@ Wi‑Fi, датчики SSC, регуляторы), разбирать в пун
 
 Во сне телефон недоступен по сети (Wi‑Fi его не будит). Будят ли его
 входящий звонок и SMS, не проверено, это первый вопрос пункта 2.1.
+
+## Установка всех сборок и загрузка, 04.10.2026 вечер
+
+`scripts/install-built.sh` поставил 38 обновлений из локального
+репозитория (kwin, plasma-workspace alt2.mobile2, plasma-mobile
+alt1.mobile3, kscreenlocker alt1.mobile2, plasma-pa, kscreen, bluedevil,
+kaccounts, plasma-keyboard, libssc), удалений нет. `rpm -V` чистый, кроме
+флага P у `kwin_wayland`: capability `cap_sys_nice` ставит `setcap` в
+`%post`, в базе RPM её нет (так же у пакета ALT).
+
+Загрузка после этого и после снятия ожидания датчиков: 22,4 с (ядро
+4,8 с, система 17,6 с), `graphical.target` через 10,9 с. Акселерометр
+готов на 22-й секунде, уже после старта сеанса, а KWin всё равно видит
+его (Auto Rotate Policy always) благодаря рассылке свойств Has* в
+iio-sensor-proxy alt1.3. Модули камер, фокуса и NFC грузятся из пакета
+(`updates/`), шрифт консоли `ter-v32n` применён, упавших служб нет.
