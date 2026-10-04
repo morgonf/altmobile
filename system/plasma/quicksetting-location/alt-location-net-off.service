@@ -1,0 +1,11 @@
+[Unit]
+Description=Определять местоположение только по GPS (без BeaconDB и IP)
+
+[Service]
+Type=oneshot
+# Сетевые источники geoclue отправляют наружу адреса сетей Wi-Fi и базовых
+# станций (BeaconDB) или оценивают место по IP. Файл в conf.d перекрывает
+# geoclue.conf, geoclue читает его при запуске
+ExecStart=/usr/bin/mkdir -p /etc/geoclue/conf.d
+ExecStart=/usr/bin/sh -c 'printf "%%s\\n" "# ALT Mobile: только GPS, alt-location-net-off.service" "[ip]" "enable=false" "[wifi]" "enable=false" "[3g]" "enable=false" "[cdma]" "enable=false" > /etc/geoclue/conf.d/90-alt-no-network.conf'
+ExecStart=/usr/bin/systemctl try-restart geoclue.service

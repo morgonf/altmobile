@@ -71,3 +71,12 @@ D-Bus и политика polkit). В раскладке «Параметров�
 через uinput: выключение маскирует geoclue и ставит флаг
 `/var/lib/alt-mobile/location-off`, включение возвращает.
 
+Второй переключатель «Уточнять по сетям» (04.10.2026) выключает сетевые
+источники geoclue (`[ip]`, `[wifi]`, `[3g]`, `[cdma]`), остаётся только
+GPS. Службы `alt-location-net-off` и `alt-location-net-on` из того же
+каталога шторки кладут и удаляют `/etc/geoclue/conf.d/90-alt-no-network.conf`.
+Состояние модуль берёт по наличию файла. Проверено запуском служб из
+сеанса пользователя (правило polkit пропускает) и отладочным выводом
+geoclue, который с файлом пишет `WiFi source: disabled`, `IP source:
+disabled`, `3G source: disabled`.
+

@@ -11,7 +11,8 @@ SPDX-License-Identifier: MIT
 // замаскирована. Программы, которые сейчас получают координаты, это
 // клиенты geoclue на системной шине. Их свойства (в том числе имя
 // программы) geoclue отдаёт только самой программе, поэтому видно лишь
-// их число.
+// их число. Второй переключатель оставляет только GPS: службы
+// alt-location-net-on и alt-location-net-off.
 
 #include <KPluginFactory>
 #include <KQuickConfigModule>
@@ -23,6 +24,7 @@ SPDX-License-Identifier: MIT
 #include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDomDocument>
+#include <QFile>
 #include <QTimer>
 
 static const QString systemd = QStringLiteral("org.freedesktop.systemd1");
@@ -35,6 +37,7 @@ class AltLocationKcm : public KQuickConfigModule
     Q_PROPERTY(bool busy READ busy NOTIFY stateChanged)
     Q_PROPERTY(QString error READ error NOTIFY stateChanged)
     Q_PROPERTY(int clients READ clients NOTIFY stateChanged)
+    Q_PROPERTY(bool networkEnabled READ networkEnabled NOTIFY stateChanged)
 
 public:
     AltLocationKcm(QObject *parent, const KPluginMetaData &data)
@@ -51,15 +54,32 @@ public:
     bool busy() const { return m_busy; }
     QString error() const { return m_error; }
     int clients() const { return m_clients; }
+    bool networkEnabled() const { return m_networkEnabled; }
 
     Q_INVOKABLE void setEnabled(bool value)
+    {
+        startUnit(value ? QStringLiteral("alt-location-on.service") : QStringLiteral("alt-location-off.service"));
+    }
+
+    // Сетевые источники geoclue (BeaconDB по Wi-Fi и базовым станциям, IP),
+    // system/plasma/quicksetting-location/alt-location-net-*.service
+    Q_INVOKABLE void setNetworkEnabled(bool value)
+    {
+        startUnit(value ? QStringLiteral("alt-location-net-on.service") : QStringLiteral("alt-location-net-off.service"));
+    }
+
+Q_SIGNALS:
+    void stateChanged();
+
+private:
+    void startUnit(const QString &name)
     {
         m_busy = true;
         m_error.clear();
         Q_EMIT stateChanged();
         QDBusMessage msg = QDBusMessage::createMethodCall(systemd, QStringLiteral("/org/freedesktop/systemd1"),
                                                           QStringLiteral("org.freedesktop.systemd1.Manager"), QStringLiteral("StartUnit"));
-        msg << (value ? QStringLiteral("alt-location-on.service") : QStringLiteral("alt-location-off.service")) << QStringLiteral("replace");
+        msg << name << QStringLiteral("replace");
         msg.setInteractiveAuthorizationAllowed(true);
         auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(msg), this);
         connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher]() {
@@ -76,9 +96,6 @@ public:
         });
     }
 
-Q_SIGNALS:
-    void stateChanged();
-
 private Q_SLOTS:
     void refresh()
     {
@@ -89,6 +106,8 @@ private Q_SLOTS:
             QDBusInterface props(systemd, unit.value().path(), QStringLiteral("org.freedesktop.systemd1.Unit"), bus);
             m_enabled = props.property("UnitFileState").toString() != QLatin1String("masked");
         }
+
+        m_networkEnabled = !QFile::exists(QStringLiteral("/etc/geoclue/conf.d/90-alt-no-network.conf"));
 
         // Клиенты geoclue: /org/freedesktop/GeoClue2/Client/N, пока программа
         // держит доступ к местоположению
@@ -117,6 +136,7 @@ private:
     bool m_busy = false;
     QString m_error;
     int m_clients = 0;
+    bool m_networkEnabled = true;
 };
 
 K_PLUGIN_CLASS_WITH_JSON(AltLocationKcm, "kcm_altlocation.json")

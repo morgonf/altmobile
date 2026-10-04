@@ -1,0 +1,7 @@
+[Unit]
+Description=Определять местоположение также по сетям Wi-Fi и IP (BeaconDB)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rm -f /etc/geoclue/conf.d/90-alt-no-network.conf
+ExecStart=/usr/bin/systemctl try-restart geoclue.service

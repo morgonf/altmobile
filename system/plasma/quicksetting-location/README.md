@@ -21,3 +21,11 @@ root), запускать только их из шторки разрешает
 `UnitFileState` у `geoclue.service` (`masked` значит выключено).
 Установка: `install.sh` от root, в список шторки кнопку добавляет
 `../quicksettings.sh`.
+
+Страница «Местоположение» (`packages/alt-settings/kcm_altlocation`) ещё
+выключает сетевые источники geoclue (04.10.2026). По умолчанию geoclue
+отправляет адреса видимых сетей Wi-Fi и базовых станций службе BeaconDB,
+а без них оценивает место по IP. `alt-location-net-off` кладёт
+`/etc/geoclue/conf.d/90-alt-no-network.conf` с `enable=false` для `[ip]`,
+`[wifi]`, `[3g]` и `[cdma]` и перезапускает geoclue, если она работает.
+Остаются GPS модема и NMEA из сети. `alt-location-net-on` удаляет файл.
