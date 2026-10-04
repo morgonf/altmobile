@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile5
+Release: alt1.mobile6
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -172,6 +172,11 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile6
+- GPU debayer of packed Bayer: Malvar-He-Cutler demosaic mixed with the
+  bilinear one by demosaicSharpness (tuning file, 0.5 for the IMX519,
+  IMX371 and IMX376); fine detail was blurred
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile5
 - IMX371, IMX376 tuning: colour matrices borrowed from the IMX519 (faded
   colours and grey shadows on the front camera without a CCM)
