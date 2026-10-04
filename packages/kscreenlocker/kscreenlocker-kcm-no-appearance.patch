@@ -1,0 +1,20 @@
+--- a/kcm/ui/main.qml	2026-10-04 04:56:18.742768561 -0400
++++ b/kcm/ui/main.qml	2026-10-04 04:56:45.397388750 -0400
+@@ -170,16 +170,6 @@
+             text: "Экран блокировки снимается без PIN-кода. Телефоном сможет воспользоваться любой, у кого он в руках."
+         }
+ 
+-        FormCard.FormHeader {
+-            title: "Оформление"
+-        }
+-
+-        FormCard.FormCard {
+-            FormCard.FormButtonDelegate {
+-                icon.name: "edit-image-symbolic"
+-                text: "Обои экрана блокировки"
+-                onClicked: kcm.push("Appearance.qml")
+-            }
+-        }
++        // ALT Mobile: обои экрана блокировки выбираются в «Теме и обоях»
+     }
+ }

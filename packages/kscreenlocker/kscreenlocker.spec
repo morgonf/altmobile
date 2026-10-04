@@ -8,7 +8,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile1
+Release: alt1.mobile2
 #Epoch: 2
 %K6init
 
@@ -43,6 +43,7 @@ Patch6: when-autolock-is-false.patch
 # ALT Mobile, OnePlus 6T (oneplus6t repository, packages/)
 Source900: kscreenlocker-greet-rearm.patch
 Source901: kscreenlocker-kcm-mobile.patch
+Source902: kscreenlocker-kcm-no-appearance.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: glibc-devel
@@ -120,6 +121,7 @@ rm -f po/ru/kscreenlocker_greet.po.tmp
 # ALT Mobile patches, after the whole ALT %prep
 patch -p1 -s < %SOURCE900
 patch -p1 -s < %SOURCE901
+patch -p1 -s < %SOURCE902
 
 %build
 export PATH=$PWD/bin_fake:$PATH
@@ -180,6 +182,10 @@ install -m 0644 %SOURCE12 %buildroot/%_sysconfdir/pam.d/kde-smartcard
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
+- Lock screen wallpaper only in "Theme and wallpapers" (kcm_altappearance),
+  the duplicate page with a desktop combo box wider than the screen removed
+
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile1
 - ALT Mobile: greeter asks for the PIN again after sleep cancelled it;
 -   Screen Locking module as Lock and PIN code: PIN change, password policy (KAuth helper
