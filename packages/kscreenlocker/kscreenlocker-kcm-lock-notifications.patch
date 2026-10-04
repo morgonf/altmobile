@@ -1,0 +1,44 @@
+--- a/kcm/ui/main.qml	2026-10-04 04:56:45.397388750 -0400
++++ b/kcm/ui/main.qml	2026-10-04 06:30:46.407008767 -0400
+@@ -14,6 +14,7 @@
+ import org.kde.kcmutils as KCM
+ import org.kde.kirigami as Kirigami
+ import org.kde.kirigamiaddons.formcard 1 as FormCard
++import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+ 
+ // ALT Mobile: страница в мобильном стиле карточек FormCard, как «Дата и
+ // время». Раздел «PIN-код» открывает смену кода с цифровой клавиатурой
+@@ -170,6 +171,33 @@
+             text: "Экран блокировки снимается без PIN-кода. Телефоном сможет воспользоваться любой, у кого он в руках."
+         }
+ 
++        FormCard.FormHeader {
++            title: "Экран блокировки"
++        }
++
++        // Что видно из уведомлений, пока телефон заблокирован (настройка
++        // оболочки Plasma Mobile, plasmamobilerc [Lockscreen])
++        FormCard.FormCard {
++            FormCard.FormComboBoxDelegate {
++                text: "Уведомления"
++                description: "Что видно, пока телефон заблокирован"
++                textRole: "text"
++                valueRole: "value"
++                displayMode: FormCard.FormComboBoxDelegate.Dialog
++                model: [
++                    { text: "Показывать полностью", value: 0 },
++                    { text: "Скрывать содержание", value: 1 },
++                    { text: "Не показывать", value: 2 }
++                ]
++                currentIndex: ShellSettings.Settings.lockscreenNotifications ?? 0
++                onActivated: index => ShellSettings.Settings.lockscreenNotifications = model[index].value
++            }
++        }
++
++        FormCard.FormSectionText {
++            text: "«Скрывать содержание» оставляет только приложение и время, текст сообщения виден после разблокировки."
++        }
++
+         // ALT Mobile: обои экрана блокировки выбираются в «Теме и обоях»
+     }
+ }

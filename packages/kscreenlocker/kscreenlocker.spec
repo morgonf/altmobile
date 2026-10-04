@@ -44,6 +44,7 @@ Patch6: when-autolock-is-false.patch
 Source900: kscreenlocker-greet-rearm.patch
 Source901: kscreenlocker-kcm-mobile.patch
 Source902: kscreenlocker-kcm-no-appearance.patch
+Source903: kscreenlocker-kcm-lock-notifications.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: glibc-devel
@@ -122,6 +123,7 @@ rm -f po/ru/kscreenlocker_greet.po.tmp
 patch -p1 -s < %SOURCE900
 patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
+patch -p1 -s < %SOURCE903
 
 %build
 export PATH=$PWD/bin_fake:$PATH
@@ -185,6 +187,8 @@ install -m 0644 %SOURCE12 %buildroot/%_sysconfdir/pam.d/kde-smartcard
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - Lock screen wallpaper only in "Theme and wallpapers" (kcm_altappearance),
   the duplicate page with a desktop combo box wider than the screen removed
+- Lock and PIN code: choice of what the lock screen shows of notifications
+  (setting of plasma-mobile alt1.mobile3)
 
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile1
 - ALT Mobile: greeter asks for the PIN again after sleep cancelled it;

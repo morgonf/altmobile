@@ -11,7 +11,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile2
+Release: alt1.mobile3
 %K6init
 
 Group: Graphical desktop/KDE
@@ -38,6 +38,7 @@ Source900: plasma-mobile-alt.patch
 Source901: envmanager-alt-lnf.patch
 Source902: info-device-name.patch
 Source903: plasma-mobile-shell-qml.patch
+Source904: plasma-mobile-lockscreen-notifications.patch
 Source950: kcm_mobile_info.ru-add.po
 
 BuildRequires(pre): rpm-build-kf6 rpm-build-ubt
@@ -107,6 +108,7 @@ patch -p1 -s < %SOURCE900
 patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
 patch -p1 -s < %SOURCE903
+patch -p1 -s < %SOURCE904
 msgcat --use-first %SOURCE950 po/ru/kcm_mobile_info.po > po/ru/kcm_mobile_info.po.tmp
 cat po/ru/kcm_mobile_info.po.tmp > po/ru/kcm_mobile_info.po
 rm -f po/ru/kcm_mobile_info.po.tmp
@@ -166,6 +168,11 @@ rm -f po/ru/kcm_mobile_info.po.tmp
 #/usr/share/dbus-1/interfaces/org.kde.plasmashell.*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile3
+- Lock screen notifications: show, hide the content (application and time
+  only) or hide (plasmamobilerc [Lockscreen] lockscreenNotifications,
+  ShellSettings.Settings.lockscreenNotifications)
+
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - ALT Mobile for the OnePlus 6T: status bar and navigation, Folio dock,
 -   task switcher strings, startup feedback fix, ALT Mobile look-and-feel

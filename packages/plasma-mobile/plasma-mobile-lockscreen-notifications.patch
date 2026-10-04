@@ -1,0 +1,186 @@
+diff -ruN a/components/mobileshell/qml/widgets/notifications/NotificationItem.qml b/components/mobileshell/qml/widgets/notifications/NotificationItem.qml
+--- a/components/mobileshell/qml/widgets/notifications/NotificationItem.qml	2026-10-04 13:22:35.953623229 +0300
++++ b/components/mobileshell/qml/widgets/notifications/NotificationItem.qml	2026-10-04 13:22:36.027397935 +0300
+@@ -10,6 +10,7 @@
+ import QtQuick.Window 2.2
+ 
+ import org.kde.plasma.private.mobileshell as MobileShell
++import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+ import org.kde.plasma.core as PlasmaCore
+ import org.kde.plasma.components 3.0 as PlasmaComponents
+ 
+@@ -25,6 +26,9 @@
+     implicitHeight: mainCard.implicitHeight + mainCard.anchors.topMargin + notificationHeading.height
+ 
+     property bool inLockScreen: false
++    // ALT Mobile: on the lock screen only the application and the time
++    readonly property bool hideContent: inLockScreen
++        && ShellSettings.Settings.lockscreenNotifications === ShellSettings.Settings.HideNotificationContent
+     property int panelType: MobileShell.PanelBackground.PanelType.Drawer
+ 
+     property var cardColorScheme: Kirigami.Theme.View
+@@ -88,7 +92,8 @@
+                     wrapMode: Text.WordWrap
+                     elide: Text.ElideRight
+                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
+-                    text: MobileShell.NotificationsUtils.determineNotificationHeadingText(notificationItem)
++                    text: notificationItem.hideContent ? "Новое уведомление"
++                        : MobileShell.NotificationsUtils.determineNotificationHeadingText(notificationItem)
+                     visible: text !== ""
+                     font.weight: Font.DemiBold
+                 }
+@@ -108,6 +113,7 @@
+             // notification contents
+             RowLayout {
+                 Layout.fillWidth: true
++                visible: !notificationItem.hideContent
+                 spacing: Kirigami.Units.smallSpacing
+ 
+ 
+@@ -173,6 +179,7 @@
+             // notification actions
+             NotificationFooterActions {
+                 Layout.fillWidth: true
++                visible: !notificationItem.hideContent
+                 Layout.topMargin: Kirigami.Units.smallSpacing
+                 notification: notificationItem
+                 onTakeFocus: notificationItem.takeFocus()
+@@ -183,7 +190,7 @@
+                 id: thumbnailStripLoader
+                 Layout.topMargin: Kirigami.Units.largeSpacing
+                 Layout.fillWidth: true
+-                active: notificationItem.urls.length > 0
++                active: notificationItem.urls.length > 0 && !notificationItem.hideContent
+                 visible: active
+                 asynchronous: true
+                 sourceComponent: ThumbnailStrip {
+diff -ruN a/components/shellsettingsplugin/mobileshellsettings.cpp b/components/shellsettingsplugin/mobileshellsettings.cpp
+--- a/components/shellsettingsplugin/mobileshellsettings.cpp	2026-10-04 13:22:35.923473582 +0300
++++ b/components/shellsettingsplugin/mobileshellsettings.cpp	2026-10-04 13:22:36.026759024 +0300
+@@ -49,6 +49,7 @@
+         if (group.name() == LOCKSCREEN_CONFIG_GROUP) {
+             Q_EMIT lockscreenLeftButtonActionChanged();
+             Q_EMIT lockscreenRightButtonActionChanged();
++            Q_EMIT lockscreenNotificationsChanged();
+         }
+         if (group.name() == QUICKSETTINGS_CONFIG_GROUP) {
+             Q_EMIT quickSettingsColumnsChanged();
+@@ -325,3 +326,16 @@
+     group.writeEntry("lockscreenRightButtonAction", (int)action, KConfigGroup::Notify);
+     m_config->sync();
+ }
++
++MobileShellSettings::LockscreenNotifications MobileShellSettings::lockscreenNotifications() const
++{
++    auto group = KConfigGroup{m_config, LOCKSCREEN_CONFIG_GROUP};
++    return (LockscreenNotifications)group.readEntry("lockscreenNotifications", (int)LockscreenNotifications::ShowNotifications);
++}
++
++void MobileShellSettings::setLockscreenNotifications(const LockscreenNotifications value)
++{
++    auto group = KConfigGroup{m_config, LOCKSCREEN_CONFIG_GROUP};
++    group.writeEntry("lockscreenNotifications", (int)value, KConfigGroup::Notify);
++    m_config->sync();
++}
+diff -ruN a/components/shellsettingsplugin/mobileshellsettings.h b/components/shellsettingsplugin/mobileshellsettings.h
+--- a/components/shellsettingsplugin/mobileshellsettings.h	2026-10-04 13:22:35.891964185 +0300
++++ b/components/shellsettingsplugin/mobileshellsettings.h	2026-10-04 13:22:36.026539752 +0300
+@@ -59,6 +59,9 @@
+     Q_PROPERTY(LockscreenButtonAction lockscreenLeftButtonAction READ lockscreenLeftButtonAction WRITE setLockscreenLeftButtonAction NOTIFY lockscreenLeftButtonActionChanged)
+     Q_PROPERTY(LockscreenButtonAction lockscreenRightButtonAction READ lockscreenRightButtonAction WRITE setLockscreenRightButtonAction NOTIFY lockscreenRightButtonActionChanged)
+ 
++    // ALT Mobile: what the lock screen shows of notifications
++    Q_PROPERTY(LockscreenNotifications lockscreenNotifications READ lockscreenNotifications WRITE setLockscreenNotifications NOTIFY lockscreenNotificationsChanged)
++
+ public:
+     MobileShellSettings(QObject *parent = nullptr);
+ 
+@@ -76,6 +79,13 @@
+     };
+     Q_ENUM(LockscreenButtonAction)
+ 
++    enum LockscreenNotifications {
++        ShowNotifications = 0, // whole notifications
++        HideNotificationContent, // application and time only
++        HideNotifications // none
++    };
++    Q_ENUM(LockscreenNotifications)
++
+     /**
+      * Get whether shell vibrations are enabled.
+      */
+@@ -293,6 +303,9 @@
+      */
+     void setLockscreenRightButtonAction(LockscreenButtonAction action);
+ 
++    LockscreenNotifications lockscreenNotifications() const;
++    void setLockscreenNotifications(LockscreenNotifications value);
++
+ Q_SIGNALS:
+     void vibrationsEnabledChanged();
+     void vibrationDurationChanged();
+@@ -313,6 +326,7 @@
+     void allowLogoutChanged();
+     void lockscreenLeftButtonActionChanged();
+     void lockscreenRightButtonActionChanged();
++    void lockscreenNotificationsChanged();
+ 
+ private:
+     void updateNavigationBarsInPlasma();
+diff -ruN a/shell/contents/lockscreen/NotificationsComponent.qml b/shell/contents/lockscreen/NotificationsComponent.qml
+--- a/shell/contents/lockscreen/NotificationsComponent.qml	2026-10-04 13:22:35.982215678 +0300
++++ b/shell/contents/lockscreen/NotificationsComponent.qml	2026-10-04 13:22:48.694526932 +0300
+@@ -5,6 +5,7 @@
+ import QtQuick.Layouts
+ 
+ import org.kde.plasma.private.mobileshell as MobileShell
++import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+ import org.kde.kirigami as Kirigami
+ 
+ import org.kde.notificationmanager as NotificationManager
+@@ -23,7 +24,11 @@
+ 
+     property real topPadding: 0
+ 
+-    readonly property bool notificationsShown: item && item.notificationsList.hasNotifications
++    // ALT Mobile: notifications may be switched off for the lock screen
++    readonly property bool allowed: ShellSettings.Settings.lockscreenNotifications !== ShellSettings.Settings.HideNotifications
++    property bool delayed: false
++
++    readonly property bool notificationsShown: allowed && item && item.notificationsList.hasNotifications
+     readonly property bool listOverflowing: item && item.notificationsList.listView.listOverflowing
+ 
+     property bool scrollLock: false
+@@ -33,11 +38,11 @@
+     signal passwordRequested()
+ 
+     // perform delayed loading of notifications
+-    active: false
++    active: allowed && delayed
+     Timer {
+         interval: 500
+         running: true
+-        onTriggered: root.active = true
++        onTriggered: root.delayed = true
+     }
+ 
+     Connections {
+@@ -45,14 +50,16 @@
+ 
+         function onUnlockSucceeded() {
+             // run pending action if successfully unlocked
+-            if (notificationsList.requestNotificationAction) {
++            if (notificationsList && notificationsList.requestNotificationAction) {
+                 notificationsList.runPendingAction();
+                 notificationsList.requestNotificationAction = false;
+             }
+         }
+ 
+         function onUnlockFailed() {
+-            notificationsList.requestNotificationAction = false;
++            if (notificationsList) {
++                notificationsList.requestNotificationAction = false;
++            }
+         }
+     }
+ 
