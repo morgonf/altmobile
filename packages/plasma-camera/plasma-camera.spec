@@ -5,7 +5,7 @@
 
 Name: %rname
 Version: 2.1.1
-Release: alt2.mobile3
+Release: alt2.mobile4
 %K6init
 
 Group:  Video
@@ -17,6 +17,9 @@ Provides: kde5-plasma-camera = %EVR
 Obsoletes: kde5-plasma-camera < %EVR
 
 Requires: qt6-multimedia kf6-kirigami kf6-kirigami-addons
+# Video recording (GstRecorder): appsrc, videoconvert, openh264enc, h264parse,
+# fdkaacenc, mp4mux, pulsesrc
+Requires: gst-plugins-base1.0 gst-plugins-good1.0 gst-plugins-bad1.0
 
 Source: %rname-%version.tar
 # ALT Mobile, OnePlus 6T (packages/plasma-camera of the oneplus6t repository)
@@ -29,6 +32,7 @@ Patch4: plasma-camera-photo-enhance.patch
 Patch5: plasma-camera-zoom-fullsize.patch
 Patch6: plasma-camera-screen-rotation.patch
 Patch7: plasma-camera-switch-skip.patch
+Patch8: plasma-camera-dual-video.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: qt6-declarative-devel qt6-svg-devel qt6-wayland-devel qt6-multimedia-devel qt6-sensors-devel
@@ -37,6 +41,7 @@ BuildRequires: extra-cmake-modules
 BuildRequires: kf6-kcoreaddons-devel kf6-ki18n-devel kf6-kconfig-devel kf6-kirigami-devel kf6-kdbusaddons-devel
 BuildRequires: python3
 BuildRequires: libcamera-devel libexiv2-devel
+BuildRequires: gstreamer1.0-devel gst-plugins1.0-devel
 
 %description
 Simple camera application for mobile devices.
@@ -50,6 +55,7 @@ Simple camera application for mobile devices.
 %patch5 -p1
 %patch6 -p1
 %patch7 -p1
+%patch8 -p1
 
 %build
 %K6build
@@ -69,6 +75,13 @@ mv $M.new $M
 %_datadir/metainfo/*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile4
+- dual video: the rear and the front camera at once, picture in picture
+  (a tap on the small picture swaps them) or split, recorded as one video
+- video recording through GStreamer (openh264, AAC) instead of
+  QMediaRecorder, whose x264 at its default settings did not keep up;
+  the video stream is 1280 wide
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile3
 - The switch button goes between the main and the front camera, the
   second rear camera (IMX376) only from the settings

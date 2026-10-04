@@ -101,3 +101,12 @@ msgstr "Автовспышка"
 
 msgid "Flash on"
 msgstr "Вспышка включена"
+
+msgid "One camera"
+msgstr "Одна камера"
+
+msgid "Both cameras, picture in picture"
+msgstr "Обе камеры, картинка в картинке"
+
+msgid "Both cameras, split"
+msgstr "Обе камеры, пополам"

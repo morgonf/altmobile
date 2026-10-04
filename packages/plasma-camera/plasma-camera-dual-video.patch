@@ -1,0 +1,1307 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 205d61c..58b6c8c 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -16,6 +16,7 @@ set(plasma-camera_SRCS
+     plasmacamera/path.cpp
+     plasmacamera/settings.cpp
+     plasmacamera/worker.cpp
++    plasmacamera/gstrecorder.cpp
+     resources.qrc
+ )
+ 
+@@ -40,6 +41,7 @@ target_link_libraries(
+ 
+ find_package(PkgConfig)
+ pkg_check_modules(LIBCAMERA REQUIRED IMPORTED_TARGET libcamera)
++pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET gstreamer-1.0 gstreamer-app-1.0)
+ include_directories(${CMAKE_SOURCE_DIR} ${LIBCAMERA_INCLUDE_DIRS})
+ 
+ kconfig_add_kcfg_files(plasma-camera GENERATE_MOC camerasettings.kcfgc)
+@@ -63,7 +65,7 @@ if(ANDROID)
+ 
+     ecm_add_android_apk(plasma-camera ANDROID_DIR ${CMAKE_SOURCE_DIR})
+ else()
+-    target_link_libraries(plasma-camera Qt::Widgets PkgConfig::LIBCAMERA)
++    target_link_libraries(plasma-camera Qt::Widgets PkgConfig::LIBCAMERA PkgConfig::GSTREAMER)
+ endif()
+ 
+ target_include_directories(plasma-camera PRIVATE ${CMAKE_BINARY_DIR})
+diff --git a/src/contents/ui/camera/CameraControls.qml b/src/contents/ui/camera/CameraControls.qml
+index df143ed..4f8b4dc 100644
+--- a/src/contents/ui/camera/CameraControls.qml
++++ b/src/contents/ui/camera/CameraControls.qml
+@@ -81,7 +81,7 @@ Rectangle {
+                     id: previewArea
+                     anchors.fill: parent
+ 
+-                    videoRecorder: root.captureSession.recorder
++                    videoLocation: root.captureSession.videoLocation
+                     isSavingVideo: root.captureSession.isSavingVideo
+ 
+                     Component.onCompleted: {
+diff --git a/src/contents/ui/camera/CameraExtraControls.qml b/src/contents/ui/camera/CameraExtraControls.qml
+index b30f57e..b7e3d94 100644
+--- a/src/contents/ui/camera/CameraExtraControls.qml
++++ b/src/contents/ui/camera/CameraExtraControls.qml
+@@ -20,11 +20,15 @@ Rectangle {
+     required property bool nightModeShown
+     required property int flashMode
+     required property bool flashShown
++    // ALT Mobile: dual video, 0 off, 1 picture in picture, 2 split
++    required property int dualMode
++    required property bool dualShown
+ 
+     signal audioEnabledChangeRequested(enabled: bool)
+     signal exposureValueRequested(value: real)
+     signal nightModeChangeRequested(enabled: bool)
+     signal flashModeChangeRequested(mode: int)
++    signal dualModeChangeRequested(mode: int)
+ 
+     // ALT Mobile: a column at the side of the landscape screen
+     property bool vertical: false
+@@ -105,6 +109,25 @@ Rectangle {
+                 QQC2.ToolTip.text: text
+             }
+ 
++            // Dual video (ALT Mobile): off, picture in picture, split; a tap
++            // goes to the next
++            QQC2.ToolButton {
++                id: dualButton
++                icon.name: root.dualMode === 2 ? 'view-split-top-bottom-symbolic'
++                    : root.dualMode === 1 ? 'window-restore-pip' : 'view-dual-symbolic'
++                icon.color: root.dualMode > 0 ? Kirigami.Theme.highlightColor : 'white'
++                text: root.dualMode === 2 ? i18n("Both cameras, split")
++                    : root.dualMode === 1 ? i18n("Both cameras, picture in picture")
++                    : i18n("One camera")
++                display: QQC2.ToolButton.IconOnly
++                Layout.alignment: Qt.AlignHCenter
++                visible: root.dualShown
++                onClicked: root.dualModeChangeRequested((root.dualMode + 1) % 3)
++
++                QQC2.ToolTip.visible: down
++                QQC2.ToolTip.text: text
++            }
++
+             // Night mode (ALT Mobile): a burst merged into one photo
+             QQC2.ToolButton {
+                 id: nightModeButton
+diff --git a/src/contents/ui/camera/CameraPage.qml b/src/contents/ui/camera/CameraPage.qml
+index 023aa27..fc5c4a0 100644
+--- a/src/contents/ui/camera/CameraPage.qml
++++ b/src/contents/ui/camera/CameraPage.qml
+@@ -64,7 +64,15 @@ Kirigami.Page {
+     // The current mode of capturing the camera is going to do
+     property int captureMode: CameraPage.CaptureMode.Photo
+     // Night mode is for photos only
+-    onCaptureModeChanged: if (captureMode !== CameraPage.CaptureMode.Photo) camera.nightMode = false
++    // and dual video for video only
++    onCaptureModeChanged: {
++        if (captureMode !== CameraPage.CaptureMode.Photo)
++            camera.nightMode = false;
++        else
++            camera.dualMode = 0;
++        camera.videoMode = captureMode === CameraPage.CaptureMode.Video;
++    }
++    Component.onCompleted: camera.videoMode = captureMode === CameraPage.CaptureMode.Video
+ 
+     property PlasmaCameraManager captureSession: PlasmaCameraManager {
+         id: captureSession
+@@ -161,10 +169,15 @@ Kirigami.Page {
+             nightModeShown: root.captureMode === CameraPage.CaptureMode.Photo
+             flashMode: root.camera.flashMode
+             flashShown: root.captureMode === CameraPage.CaptureMode.Photo && root.camera.flashAvailable
++            dualMode: root.camera.dualMode
++            // The streams restart when the mode changes, not while recording
++            dualShown: root.captureMode === CameraPage.CaptureMode.Video && root.camera.dualAvailable
++                && !root.captureSession.isRecordingVideo && !root.captureSession.isSavingVideo
+ 
+             onExposureValueRequested: (value) => root.camera.exposureValue = value;
+             onNightModeChangeRequested: (enabled) => root.camera.nightMode = enabled;
+             onFlashModeChangeRequested: (mode) => root.camera.flashMode = mode;
++            onDualModeChangeRequested: (mode) => root.camera.dualMode = mode;
+             onAudioEnabledChangeRequested: (enabled) => root.captureSession.audioRecordingEnabled = enabled;
+         }
+ 
+@@ -209,7 +222,7 @@ Kirigami.Page {
+             anchors.bottomMargin: (root.landscape ? 0 : controlContainer.height) + Kirigami.Units.largeSpacing
+ 
+             visible: root.captureSession.isRecordingVideo
+-            duration: root.captureSession.recorder.duration
++            duration: root.captureSession.recordingDuration
+         }
+     }
+ }
+diff --git a/src/contents/ui/camera/PreviewArea.qml b/src/contents/ui/camera/PreviewArea.qml
+index 8070691..4a4deea 100644
+--- a/src/contents/ui/camera/PreviewArea.qml
++++ b/src/contents/ui/camera/PreviewArea.qml
+@@ -13,7 +13,8 @@ import org.kde.kirigami as Kirigami
+ Item {
+     id: preview
+ 
+-    required property MediaRecorder videoRecorder
++    // ALT Mobile: the last video of GstRecorder (PlasmaCameraManager)
++    required property url videoLocation
+     required property bool isSavingVideo
+ 
+     property bool showVideoPreview: false // when set to true, the preview for the videoRecorder is shown, if false for the imageCapture
+@@ -31,7 +32,7 @@ Item {
+ 
+     function createVideoThumbnail() {
+         if (videoThumbnailRequested && !preview.isSavingVideo) {
+-            video.source = videoRecorder.actualLocation;
++            video.source = preview.videoLocation;
+             video.play();
+             video.pause();
+             videoThumbnailRequested = false;
+@@ -42,15 +43,14 @@ Item {
+     width: Kirigami.Units.gridUnit * 6
+     height: width
+ 
+-    Component.onCompleted: {
+-        videoRecorder.recorderStateChanged.connect(createVideoThumbnail);
+-    }
++    // The thumbnail once the file is written
++    onIsSavingVideoChanged: createVideoThumbnail()
+ 
+     MouseArea {
+         anchors.fill: parent
+         onClicked: {
+             if (showVideoPreview)
+-                Qt.openUrlExternally(videoRecorder.actualLocation);
++                Qt.openUrlExternally(preview.videoLocation);
+             else
+                 Qt.openUrlExternally(preview.imageUrl);
+         }
+diff --git a/src/plasmacamera.cpp b/src/plasmacamera.cpp
+index 5c358de..d6e4303 100644
+--- a/src/plasmacamera.cpp
++++ b/src/plasmacamera.cpp
+@@ -8,6 +8,10 @@
+ #include <sys/mman.h>
+ #include <plasmacameramanager.h>
+ 
++#include <QPainter>
++
++static QImage uprightImage(const QImage &frame, int degrees, bool mirror);
++
+ #include "plasmacamera.h"
+ 
+ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+@@ -53,8 +57,11 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+         setBusy(false);
+     });
+ 
+-    // resend frames that we received from the camera worker
+-    connect(m_cameraWorker, &Worker::viewFinderFrame, this, &PlasmaCamera::viewFinderFrame);
++    // resend frames that we received from the camera worker, combined with
++    // the second camera in dual video
++    connect(m_cameraWorker, &Worker::viewFinderFrame, this, [this](const QImage &frame) {
++        Q_EMIT viewFinderFrame(m_dualMode > 0 && !frame.isNull() ? composeDual(frame) : frame);
++    });
+     connect(m_cameraWorker, &Worker::stillCaptureFrames, this, &PlasmaCamera::stillCaptureFrames);
+     connect(m_cameraWorker, &Worker::stillCaptureFrames, this, [this]() {
+         // Finished taking image
+@@ -88,6 +95,24 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+     }, Qt::QueuedConnection);
+ 
+     m_cameraThread->start();
++
++    // ALT Mobile: the second camera of dual video, in its own thread. Its
++    // frames are kept upright for composeDual().
++    m_pipWorker = new Worker();
++    m_pipThread = new QThread();
++    m_pipWorker->moveToThread(m_pipThread);
++    connect(m_pipThread, &QThread::started, m_pipWorker, &Worker::init);
++    connect(m_pipWorker, &Worker::finished, m_pipThread, &QThread::quit);
++    connect(m_pipWorker, &Worker::finished, m_pipWorker, &Worker::deleteLater);
++    connect(m_pipThread, &QThread::finished, m_pipThread, &QThread::deleteLater);
++    connect(m_pipWorker, &Worker::errorOccurred, this, &PlasmaCamera::setError);
++    connect(m_pipWorker, &Worker::viewFinderFrame, this, [this](const QImage &frame) {
++        if (m_dualMode > 0 && !frame.isNull()) {
++            m_pipFrame = uprightImage(frame, m_pipRotationDegrees, m_pipMirror);
++        }
++    });
++    connect(this, &PlasmaCamera::cameraDeviceChanged, this, &PlasmaCamera::dualAvailableChanged);
++    m_pipThread->start();
+ }
+ 
+ PlasmaCamera::~PlasmaCamera()
+@@ -103,6 +128,7 @@ PlasmaCamera::~PlasmaCamera()
+     // shutdown in worker will emit finished() which is connected to quit() in the thread
+     // BlockingQueuedConnection allows the Q_EMIT in shutdown to go through while QueuedConnection with wait does not
+     QMetaObject::invokeMethod(m_cameraWorker, "shutdown", Qt::BlockingQueuedConnection);
++    QMetaObject::invokeMethod(m_pipWorker, "shutdown", Qt::BlockingQueuedConnection);
+ }
+ 
+ bool PlasmaCamera::error() const
+@@ -125,6 +151,72 @@ void PlasmaCamera::stopCamera()
+     setActive(false);
+ }
+ 
++// Clockwise rotation that makes the frames of a camera upright, from its
++// mounting rotation
++static int softwareRotationFor(const std::shared_ptr<libcamera::Camera> &camera)
++{
++    switch (camera->properties().get(libcamera::properties::Rotation).value_or(0)) {
++    case 90:
++        return 270;
++    case 180:
++        return 180;
++    case 270:
++        return 90;
++    default:
++        return 0;
++    }
++}
++
++static bool isFrontCamera(const std::shared_ptr<libcamera::Camera> &camera)
++{
++    return camera->properties().get(libcamera::properties::Location).value_or(libcamera::properties::CameraLocationExternal)
++        == libcamera::properties::CameraLocationFront;
++}
++
++// Undo a clockwise rotation of the point (u, v), both in 0..1
++static QPointF unrotate(qreal u, qreal v, int degrees)
++{
++    switch (degrees) {
++    case 90:
++        return {v, 1.0 - u};
++    case 180:
++        return {1.0 - u, 1.0 - v};
++    case 270:
++        return {1.0 - v, u};
++    default:
++        return {u, v};
++    }
++}
++
++// A deep copy of the frame as shown: mirrored (front cameras), then turned
++// clockwise. The viewfinder frames point into camera buffers.
++static QImage uprightImage(const QImage &frame, int degrees, bool mirror)
++{
++    QImage image = mirror ? frame.mirrored() : frame.copy();
++    if (degrees != 0) {
++        image = image.transformed(QTransform().rotate(degrees));
++    }
++    if (image.format() != QImage::Format_RGB32 && image.format() != QImage::Format_ARGB32_Premultiplied) {
++        image = image.convertToFormat(QImage::Format_RGB32);
++    }
++    return image;
++}
++
++// Draw the image into the target, cropped to its aspect ratio
++static void drawCover(QPainter &painter, const QImage &image, const QRectF &target)
++{
++    QRectF source(image.rect());
++    const qreal targetAspect = target.width() / target.height();
++    if (source.width() / source.height() > targetAspect) {
++        const qreal w = source.height() * targetAspect;
++        source = QRectF((source.width() - w) / 2, 0, w, source.height());
++    } else {
++        const qreal h = source.width() / targetAspect;
++        source = QRectF(0, (source.height() - h) / 2, source.width(), h);
++    }
++    painter.drawImage(target, image, source);
++}
++
+ // ALT Mobile: the switch button skips a camera that only repeats another
+ // one of the same side. The second rear camera of the OnePlus 6T (IMX376)
+ // has about the angle of the main one and no colour calibration; it stays
+@@ -141,6 +233,12 @@ bool PlasmaCamera::switchToNextCamera()
+         return false;
+     }
+ 
++    // Dual video: both cameras run, the button swaps the pictures
++    if (m_dualMode > 0) {
++        m_dualSwapped = !m_dualSwapped;
++        return true;
++    }
++
+     const std::vector<std::shared_ptr<libcamera::Camera>> cameras = m_cameraManager->cameras();
+     if (cameras.empty()) {
+         qDebug() << "Failed to find any cameras";
+@@ -213,7 +311,8 @@ QCameraFormat PlasmaCamera::cameraFormat() const
+ 
+ bool PlasmaCamera::captureImage()
+ {
+-    if (m_state != State::Running) {
++    // Dual video records only
++    if (m_state != State::Running || m_dualMode > 0) {
+         return false;
+     }
+ 
+@@ -273,14 +372,15 @@ float PlasmaCamera::fps() const
+     return m_fps;
+ }
+ 
++// The combined frames of dual video are upright already
+ int PlasmaCamera::softwareRotationDegrees() const
+ {
+-    return m_softwareRotationDegrees;
++    return m_dualMode > 0 ? 0 : m_softwareRotationDegrees;
+ }
+ 
+ int PlasmaCamera::viewfinderRotationDegrees() const
+ {
+-    return (m_softwareRotationDegrees + m_screenRotationDegrees) % 360;
++    return (softwareRotationDegrees() + m_screenRotationDegrees) % 360;
+ }
+ 
+ void PlasmaCamera::setScreenRotationDegrees(int degrees)
+@@ -290,7 +390,7 @@ void PlasmaCamera::setScreenRotationDegrees(int degrees)
+ 
+ bool PlasmaCamera::mirrorOutput() const
+ {
+-    return m_mirrorOutput;
++    return m_dualMode > 0 ? false : m_mirrorOutput;
+ }
+ 
+ bool PlasmaCamera::nightMode() const
+@@ -400,6 +500,8 @@ void PlasmaCamera::setCameraDevice(const QString &cameraDeviceId)
+     }
+ 
+     qDebug() << "Using camera: " << cameraDeviceId;
++    // The other camera of dual video may be the one asked for
++    setDualMode(0);
+     m_cameraId = cameraDeviceId;
+ 
+     startCameraInternal();
+@@ -462,6 +564,23 @@ void PlasmaCamera::setExposureValue(const float exposureValue)
+ 
+ void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
+ {
++    int degrees = viewfinderRotationDegrees();
++    if (m_dualMode > 0) {
++        // The point in the combined frame. A tap on the small picture swaps
++        // the pictures. The main camera focuses when it fills the frame.
++        const QPointF point = unrotate(u, v, m_screenRotationDegrees);
++        if (m_dualMode == 1 && m_pipRect.contains(point)) {
++            m_dualSwapped = !m_dualSwapped;
++            return;
++        }
++        if (m_dualMode != 1 || m_dualSwapped) {
++            return;
++        }
++        u = point.x();
++        v = point.y();
++        degrees = m_softwareRotationDegrees;
++    }
++
+     if (!m_settings.canSetAfWindow() || m_activeArea.isNull()) {
+         return;
+     }
+@@ -470,23 +589,9 @@ void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
+     if (m_mirrorOutput) {
+         u = 1.0 - u;
+     }
+-    qreal sx = u, sy = v;
+-    switch (viewfinderRotationDegrees()) {
+-    case 90:
+-        sx = v;
+-        sy = 1.0 - u;
+-        break;
+-    case 180:
+-        sx = 1.0 - u;
+-        sy = 1.0 - v;
+-        break;
+-    case 270:
+-        sx = 1.0 - v;
+-        sy = u;
+-        break;
+-    }
+-    sx = std::clamp(sx, 0.0, 1.0);
+-    sy = std::clamp(sy, 0.0, 1.0);
++    const QPointF sensor = unrotate(u, v, degrees);
++    const qreal sx = std::clamp(sensor.x(), 0.0, 1.0);
++    const qreal sy = std::clamp(sensor.y(), 0.0, 1.0);
+ 
+     // A window of a fifth of the frame around the point
+     const unsigned int w = m_activeArea.width / 5;
+@@ -663,6 +768,7 @@ void PlasmaCamera::startCameraInternal()
+ 
+ void PlasmaCamera::stopCameraInternal()
+ {
++    setDualMode(0);
+     setState(State::Stopping);
+ 
+     // Clear the current camera
+@@ -788,3 +894,169 @@ bool PlasmaCamera::acquire()
+ 
+     return true;
+ }
++
++int PlasmaCamera::dualMode() const
++{
++    return m_dualMode;
++}
++
++bool PlasmaCamera::dualAvailable() const
++{
++    return partnerCamera() != nullptr;
++}
++
++void PlasmaCamera::setDualMode(int mode)
++{
++    mode = std::clamp(mode, 0, 2);
++    if (mode == m_dualMode) {
++        return;
++    }
++    if (mode > 0 && m_dualMode == 0) {
++        if (m_state != State::Running || !startPip()) {
++            return;
++        }
++    } else if (mode == 0) {
++        stopPip();
++    }
++    m_dualMode = mode;
++    Q_EMIT dualModeChanged();
++}
++
++// The first camera on the other side: the front one for a rear camera, the
++// main rear one (not skipped by the switch button) for the front camera
++std::shared_ptr<libcamera::Camera> PlasmaCamera::partnerCamera() const
++{
++    if (!m_camera || !m_cameraManager) {
++        return nullptr;
++    }
++    const bool front = isFrontCamera(m_camera);
++    for (const auto &camera : m_cameraManager->cameras()) {
++        if (camera != m_camera && isFrontCamera(camera) != front && !skippedBySwitch(camera)) {
++            return camera;
++        }
++    }
++    return nullptr;
++}
++
++// Small streams: the software ISP runs both on the GPU, and the video is
++// recorded from the combined frame. Video alone uses the same width: the
++// encoder (openh264, GstRecorder) keeps up with about 1 MP.
++static constexpr int kVideoWidth = 1280;
++static constexpr int kDualPipWidth = 640;
++static constexpr int kPhotoWidth = 3200;
++
++bool PlasmaCamera::videoMode() const
++{
++    return m_videoMode;
++}
++
++void PlasmaCamera::setVideoMode(const bool videoMode)
++{
++    if (m_videoMode == videoMode) {
++        return;
++    }
++    m_videoMode = videoMode;
++    updateMainStreamWidth();
++    Q_EMIT videoModeChanged();
++}
++
++void PlasmaCamera::updateMainStreamWidth()
++{
++    const int width = (m_videoMode || m_pipCamera) ? kVideoWidth : kPhotoWidth;
++    Worker *main = m_cameraWorker;
++    QMetaObject::invokeMethod(main, [main, width]() {
++        main->setMaxViewfinderWidth(width);
++    }, Qt::QueuedConnection);
++}
++
++bool PlasmaCamera::startPip()
++{
++    const std::shared_ptr<libcamera::Camera> camera = partnerCamera();
++    if (!camera) {
++        return false;
++    }
++    if (camera->acquire() < 0) {
++        setError(QStringLiteral("Failed to acquire the second camera"));
++        return false;
++    }
++    m_pipCamera = camera;
++    m_pipRotationDegrees = softwareRotationFor(camera);
++    m_pipMirror = isFrontCamera(camera);
++    m_pipFrame = QImage();
++    m_dualSwapped = false;
++
++    Settings settings;
++    settings.load(camera->controls());
++    Worker *pip = m_pipWorker;
++    QMetaObject::invokeMethod(pip, [pip, settings, camera]() {
++        pip->setSettings(settings);
++        pip->setMaxViewfinderWidth(kDualPipWidth);
++        pip->setCamera(camera);
++    }, Qt::QueuedConnection);
++    updateMainStreamWidth();
++    return true;
++}
++
++void PlasmaCamera::stopPip()
++{
++    if (!m_pipCamera) {
++        return;
++    }
++    // unsetCamera() stops the stream and releases the camera
++    QMetaObject::invokeMethod(m_pipWorker, "unsetCamera", Qt::BlockingQueuedConnection);
++    m_pipCamera.reset();
++    m_pipFrame = QImage();
++    m_dualSwapped = false;
++    updateMainStreamWidth();
++}
++
++QImage PlasmaCamera::composeDual(const QImage &frame)
++{
++    QImage mainImage = uprightImage(frame, m_softwareRotationDegrees, m_mirrorOutput);
++    const bool swapped = m_dualSwapped && !m_pipFrame.isNull();
++    const QSize size = mainImage.size();
++
++    if (m_dualMode == 2) {
++        // Split: the large picture on top, the other one below
++        QImage canvas(size, QImage::Format_RGB32);
++        QPainter painter(&canvas);
++        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
++        const QRectF top(0, 0, size.width(), size.height() / 2.0);
++        const QRectF bottom(0, size.height() / 2.0, size.width(), size.height() / 2.0);
++        canvas.fill(Qt::black);
++        drawCover(painter, swapped ? m_pipFrame : mainImage, top);
++        if (!m_pipFrame.isNull()) {
++            drawCover(painter, swapped ? mainImage : m_pipFrame, bottom);
++        }
++        painter.fillRect(QRectF(0, size.height() / 2.0 - 2, size.width(), 4), Qt::white);
++        m_pipRect = QRectF(0, 0.5, 1, 0.5);
++        return canvas;
++    }
++
++    // Picture in picture: the large picture fills the frame, the small one
++    // takes a third of the width in the upper right corner, below the top
++    // bar of the viewfinder
++    QImage small = swapped ? mainImage : m_pipFrame;
++    QImage canvas;
++    if (swapped) {
++        canvas = QImage(size, QImage::Format_RGB32);
++    } else {
++        canvas = std::move(mainImage);
++    }
++    QPainter painter(&canvas);
++    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
++    if (swapped) {
++        drawCover(painter, m_pipFrame, QRectF(canvas.rect()));
++    }
++    if (!small.isNull()) {
++        const qreal w = size.width() / 3.0;
++        const qreal h = w * small.height() / small.width();
++        const qreal margin = size.width() / 25.0;
++        const QRectF rect(size.width() - margin - w, size.height() * 0.12, w, h);
++        painter.drawImage(rect, small);
++        painter.setPen(QPen(Qt::white, std::max<qreal>(2, size.width() / 300.0)));
++        painter.drawRect(rect);
++        m_pipRect = QRectF(rect.x() / size.width(), rect.y() / size.height(), w / size.width(), h / size.height());
++    }
++    return canvas;
++}
+diff --git a/src/plasmacamera.h b/src/plasmacamera.h
+index 7add8e6..c48159d 100644
+--- a/src/plasmacamera.h
++++ b/src/plasmacamera.h
+@@ -61,6 +61,13 @@ class PlasmaCamera : public QObject
+     Q_PROPERTY(int flashMode READ flashMode WRITE setFlashMode NOTIFY flashModeChanged)
+     Q_PROPERTY(bool flashAvailable READ flashAvailable NOTIFY flashAvailableChanged)
+     Q_PROPERTY(QString cameraDevice READ cameraDevice WRITE setCameraDevice NOTIFY cameraDeviceChanged)
++    // ALT Mobile: dual video, the rear and the front camera at once. 0 off,
++    // 1 picture in picture, 2 split (top and bottom). The viewfinder gets
++    // the combined frame, upright, and the video is recorded from it.
++    Q_PROPERTY(int dualMode READ dualMode WRITE setDualMode NOTIFY dualModeChanged)
++    Q_PROPERTY(bool dualAvailable READ dualAvailable NOTIFY dualAvailableChanged)
++    // Video mode: a smaller stream, as large as the recording needs
++    Q_PROPERTY(bool videoMode READ videoMode WRITE setVideoMode NOTIFY videoModeChanged)
+     Q_PROPERTY(QCameraFormat cameraFormat READ cameraFormat WRITE setCameraFormat NOTIFY cameraFormatChanged)
+ 
+     // Focus
+@@ -199,6 +206,12 @@ public:
+     void setFlashMode(int mode);
+     bool flashAvailable() const;
+ 
++    int dualMode() const;
++    void setDualMode(int mode);
++    bool dualAvailable() const;
++    bool videoMode() const;
++    void setVideoMode(bool videoMode);
++
+ Q_SIGNALS:
+     void errorChanged();
+     void errorOccurred(const QString &errorString);
+@@ -212,6 +225,9 @@ Q_SIGNALS:
+     void captureProgressChanged();
+     void flashModeChanged();
+     void flashAvailableChanged();
++    void dualModeChanged();
++    void dualAvailableChanged();
++    void videoModeChanged();
+ 
+     // Photos
+     /*
+@@ -309,6 +325,13 @@ private:
+      */
+     bool acquire();
+ 
++    // Dual video (ALT Mobile)
++    std::shared_ptr<libcamera::Camera> partnerCamera() const;
++    bool startPip();
++    void stopPip();
++    QImage composeDual(const QImage &frame);
++    void updateMainStreamWidth();
++
+     bool m_error = false;
+     QString m_errorString;
+ 
+@@ -347,4 +370,16 @@ private:
+     std::shared_ptr<libcamera::Camera> m_camera;
+ 
+     QCameraFormat m_cameraFormat = QCameraFormat();
++
++    // Dual video: a second worker runs the camera of the other side
++    bool m_videoMode = false;
++    int m_dualMode = 0;
++    bool m_dualSwapped = false; // the second camera is the large picture
++    Worker *m_pipWorker;
++    QThread *m_pipThread;
++    std::shared_ptr<libcamera::Camera> m_pipCamera;
++    int m_pipRotationDegrees = 0;
++    bool m_pipMirror = false;
++    QImage m_pipFrame; // upright
++    QRectF m_pipRect; // of the small picture, 0..1 of the combined frame
+ };
+diff --git a/src/plasmacamera/gstrecorder.cpp b/src/plasmacamera/gstrecorder.cpp
+new file mode 100644
+index 0000000..071d8b6
+--- /dev/null
++++ b/src/plasmacamera/gstrecorder.cpp
+@@ -0,0 +1,260 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include "gstrecorder.h"
++
++#include <QDebug>
++#include <QFile>
++
++#include <gst/app/gstappsrc.h>
++#include <gst/gst.h>
++
++#include <cstring>
++
++// Saving gives up after this long (a muxer that never sees the end of the
++// stream must not keep the app in "saving" forever)
++static constexpr int kStopTimeoutMs = 10000;
++
++GstRecorder::GstRecorder(QObject *parent)
++    : QObject(parent)
++{
++    if (!gst_is_initialized()) {
++        gst_init(nullptr, nullptr);
++    }
++    m_busTimer.setInterval(100);
++    connect(&m_busTimer, &QTimer::timeout, this, &GstRecorder::pollBus);
++}
++
++GstRecorder::~GstRecorder()
++{
++    if (m_pipeline) {
++        gst_element_set_state(m_pipeline, GST_STATE_NULL);
++        gst_object_unref(m_pipeline);
++    }
++}
++
++const char *GstRecorder::gstFormat(const QImage::Format format)
++{
++    // QImage formats are in host byte order for the 32-bit ones (RGB32 is
++    // B, G, R, X in memory on little endian)
++    switch (format) {
++    case QImage::Format_RGB32:
++        return "BGRx";
++    case QImage::Format_ARGB32:
++    case QImage::Format_ARGB32_Premultiplied:
++        return "BGRA";
++    case QImage::Format_RGBX8888:
++        return "RGBx";
++    case QImage::Format_RGBA8888:
++    case QImage::Format_RGBA8888_Premultiplied:
++        return "RGBA";
++    case QImage::Format_RGB888:
++        return "RGB";
++    case QImage::Format_BGR888:
++        return "BGR";
++    default:
++        return "";
++    }
++}
++
++bool GstRecorder::start(const QString &path, const QSize &size, const QImage::Format format, const int bitrate, const bool audio)
++{
++    if (m_pipeline) {
++        return false;
++    }
++    const char *gstFmt = gstFormat(format);
++    if (!*gstFmt || size.isEmpty()) {
++        Q_EMIT errorOccurred(QStringLiteral("Unsupported frame format for recording"));
++        return false;
++    }
++
++    // Colour conversion and encoding run in their own threads (queues): each
++    // alone takes about 15 ms per 1.2 MP frame
++    QString description = QStringLiteral(
++                              "appsrc name=src is-live=true format=time max-buffers=4 leaky-type=upstream "
++                              "caps=video/x-raw,format=%1,width=%2,height=%3,framerate=30/1 "
++                              "! queue max-size-buffers=4 leaky=downstream ! videoconvert n-threads=2 ! video/x-raw,format=I420 "
++                              "! queue max-size-buffers=4 leaky=downstream "
++                              "! openh264enc bitrate=%4 rate-control=bitrate enable-frame-skip=false complexity=low gop-size=60 multi-thread=2 "
++                              "! h264parse ! queue ! mp4mux name=mux fragment-duration=1000 ! filesink name=sink")
++                              .arg(QLatin1String(gstFmt))
++                              .arg(size.width())
++                              .arg(size.height())
++                              .arg(bitrate);
++    if (audio) {
++        description += QStringLiteral(
++            " pulsesrc do-timestamp=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 "
++            "! fdkaacenc bitrate=128000 ! aacparse ! queue ! mux.");
++    }
++
++    GError *error = nullptr;
++    GstElement *pipeline = gst_parse_launch(description.toUtf8().constData(), &error);
++    if (!pipeline || error) {
++        const QString message = error ? QString::fromUtf8(error->message) : QStringLiteral("Could not create the recording pipeline");
++        if (error) {
++            g_error_free(error);
++        }
++        if (pipeline) {
++            gst_object_unref(pipeline);
++        }
++        Q_EMIT errorOccurred(message);
++        return false;
++    }
++
++    // The path is set apart: it may hold spaces and quotes
++    GstElement *sink = gst_bin_get_by_name(GST_BIN(pipeline), "sink");
++    g_object_set(sink, "location", QFile::encodeName(path).constData(), nullptr);
++    gst_object_unref(sink);
++
++    m_pipeline = pipeline;
++    m_source = gst_bin_get_by_name(GST_BIN(pipeline), "src");
++    m_path = path;
++    m_size = size;
++    m_format = format;
++    m_stopping = false;
++    m_lastPts = GST_CLOCK_TIME_NONE;
++
++    if (gst_element_set_state(m_pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
++        Q_EMIT errorOccurred(QStringLiteral("Could not start the recording pipeline"));
++        teardown(false);
++        return false;
++    }
++    m_busTimer.start();
++    qInfo() << "Recording" << size << gstFmt << bitrate << "bit/s, audio" << audio << "to" << path;
++    return true;
++}
++
++void GstRecorder::push(const QImage &frame)
++{
++    if (!m_source || m_stopping || frame.size() != m_size || frame.format() != m_format) {
++        return;
++    }
++
++    // Timestamped by the running time of the pipeline, the clock of the
++    // sound too. do-timestamp left buffers without one (qtmux: "Buffer has
++    // no PTS") while the pipeline was still starting.
++    GstClock *clock = gst_element_get_clock(m_pipeline);
++    if (!clock) {
++        return;
++    }
++    const GstClockTime now = gst_clock_get_time(clock);
++    gst_object_unref(clock);
++    const GstClockTime base = gst_element_get_base_time(m_pipeline);
++    if (now < base) {
++        return;
++    }
++    // Strictly increasing: frames queued during a stream restart arrive in
++    // a burst, and equal timestamps lost the PTS behind the encoder
++    const GstClockTime pts = now - base;
++    if (GST_CLOCK_TIME_IS_VALID(m_lastPts) && pts < m_lastPts + 5 * GST_MSECOND) {
++        return;
++    }
++    m_lastPts = pts;
++
++    // A copy: viewfinder frames point into camera buffers that are reused
++    const qsizetype line = static_cast<qsizetype>(m_size.width()) * frame.depth() / 8;
++    GstBuffer *buffer = gst_buffer_new_allocate(nullptr, line * m_size.height(), nullptr);
++    GstMapInfo map;
++    if (!gst_buffer_map(buffer, &map, GST_MAP_WRITE)) {
++        gst_buffer_unref(buffer);
++        return;
++    }
++    if (frame.bytesPerLine() == line) {
++        std::memcpy(map.data, frame.constBits(), line * m_size.height());
++    } else {
++        for (int y = 0; y < m_size.height(); y++) {
++            std::memcpy(map.data + line * y, frame.constScanLine(y), line);
++        }
++    }
++    gst_buffer_unmap(buffer, &map);
++    GST_BUFFER_PTS(buffer) = pts;
++
++    // Takes the buffer; dropped when the encoder falls behind (leaky)
++    gst_app_src_push_buffer(GST_APP_SRC(m_source), buffer);
++}
++
++void GstRecorder::stop()
++{
++    if (!m_pipeline || m_stopping) {
++        return;
++    }
++    m_stopping = true;
++    m_stopTimer.start();
++    // To every source: the muxer finishes once video and sound have ended
++    gst_element_send_event(m_pipeline, gst_event_new_eos());
++}
++
++bool GstRecorder::isActive() const
++{
++    return m_pipeline != nullptr;
++}
++
++bool GstRecorder::isStopping() const
++{
++    return m_stopping;
++}
++
++QSize GstRecorder::size() const
++{
++    return m_size;
++}
++
++QImage::Format GstRecorder::format() const
++{
++    return m_format;
++}
++
++void GstRecorder::pollBus()
++{
++    if (!m_pipeline) {
++        m_busTimer.stop();
++        return;
++    }
++
++    GstBus *bus = gst_element_get_bus(m_pipeline);
++    while (GstMessage *message = gst_bus_pop_filtered(bus, static_cast<GstMessageType>(GST_MESSAGE_EOS | GST_MESSAGE_ERROR))) {
++        if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
++            GError *error = nullptr;
++            gchar *debug = nullptr;
++            gst_message_parse_error(message, &error, &debug);
++            const QString text = QString::fromUtf8(error ? error->message : "unknown");
++            qWarning() << "Recording error:" << text << (debug ? debug : "");
++            g_clear_error(&error);
++            g_free(debug);
++            gst_message_unref(message);
++            gst_object_unref(bus);
++            Q_EMIT errorOccurred(text);
++            teardown(false);
++            return;
++        }
++        // End of stream: the file is complete
++        gst_message_unref(message);
++        gst_object_unref(bus);
++        teardown(true);
++        return;
++    }
++    gst_object_unref(bus);
++
++    if (m_stopping && m_stopTimer.elapsed() > kStopTimeoutMs) {
++        qWarning() << "Recording did not finish in time, the file may be incomplete";
++        teardown(false);
++    }
++}
++
++void GstRecorder::teardown(const bool ok)
++{
++    m_busTimer.stop();
++    if (m_source) {
++        gst_object_unref(m_source);
++        m_source = nullptr;
++    }
++    if (m_pipeline) {
++        gst_element_set_state(m_pipeline, GST_STATE_NULL);
++        gst_object_unref(m_pipeline);
++        m_pipeline = nullptr;
++    }
++    m_stopping = false;
++    const QString path = m_path;
++    m_path.clear();
++    Q_EMIT finished(path, ok);
++}
+diff --git a/src/plasmacamera/gstrecorder.h b/src/plasmacamera/gstrecorder.h
+new file mode 100644
+index 0000000..ea41f9a
+--- /dev/null
++++ b/src/plasmacamera/gstrecorder.h
+@@ -0,0 +1,68 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <QElapsedTimer>
++#include <QImage>
++#include <QObject>
++#include <QTimer>
++
++typedef struct _GstElement GstElement;
++
++/**
++ * ALT Mobile: video recording through GStreamer. QMediaRecorder picks x264
++ * with its default (medium) settings, which the phone cannot encode in real
++ * time, and offers no way to choose a faster setting. The hardware encoder
++ * (Venus) hangs the phone on this kernel. Here the frames go through
++ * openh264 (about twice as fast as x264 ultrafast) into an MP4 with AAC
++ * sound from the microphone.
++ *
++ * The frames are pushed as they come from the camera and are timestamped on
++ * arrival, so the frame rate follows the camera. The MP4 is fragmented: a
++ * recording cut short (the app closed while saving) stays playable.
++ */
++class GstRecorder : public QObject
++{
++    Q_OBJECT
++
++public:
++    explicit GstRecorder(QObject *parent = nullptr);
++    ~GstRecorder() override;
++
++    /**
++     * Start a recording of frames of the given size and format (upright,
++     * the recorder does not rotate). bitrate in bits per second.
++     */
++    bool start(const QString &path, const QSize &size, QImage::Format format, int bitrate, bool audio);
++    /** Add a frame; frames of another size or format are skipped */
++    void push(const QImage &frame);
++    /** Finish the file; finished() follows when it is written */
++    void stop();
++
++    bool isActive() const;
++    bool isStopping() const;
++    QSize size() const;
++    QImage::Format format() const;
++
++    /** The GStreamer format for a QImage format, empty if there is none */
++    static const char *gstFormat(QImage::Format format);
++
++Q_SIGNALS:
++    void finished(const QString &path, bool ok);
++    void errorOccurred(const QString &message);
++
++private:
++    void pollBus();
++    void teardown(bool ok);
++
++    GstElement *m_pipeline = nullptr;
++    GstElement *m_source = nullptr;
++    QTimer m_busTimer;
++    QElapsedTimer m_stopTimer;
++    QString m_path;
++    QSize m_size;
++    QImage::Format m_format = QImage::Format_Invalid;
++    bool m_stopping = false;
++    quint64 m_lastPts = ~quint64(0); // GST_CLOCK_TIME_NONE
++};
+diff --git a/src/plasmacamera/path.cpp b/src/plasmacamera/path.cpp
+index 7ad325c..26a571a 100644
+--- a/src/plasmacamera/path.cpp
++++ b/src/plasmacamera/path.cpp
+@@ -106,3 +106,12 @@ QString PlasmaLibcameraUtils::generateFileName(const QString &requestedName,
+         return path;
+     }
+ }
++
++QString PlasmaLibcameraUtils::generateVideoFileName(int outputPath)
++{
++    if (outputPath && !QDir(QLatin1String("DCIM")).exists()) {
++        QDir().mkdir(QLatin1String("DCIM"));
++    }
++    const QDir dir = outputPath ? QDir(QLatin1String("DCIM")) : defaultDirectory(QStandardPaths::MoviesLocation);
++    return generateFileName(dir, QStringLiteral("video_"), QStringLiteral("mp4"));
++}
+diff --git a/src/plasmacamera/path.h b/src/plasmacamera/path.h
+index ae49123..fd8537a 100644
+--- a/src/plasmacamera/path.h
++++ b/src/plasmacamera/path.h
+@@ -14,4 +14,6 @@ namespace PlasmaLibcameraUtils {
+                                     const QString &extension,
+                                     int filenamePattern,
+                                     int outputPath);
++    // ALT Mobile: video_NNNN.mp4 in Videos (or DCIM), as QMediaRecorder named them
++    QString generateVideoFileName(int outputPath);
+ };
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index feddc04..5f86a48 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -92,6 +92,23 @@ void Worker::setNightMode(const bool enabled)
+     m_nightMode = enabled;
+ }
+ 
++void Worker::setMaxViewfinderWidth(const int width)
++{
++    if (m_maxViewfinderWidth == width) {
++        return;
++    }
++    m_maxViewfinderWidth = width;
++
++    if (m_state != State::Running || !m_camera || m_fullSizeStream) {
++        return;
++    }
++    setMode(CaptureMode::None);
++    stopStream();
++    if (startStream(false)) {
++        setMode(CaptureMode::ViewFinder);
++    }
++}
++
+ void Worker::setFlashMode(const int mode)
+ {
+     m_flashMode = mode;
+@@ -803,7 +820,15 @@ void Worker::configure(const bool fullSize)
+     // size: halving it gave a size the GPU debayer fails on.
+     constexpr unsigned int kMaxViewfinderWidth = 3200;
+     m_viewfinderReduced = streamConfig.size.width > kMaxViewfinderWidth;
+-    if (m_viewfinderReduced && !fullSize) {
++    if (m_maxViewfinderWidth < static_cast<int>(kMaxViewfinderWidth) && !fullSize
++        && streamConfig.size.width > static_cast<unsigned int>(m_maxViewfinderWidth)) {
++        // Dual video: a small stream of the whole field of view. The GPU
++        // debayer scales, the picture is not cropped. It fails on heights
++        // that are not a multiple of 8 (640x474 of the IMX371).
++        const unsigned int width = static_cast<unsigned int>(m_maxViewfinderWidth) & ~7u;
++        const unsigned int height = static_cast<unsigned int>(static_cast<uint64_t>(width) * streamConfig.size.height / streamConfig.size.width) & ~7u;
++        streamConfig.size = libcamera::Size(width, height);
++    } else if (m_viewfinderReduced && !fullSize) {
+         // Half of the full size is the 2x2 binned sensor mode: the whole field
+         // of view at a quarter of the pixels. The software ISP only crops, so
+         // a "standard" size such as 2048x1536 would cut the picture.
+diff --git a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+index 0e8f2c8..1445cbc 100644
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -83,6 +83,10 @@ public Q_SLOTS:
+     // Flash: 0 off, 1 automatic (in the dark), 2 on
+     void setFlashMode(int mode);
+ 
++    // ALT Mobile: the widest viewfinder stream, smaller for two cameras at
++    // once (dual video). A running stream restarts at the new size.
++    void setMaxViewfinderWidth(int width);
++
+ private Q_SLOTS:
+     void setError(int libcameraError);
+     void setError(const QString &errorString);
+@@ -165,6 +169,7 @@ private:
+ 
+     // Photos at the full sensor size while the viewfinder runs reduced
+     bool m_viewfinderReduced = false; // the viewfinder is smaller than the sensor
++    int m_maxViewfinderWidth = 3200;
+     bool m_fullSizeStream = false; // the stream is at full size for a photo
+     int m_stillSkipFrames = 0; // frames left for AE and AWB to settle
+     QImage m_lastFrame; // shallow, for a deep copy shown during the switch
+diff --git a/src/plasmacameramanager.cpp b/src/plasmacameramanager.cpp
+index ba42964..22ac208 100644
+--- a/src/plasmacameramanager.cpp
++++ b/src/plasmacameramanager.cpp
+@@ -31,6 +31,23 @@ PlasmaCameraManager::PlasmaCameraManager(QObject *parent)
+     // Set to default audio input
+     setAudioRecordingEnabledInternal(true);
+ 
++    // ALT Mobile: video goes through GstRecorder
++    connect(&m_gstRecorder, &GstRecorder::errorOccurred, this, [this](const QString &message) {
++        setError(0, ResourceError, message);
++    });
++    connect(&m_gstRecorder, &GstRecorder::finished, this, [this](const QString &path, bool ok) {
++        qInfo() << "Recording finished" << path << ok;
++        m_durationTimer.stop();
++        if (!path.isEmpty()) {
++            m_videoLocation = QUrl::fromLocalFile(path);
++            Q_EMIT videoLocationChanged();
++        }
++        setIsSavingVideo(false);
++        Q_EMIT isRecordingVideoChanged();
++    });
++    m_durationTimer.setInterval(250);
++    connect(&m_durationTimer, &QTimer::timeout, this, &PlasmaCameraManager::recordingDurationChanged);
++
+     // m_session links m_videoInput and m_audioInput to m_recorder
+     m_session.setVideoFrameInput(&m_videoInput);
+     connect(&m_videoFrameTimer, &QTimer::timeout, this, &PlasmaCameraManager::processVideoFrame);
+@@ -164,10 +181,17 @@ void PlasmaCameraManager::setAudioRecordingEnabledInternal(bool enabled)
+ 
+ bool PlasmaCameraManager::isRecordingVideo() const
+ {
+-    if (!m_recorder) {
+-        return false;
+-    }
+-    return m_recorder->recorderState() == QMediaRecorder::RecordingState && !m_isSavingVideo;
++    return (m_recordPending || m_gstRecorder.isActive()) && !m_isSavingVideo;
++}
++
++qint64 PlasmaCameraManager::recordingDuration() const
++{
++    return isRecordingVideo() ? m_recordingClock.elapsed() : 0;
++}
++
++QUrl PlasmaCameraManager::videoLocation() const
++{
++    return m_videoLocation;
+ }
+ 
+ bool PlasmaCameraManager::isSavingVideo() const
+@@ -177,30 +201,63 @@ bool PlasmaCameraManager::isSavingVideo() const
+ 
+ void PlasmaCameraManager::startRecordingVideo()
+ {
+-    if (!m_recorder) {
++    if (!m_plasmaCamera || m_recordPending || m_gstRecorder.isActive()) {
+         return;
+     }
+ 
+-    m_droppedFrames = false; // reset
+-
+-    // Set the correct rotation metadata prior to recording
+-    QMediaMetaData metaData;
+-    metaData.insert(QMediaMetaData::Orientation, outputOrientationDegrees());
+-    metaData.insert(QMediaMetaData::Date, QDateTime::currentDateTime());
+-    m_recorder->setMetaData(metaData);
+-
+-    m_recorder->record();
++    // The frames are turned and mirrored as photos are; the rotation is
++    // kept for the whole recording
++    m_recordRotation = ((static_cast<int>(outputOrientationDegrees()) % 360) + 360) % 360;
++    m_recordMirror = m_plasmaCamera->mirrorOutput();
++    m_recordPending = true;
++    m_recordingClock.start();
++    m_durationTimer.start();
++    Q_EMIT isRecordingVideoChanged();
+ }
+ 
+ void PlasmaCameraManager::stopRecordingVideo()
+ {
+-    if (!m_recorder) {
++    if (m_recordPending) {
++        // No frame came yet, nothing to save
++        m_recordPending = false;
++        m_durationTimer.stop();
++        Q_EMIT isRecordingVideoChanged();
++        return;
++    }
++    if (!m_gstRecorder.isActive()) {
+         return;
+     }
+-    m_recorder->stop();
+     setIsSavingVideo(true);
++    m_gstRecorder.stop();
++}
+ 
+-    m_videoFrameTimer.stop();
++void PlasmaCameraManager::recordFrame(const QImage &image)
++{
++    if (!m_recordPending && (!m_gstRecorder.isActive() || m_gstRecorder.isStopping())) {
++        return;
++    }
++
++    QImage frame = m_recordMirror ? image.mirrored() : image;
++    if (m_recordRotation != 0) {
++        frame = frame.transformed(QTransform().rotate(m_recordRotation));
++    }
++    if (!*GstRecorder::gstFormat(frame.format())) {
++        frame = frame.convertToFormat(QImage::Format_RGB32);
++    }
++
++    if (m_recordPending) {
++        m_recordPending = false;
++        // Bits per second by the quality setting, for about 1 MP
++        static const int kBitrates[] = {2000000, 4000000, 6000000, 10000000, 14000000};
++        const int bitrate = kBitrates[std::clamp(static_cast<int>(m_quality), 0, 4)];
++        const QString path = PlasmaLibcameraUtils::generateVideoFileName(m_outputPath);
++        if (!m_gstRecorder.start(path, frame.size(), frame.format(), bitrate, m_audioRecordingEnabled)) {
++            m_durationTimer.stop();
++            Q_EMIT isRecordingVideoChanged();
++            return;
++        }
++    }
++    m_gstRecorder.push(frame);
+ }
+ 
+ int PlasmaCameraManager::captureImage()
+@@ -549,6 +606,8 @@ void PlasmaCameraManager::processViewfinderFrame(const QImage &image)
+     // Set as video frame for video recording
+     m_videoFrame = std::move(frame);
+     m_frameRecorded = false;
++
++    recordFrame(image);
+ }
+ 
+ qreal PlasmaCameraManager::zoom() const
+diff --git a/src/plasmacameramanager.h b/src/plasmacameramanager.h
+index 03ca002..1bbfed1 100644
+--- a/src/plasmacameramanager.h
++++ b/src/plasmacameramanager.h
+@@ -5,6 +5,7 @@
+ #pragma once
+ 
+ #include <KAboutData>
++#include <QElapsedTimer>
+ #include <QOrientationSensor>
+ #include <QQmlEngine>
+ #include <QtMultimedia>
+@@ -13,6 +14,7 @@
+ #include <libcamera/camera_manager.h>
+ 
+ #include "plasmacamera.h"
++#include "plasmacamera/gstrecorder.h"
+ 
+ /*!
+  * \brief Manages the libcamera camera controller (similar to QMediaCaptureSession)
+@@ -46,6 +48,9 @@ class PlasmaCameraManager : public QObject
+ 
+     Q_PROPERTY(bool isRecordingVideo READ isRecordingVideo NOTIFY isRecordingVideoChanged)
+     Q_PROPERTY(bool isSavingVideo READ isSavingVideo NOTIFY isSavingVideoChanged)
++    // ALT Mobile: recording through GstRecorder instead of the recorder
++    Q_PROPERTY(qint64 recordingDuration READ recordingDuration NOTIFY recordingDurationChanged)
++    Q_PROPERTY(QUrl videoLocation READ videoLocation NOTIFY videoLocationChanged)
+ 
+     // Digital zoom: photos keep the central 1/zoom of the frame
+     Q_PROPERTY(qreal zoom READ zoom WRITE setZoom NOTIFY zoomChanged)
+@@ -144,6 +149,8 @@ public:
+ 
+     bool isRecordingVideo() const;
+     bool isSavingVideo() const;
++    qint64 recordingDuration() const;
++    QUrl videoLocation() const;
+ 
+     qreal zoom() const;
+     void setZoom(qreal zoom);
+@@ -186,6 +193,8 @@ Q_SIGNALS:
+     void isSavingVideoChanged();
+     void zoomChanged();
+     void processingPhotoChanged();
++    void recordingDurationChanged();
++    void videoLocationChanged();
+ 
+     void framesDropped();
+ 
+@@ -307,4 +316,15 @@ private:
+ 
+     bool m_isSavingVideo = false;
+     bool m_droppedFrames = false;
++
++    // ALT Mobile: GStreamer recording. It starts on the first frame after
++    // startRecordingVideo(), when the frame size is known.
++    void recordFrame(const QImage &image);
++    GstRecorder m_gstRecorder;
++    bool m_recordPending = false;
++    int m_recordRotation = 0;
++    bool m_recordMirror = false;
++    QElapsedTimer m_recordingClock;
++    QTimer m_durationTimer;
++    QUrl m_videoLocation;
+ };
