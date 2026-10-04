@@ -7,6 +7,13 @@
 # Как в hasher: /usr/bin раньше /bin, иначе в скрипты попадает #!/bin/python3,
 # а apt такого пути не знает
 export PATH=/usr/bin:/usr/sbin:/bin:/sbin:$PATH
+# Без зарядки Plasma усыпляет телефон, и сборка стоит, пока его не разбудят.
+# Вся очередь идёт под запретом сна
+if [ -z "$BUILD_QUEUE_INHIBITED" ]; then
+	export BUILD_QUEUE_INHIBITED=1
+	exec systemd-inhibit --what=sleep:idle --who=build-queue \
+		--why="Сборка пакетов" sh "$0" "$@"
+fi
 S=$(rpm --eval %_sourcedir)
 for N in "$@"; do
 	D=$HOME/altmobile-pkg/$N
