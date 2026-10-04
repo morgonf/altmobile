@@ -1,0 +1,13 @@
+[Domain]
+Name=Storage
+Name[ru]=Хранилище
+Icon=drive-harddisk
+
+[org.altmobile.storage.cleanpackages]
+Name=Delete downloaded packages
+Name[ru]=Удаление скачанных пакетов
+Description=Delete the packages apt keeps after installing them
+Description[ru]=Удалить пакеты, которые apt хранит после установки
+Policy=auth_self
+PolicyInactive=no
+Persistence=session

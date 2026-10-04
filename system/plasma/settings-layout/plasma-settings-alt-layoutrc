@@ -45,6 +45,7 @@ kcm_mobile_power=alt-battery,1
 kcm_regionandlang=alt-system,1
 kcm_mobile_time=alt-system,2
 kcm_mobile_info=alt-system,3
+kcm_altstorage=alt-system,4
 
 # Вариант для X11, на телефоне дублирует «Анимацию»
 kcm_animations_x11=hidden

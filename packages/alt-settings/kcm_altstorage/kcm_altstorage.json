@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "Used and free space, clearing caches",
+        "Description[ru]": "Занятое и свободное место, очистка кэша",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "drive-harddisk",
+        "Name": "Storage",
+        "Name[ru]": "Хранилище"
+    },
+    "X-KDE-Keywords": "storage,disk,space,cache,memory",
+    "X-KDE-Keywords[ru]": "хранилище,диск,место,память,кэш,очистка",
+    "X-KDE-System-Settings-Parent-Category": "system",
+    "X-KDE-Weight": 40
+}
