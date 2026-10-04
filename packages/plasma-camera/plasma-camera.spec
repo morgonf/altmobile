@@ -5,7 +5,7 @@
 
 Name: %rname
 Version: 2.1.1
-Release: alt2.mobile2
+Release: alt2.mobile3
 %K6init
 
 Group:  Video
@@ -28,6 +28,7 @@ Patch3: plasma-camera-single-instance.patch
 Patch4: plasma-camera-photo-enhance.patch
 Patch5: plasma-camera-zoom-fullsize.patch
 Patch6: plasma-camera-screen-rotation.patch
+Patch7: plasma-camera-switch-skip.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: qt6-declarative-devel qt6-svg-devel qt6-wayland-devel qt6-multimedia-devel qt6-sensors-devel
@@ -48,6 +49,7 @@ Simple camera application for mobile devices.
 %patch4 -p1
 %patch5 -p1
 %patch6 -p1
+%patch7 -p1
 
 %build
 %K6build
@@ -67,6 +69,10 @@ mv $M.new $M
 %_datadir/metainfo/*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile3
+- The switch button goes between the main and the front camera, the
+  second rear camera (IMX376) only from the settings
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile2
 - Auto-rotation: the viewfinder and tap to focus follow the screen
   orientation; in landscape the controls go to columns at the sides,

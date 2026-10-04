@@ -1,0 +1,39 @@
+--- a/src/plasmacamera.cpp	2026-10-04 11:36:42.519420623 +0300
++++ b/src/plasmacamera.cpp	2026-10-04 11:37:16.436021391 +0300
+@@ -125,6 +125,16 @@
+     setActive(false);
+ }
+ 
++// ALT Mobile: the switch button skips a camera that only repeats another
++// one of the same side. The second rear camera of the OnePlus 6T (IMX376)
++// has about the angle of the main one and no colour calibration; it stays
++// selectable in the settings.
++static bool skippedBySwitch(const std::shared_ptr<libcamera::Camera> &camera)
++{
++    const auto model = camera->properties().get(libcamera::properties::Model);
++    return model && *model == "imx376";
++}
++
+ bool PlasmaCamera::switchToNextCamera()
+ {
+     if (m_state != State::Running) {
+@@ -149,10 +159,15 @@
+         return false;
+     }
+ 
+-    // cyclic increment
+-    ++match;
+-    if (match == cameras.end()) {
+-        match = cameras.begin();
++    // cyclic increment, past the skipped cameras
++    for (size_t i = 0; i < cameras.size(); i++) {
++        ++match;
++        if (match == cameras.end()) {
++            match = cameras.begin();
++        }
++        if (!skippedBySwitch(*match)) {
++            break;
++        }
+     }
+ 
+     setCameraDevice( QString::fromStdString((*match)->id()) );
