@@ -1,9 +1,11 @@
 #!/usr/bin/python3
-# Виртуальный сенсорный экран для проверок: tap.py X Y [удержание_с]
+# Виртуальный сенсорный экран для проверок: tap.py X Y [удержание_с [X2 Y2]]
+# С X2 Y2 это свайп: палец идёт от X Y до X2 Y2 за время удержания.
 # Координаты в точках экрана 1080x2340. Нужен доступ к /dev/uinput.
 import fcntl, os, struct, sys, time
 X, Y = int(sys.argv[1]), int(sys.argv[2])
 HOLD = float(sys.argv[3]) if len(sys.argv) > 3 else 0.08
+X2, Y2 = (int(sys.argv[4]), int(sys.argv[5])) if len(sys.argv) > 5 else (X, Y)
 W, H = 1080, 2340
 EV_SYN, EV_KEY, EV_ABS = 0, 1, 3
 BTN_TOUCH = 0x14a
@@ -34,7 +36,13 @@ ev(EV_ABS, ABS_MT_SLOT, 0); ev(EV_ABS, ABS_MT_TRACKING_ID, 1)
 ev(EV_ABS, ABS_MT_POSITION_X, X); ev(EV_ABS, ABS_MT_POSITION_Y, Y)
 ev(EV_ABS, ABS_X, X); ev(EV_ABS, ABS_Y, Y)
 ev(EV_KEY, BTN_TOUCH, 1); ev(EV_SYN, 0, 0)
-time.sleep(HOLD)
+STEPS = 20 if (X2, Y2) != (X, Y) else 1
+for i in range(1, STEPS + 1):
+    time.sleep(HOLD / STEPS)
+    if STEPS > 1:
+        x = X + (X2 - X) * i // STEPS; y = Y + (Y2 - Y) * i // STEPS
+        ev(EV_ABS, ABS_MT_POSITION_X, x); ev(EV_ABS, ABS_MT_POSITION_Y, y)
+        ev(EV_ABS, ABS_X, x); ev(EV_ABS, ABS_Y, y); ev(EV_SYN, 0, 0)
 ev(EV_ABS, ABS_MT_TRACKING_ID, -1); ev(EV_KEY, BTN_TOUCH, 0); ev(EV_SYN, 0, 0)
 time.sleep(0.3)
 fcntl.ioctl(fd, UI_DEV_DESTROY)

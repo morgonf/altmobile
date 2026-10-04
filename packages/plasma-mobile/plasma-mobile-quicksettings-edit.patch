@@ -1,6 +1,6 @@
 diff -ruN -x .git a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
 --- a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml	2026-09-12 04:24:49.000000000 -0400
-+++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml	2026-10-04 17:03:35.362637934 -0400
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml	2026-10-04 18:29:30.545702996 -0400
 @@ -180,10 +180,17 @@
                  }
              }
@@ -39,9 +39,9 @@ diff -ruN -x .git a/components/mobileshell/qml/actiondrawer/private/QuickSetting
 +                PlasmaComponents.ToolTip.text: text
 +
 +                onClicked: {
-+                    // the settings module looks for the marker and opens
-+                    // its quick settings page
-+                    MobileShell.ShellUtil.executeCommand("sh -c 'touch \"${XDG_RUNTIME_DIR}/alt-mobile-open-quicksettings\"; exec plasma-open-settings kcm_mobileshell'");
++                    // a script leaves a marker for the settings module and
++                    // opens it (executeCommand does not handle shell quoting)
++                    MobileShell.ShellUtil.executeCommand("plasma-mobile-open-quicksettings");
 +                    actionDrawer.close();
 +                }
 +            }
@@ -49,6 +49,16 @@ diff -ruN -x .git a/components/mobileshell/qml/actiondrawer/private/QuickSetting
          }
  
          // Brightness slider
+diff -ruN -x .git a/kcms/mobileshell/CMakeLists.txt b/kcms/mobileshell/CMakeLists.txt
+--- a/kcms/mobileshell/CMakeLists.txt	2026-09-12 04:24:49.000000000 -0400
++++ b/kcms/mobileshell/CMakeLists.txt	2026-10-04 18:29:30.526703064 -0400
+@@ -11,3 +11,6 @@
+     KF6::KCMUtilsQuick
+ )
+ 
++
++# ALT Mobile: opened by the "Edit" button of the quick settings drawer
++install(PROGRAMS plasma-mobile-open-quicksettings DESTINATION ${KDE_INSTALL_BINDIR})
 diff -ruN -x .git a/kcms/mobileshell/kcm.cpp b/kcms/mobileshell/kcm.cpp
 --- a/kcms/mobileshell/kcm.cpp	2026-09-12 04:24:49.000000000 -0400
 +++ b/kcms/mobileshell/kcm.cpp	2026-10-04 17:01:57.435144149 -0400
@@ -94,18 +104,29 @@ diff -ruN -x .git a/kcms/mobileshell/kcm.cpp b/kcms/mobileshell/kcm.cpp
  };
  
  K_PLUGIN_CLASS_WITH_JSON(KCMMobileShell, "kcm_mobileshell.json")
+diff -ruN -x .git a/kcms/mobileshell/plasma-mobile-open-quicksettings b/kcms/mobileshell/plasma-mobile-open-quicksettings
+--- a/kcms/mobileshell/plasma-mobile-open-quicksettings	1969-12-31 19:00:00.000000000 -0500
++++ b/kcms/mobileshell/plasma-mobile-open-quicksettings	2026-10-04 18:29:30.524703071 -0400
+@@ -0,0 +1,5 @@
++#!/bin/sh
++# ALT Mobile: the "Edit" button of the quick settings drawer. The marker
++# makes kcm_mobileshell open its quick settings page.
++touch "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/alt-mobile-open-quicksettings"
++exec plasma-open-settings kcm_mobileshell
 diff -ruN -x .git a/kcms/mobileshell/ui/main.qml b/kcms/mobileshell/ui/main.qml
 --- a/kcms/mobileshell/ui/main.qml	2026-09-12 04:24:49.000000000 -0400
-+++ b/kcms/mobileshell/ui/main.qml	2026-10-04 17:01:57.436144134 -0400
-@@ -17,6 +17,13 @@
++++ b/kcms/mobileshell/ui/main.qml	2026-10-04 18:31:58.831739716 -0400
+@@ -17,6 +17,15 @@
  
      title: i18n("Shell")
  
-+    // ALT Mobile: opened from the "Edit" button of the quick settings drawer
-+    Component.onCompleted: {
-+        if (kcm.openQuickSettings) {
-+            Qt.callLater(() => kcm.push("QuickSettingsForm.qml"));
-+        }
++    // ALT Mobile: opened from the "Edit" button of the quick settings drawer.
++    // A push right on completion is lost, the module is not in the page
++    // stack yet.
++    Timer {
++        interval: 300
++        running: kcm.openQuickSettings
++        onTriggered: kcm.push("QuickSettingsForm.qml")
 +    }
 +
      topPadding: 0

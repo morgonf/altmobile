@@ -11,7 +11,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile4
+Release: alt1.mobile5
 %K6init
 
 Group: Graphical desktop/KDE
@@ -176,6 +176,12 @@ rm -f po/ru/mobileshell.po.tmp
 #/usr/share/dbus-1/interfaces/org.kde.plasmashell.*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile5
+- quick settings "Edit": a script (plasma-mobile-open-quicksettings) sets
+  the marker and opens Settings, ShellUtil.executeCommand does not handle
+  shell quoting; the settings module opens the quick settings page after
+  a short delay (a push on completion was lost)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile4
 - screen rotation quick setting: retry the orientation sensor for two
   minutes, it comes up after the shell now and the tile stayed hidden
