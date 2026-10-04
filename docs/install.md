@@ -38,7 +38,10 @@
    `scripts/local-repo.sh` собирает локальный репозиторий из
    `~altlinux/RPM/RPMS` и прописывает его в
    `/etc/apt/sources.list.d/altmobile.list`.
-2. `apt-get update`, затем установка наших версий, например
+2. Проще всего `scripts/install-built.sh` от root (сначала с `-n`, чтобы
+   посмотреть список): репозиторий, установка всех наших пакетов, которые
+   уже стоят в системе, уборка временных подмен, `rpm -V`. Затем
+   перезагрузка. Вручную: `apt-get update`, затем установка наших версий, например
    `apt-get install libcamera gst-plugins-libcamera1.0 plasma-camera
    iio-sensor-proxy plasma-settings gnome-compass alsa-ucm-conf-sdm845
    kernel-modules-altmobile-qualcomm-sdm845 kwin plasma-pa kscreen bluedevil
