@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "Log in to the phone from a computer",
+        "Description[ru]": "Вход на телефон с компьютера",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "network-connect",
+        "Name": "SSH access",
+        "Name[ru]": "Доступ по SSH"
+    },
+    "X-KDE-Keywords": "ssh,sshd,remote,login,terminal",
+    "X-KDE-Keywords[ru]": "ssh,sshd,удалённый,вход,терминал,компьютер",
+    "X-KDE-System-Settings-Parent-Category": "security",
+    "X-KDE-Weight": 60
+}

@@ -38,6 +38,7 @@ kcm_waydroidintegration=alt-apps,3
 kcm_screenlocker=alt-security,1
 kcm_users=alt-security,2
 kcm_kaccounts=alt-security,3
+kcm_altssh=alt-security,4
 
 kcm_mobile_power=alt-battery,1
 

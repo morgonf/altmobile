@@ -20,3 +20,25 @@
 
 Ловушки сборки: ECM без `QT_MAJOR_VERSION 6` ищет qmake Qt5,
 `kcmutils_add_qml_kcm` требует `CMAKE_LIBRARY_OUTPUT_DIRECTORY`.
+
+## kcm_altssh «Доступ по SSH» (04.10.2026)
+
+Раздел «Безопасность». Переключатель включает или выключает sshd сразу и
+при загрузке (`systemctl enable/disable --now`) через помощник KAuth
+`org.altmobile.ssh` (действие `set`, polkit спрашивает PIN-код,
+`auth_self`). Показывает команду для входа с адресами телефона, число
+ключей в `~/.ssh/authorized_keys`, разрешён ли вход по паролю и для root.
+Эти настройки читает тот же помощник (`sshd -T`, действие `status` без
+пароля): каталог `/etc/openssh` пользователю закрыт.
+
+`build.sh` собирает, `install.sh` от root ставит модуль и помощник
+(`cmake --install helper`: программа в `/usr/libexec/kf6/kauth`, служба
+D-Bus и политика polkit). В раскладке «Параметров» строка
+`kcm_altssh=alt-security,4` (`system/plasma/settings-layout`), без неё
+модуль не открывается.
+
+Ловушка проверки. Модуль, запущенный из ssh-сеанса, polkit считает
+удалённым и неактивным, и KAuth получает отказ (`AuthorizationDeniedError`)
+даже на действие без пароля. Запускать через пользовательский systemd, как
+запускает оболочка: `scripts/kcmshot.sh kcm_altssh`.
+

@@ -1,0 +1,21 @@
+[Domain]
+Name=SSH access
+Name[ru]=Доступ по SSH
+Icon=network-connect
+
+[org.altmobile.ssh.set]
+Name=Turn SSH access on or off
+Name[ru]=Включение и выключение доступа по SSH
+Description=Allow or forbid logging in to the phone over the network
+Description[ru]=Разрешить или запретить вход на телефон по сети
+Policy=auth_self
+PolicyInactive=no
+Persistence=session
+
+[org.altmobile.ssh.status]
+Name=Read the SSH server settings
+Name[ru]=Чтение настроек сервера SSH
+Description=Show whether password and root logins are allowed
+Description[ru]=Показать, разрешён ли вход по паролю и для root
+Policy=yes
+PolicyInactive=yes
