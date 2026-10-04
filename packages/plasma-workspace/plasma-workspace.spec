@@ -25,7 +25,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt2.mobile1
+Release: alt2.mobile2
 Epoch: 1
 %K6init
 
@@ -124,6 +124,7 @@ Source901: notifications-mobile.patch
 Source902: nighttime-mobile.patch
 Source903: componentchooser-mobile.patch
 Source904: colors-mobile.patch
+Source905: colors-accent-short.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: extra-cmake-modules
@@ -388,6 +389,7 @@ patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
 patch -p1 -s < %SOURCE903
 patch -p1 -s < %SOURCE904
+patch -p1 -s < %SOURCE905
 
 %build
 %K6build \
@@ -605,6 +607,10 @@ install -m0644 -p -D %SOURCE42 %buildroot/%_userunitdir/plasma-core.target.d/obe
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt2.mobile2
+- Colors: short text of the closed accent color list (the full one did
+  not fit the phone and was cut without an ellipsis)
+
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 1:6.7.5-alt2.mobile1
 - ALT Mobile: phone layout (FormCard) for the Region and Language,
 -   Notifications, Night Light, Default Applications and Colors modules

@@ -1,0 +1,13 @@
+--- a/kcms/colors/ui/AccentColorUI.qml
++++ b/kcms/colors/ui/AccentColorUI.qml
+@@ -31,6 +31,10 @@
+             i18nc("@item:inlistbox User-chosen custom accent color", "Custom accent color")
+         ]
+ 
++        // ALT Mobile: в закрытом списке короткая подпись, полная не
++        // помещалась на экран телефона и обрезалась без многоточия
++        displayText: ["По цветовой схеме", "По обоям", "Свой цвет"][currentIndex] ?? currentText
++
+         currentIndex: {
+             if (kcm.accentColorFromWallpaper) return 1;
+             return Qt.colorEqual(kcm.accentColor, "transparent") ? 0 : 2;
