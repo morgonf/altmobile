@@ -1,0 +1,72 @@
+From 2ea14b0f5ffb1d0ed602d8dac7f4056c3fa0fa59 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sun, 4 Oct 2026 13:20:57 -0400
+Subject: [PATCH] pipeline: simple: Prefer sensor modes with the aspect ratio
+ of the stream
+
+The smallest sensor mode that fits a processed stream was picked
+regardless of its aspect ratio. A 640x480 stream of the IMX519 came
+from its 1280x720 mode and a 1280x944 one from 1920x1080, with a
+different field of view and an exposure the tuning (line duration) does
+not cover. The rear camera flickered and was slow in dual video.
+
+Among the modes large enough, prefer those within 5 % of the aspect
+ratio of the largest processed stream, then the smallest. Both streams
+now come from the 2328x1748 binned mode.
+---
+ src/libcamera/pipeline/simple/simple.cpp | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
+index de220a9b3..865a05129 100644
+--- a/src/libcamera/pipeline/simple/simple.cpp
++++ b/src/libcamera/pipeline/simple/simple.cpp
+@@ -7,6 +7,7 @@
+  */
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <iterator>
+ #include <list>
+ #include <map>
+@@ -1266,11 +1267,24 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 	/*
+ 	 * Then pick, among the possible configuration for the pixel format,
+ 	 * the smallest sensor resolution that can accommodate all streams
+-	 * without upscaling.
++	 * without upscaling. A processed stream is scaled from the whole
++	 * capture, so prefer the sensor modes closest to its aspect ratio: a
++	 * small 4:3 stream would otherwise come from a smaller 16:9 mode, with
++	 * a cut or squeezed field of view.
+ 	 */
+ 	const SimpleCameraData::Configuration *maxPipeConfig = nullptr;
+ 	pipeConfig_ = nullptr;
+ 
++	auto aspectError = [&](const Size &size) {
++		if (maxProcessedStreamSize.isNull() || size.isNull())
++			return 0.0;
++		const double want = static_cast<double>(maxProcessedStreamSize.width) /
++				    maxProcessedStreamSize.height;
++		const double have = static_cast<double>(size.width) / size.height;
++		/* Modes within 5 % count as the same aspect ratio */
++		return std::round(std::abs(std::log(have / want)) * 20.0);
++	};
++
+ 	for (const SimpleCameraData::Configuration *pipeConfig : *configs) {
+ 		const Size &captureSize = pipeConfig->captureSize;
+ 		const Size &maxOutputSize = pipeConfig->outputSizes.max;
+@@ -1279,7 +1293,10 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 		    maxOutputSize.height >= maxProcessedStreamSize.height &&
+ 		    captureSize.width >= maxRawStreamSize.width &&
+ 		    captureSize.height >= maxRawStreamSize.height) {
+-			if (!pipeConfig_ || captureSize < pipeConfig_->captureSize)
++			const double error = aspectError(captureSize);
++			const double bestError = pipeConfig_ ? aspectError(pipeConfig_->captureSize) : 0.0;
++			if (!pipeConfig_ || error < bestError ||
++			    (error == bestError && captureSize < pipeConfig_->captureSize))
+ 				pipeConfig_ = pipeConfig;
+ 		}
+ 
+-- 
+2.50.1
+

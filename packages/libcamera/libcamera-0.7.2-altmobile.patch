@@ -1876,10 +1876,18 @@ index 629e1a32d..a05851692 100644
  
  std::string IPASoftSimple::logPrefix() const
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index e26f438d9..de220a9b3 100644
+index e26f438d9..865a05129 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
-@@ -33,6 +33,7 @@
+@@ -7,6 +7,7 @@
+  */
+ 
+ #include <algorithm>
++#include <cmath>
+ #include <iterator>
+ #include <list>
+ #include <map>
+@@ -33,6 +34,7 @@
  #include <libcamera/stream.h>
  
  #include "libcamera/internal/camera.h"
@@ -1887,7 +1895,7 @@ index e26f438d9..de220a9b3 100644
  #include "libcamera/internal/camera_manager.h"
  #include "libcamera/internal/camera_sensor.h"
  #include "libcamera/internal/camera_sensor_properties.h"
-@@ -48,6 +49,8 @@
+@@ -48,6 +50,8 @@
  #include "libcamera/internal/v4l2_subdevice.h"
  #include "libcamera/internal/v4l2_videodevice.h"
  
@@ -1896,7 +1904,7 @@ index e26f438d9..de220a9b3 100644
  namespace libcamera {
  
  LOG_DEFINE_CATEGORY(SimplePipeline)
-@@ -206,6 +209,7 @@ public:
+@@ -206,6 +210,7 @@ public:
  	void create(Request *request, bool metadataRequested);
  	void destroy(uint32_t frame);
  	void clear();
@@ -1904,7 +1912,7 @@ index e26f438d9..de220a9b3 100644
  
  	SimpleFrameInfo *find(uint32_t frame);
  
-@@ -230,6 +234,14 @@ void SimpleFrames::clear()
+@@ -230,6 +235,14 @@ void SimpleFrames::clear()
  	frameInfo_.clear();
  }
  
@@ -1919,7 +1927,7 @@ index e26f438d9..de220a9b3 100644
  SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
  {
  	auto info = frameInfo_.find(frame);
-@@ -280,7 +292,8 @@ class SimpleCameraData : public Camera::Private
+@@ -280,7 +293,8 @@ class SimpleCameraData : public Camera::Private
  public:
  	SimpleCameraData(SimplePipelineHandler *pipe,
  			 unsigned int numStreams,
@@ -1929,7 +1937,7 @@ index e26f438d9..de220a9b3 100644
  
  	bool isValid() const { return sensor_ != nullptr; }
  	SimplePipelineHandler *pipe();
-@@ -371,7 +384,7 @@ private:
+@@ -371,7 +385,7 @@ private:
  
  	void ispStatsReady(uint32_t frame, uint32_t bufferId);
  	void metadataReady(uint32_t frame, const ControlList &metadata);
@@ -1938,7 +1946,7 @@ index e26f438d9..de220a9b3 100644
  };
  
  class SimpleCameraConfiguration : public CameraConfiguration
-@@ -468,7 +481,8 @@ private:
+@@ -468,7 +482,8 @@ private:
  
  SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  				   unsigned int numStreams,
@@ -1948,7 +1956,7 @@ index e26f438d9..de220a9b3 100644
  	: Camera::Private(pipe), streams_(numStreams), rawStream_(nullptr)
  {
  	/*
-@@ -480,6 +494,13 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+@@ -480,6 +495,13 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  	 *
  	 * For instance, on the IPU-based i.MX6Q, the shortest path will skip
  	 * encoders and image converters, and will end in a CSI capture device.
@@ -1962,7 +1970,7 @@ index e26f438d9..de220a9b3 100644
  	 */
  	std::unordered_set<MediaEntity *> visited;
  	std::queue<std::tuple<MediaEntity *, MediaPad *>> queue;
-@@ -490,57 +511,70 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+@@ -490,57 +512,70 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  	MediaEntity *video = nullptr;
  	MediaPad *sinkPad;
  
@@ -2071,7 +2079,7 @@ index e26f438d9..de220a9b3 100644
  	}
  
  	if (!video)
-@@ -570,6 +604,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+@@ -570,6 +605,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
  		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
  	};
@@ -2084,7 +2092,7 @@ index e26f438d9..de220a9b3 100644
  	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
  
  	LOG(SimplePipeline, Debug)
-@@ -1041,7 +1081,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
+@@ -1041,7 +1082,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
  	tryCompleteRequest(info->request);
  }
  
@@ -2093,7 +2101,7 @@ index e26f438d9..de220a9b3 100644
  {
  	delayedCtrls_->push(sensorControls);
  	/*
-@@ -1052,10 +1092,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+@@ -1052,10 +1093,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
  	 * but it also bypasses delayedCtrls_, creating AGC regulation issues.
  	 * Both problems should be fixed.
  	 */
@@ -2119,7 +2127,45 @@ index e26f438d9..de220a9b3 100644
  }
  
  /* Retrieve all source pads connected to a sink pad through active routes. */
-@@ -1605,6 +1656,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+@@ -1215,11 +1267,24 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 	/*
+ 	 * Then pick, among the possible configuration for the pixel format,
+ 	 * the smallest sensor resolution that can accommodate all streams
+-	 * without upscaling.
++	 * without upscaling. A processed stream is scaled from the whole
++	 * capture, so prefer the sensor modes closest to its aspect ratio: a
++	 * small 4:3 stream would otherwise come from a smaller 16:9 mode, with
++	 * a cut or squeezed field of view.
+ 	 */
+ 	const SimpleCameraData::Configuration *maxPipeConfig = nullptr;
+ 	pipeConfig_ = nullptr;
+ 
++	auto aspectError = [&](const Size &size) {
++		if (maxProcessedStreamSize.isNull() || size.isNull())
++			return 0.0;
++		const double want = static_cast<double>(maxProcessedStreamSize.width) /
++				    maxProcessedStreamSize.height;
++		const double have = static_cast<double>(size.width) / size.height;
++		/* Modes within 5 % count as the same aspect ratio */
++		return std::round(std::abs(std::log(have / want)) * 20.0);
++	};
++
+ 	for (const SimpleCameraData::Configuration *pipeConfig : *configs) {
+ 		const Size &captureSize = pipeConfig->captureSize;
+ 		const Size &maxOutputSize = pipeConfig->outputSizes.max;
+@@ -1228,7 +1293,10 @@ CameraConfiguration::Status SimpleCameraConfiguration::validate()
+ 		    maxOutputSize.height >= maxProcessedStreamSize.height &&
+ 		    captureSize.width >= maxRawStreamSize.width &&
+ 		    captureSize.height >= maxRawStreamSize.height) {
+-			if (!pipeConfig_ || captureSize < pipeConfig_->captureSize)
++			const double error = aspectError(captureSize);
++			const double bestError = pipeConfig_ ? aspectError(pipeConfig_->captureSize) : 0.0;
++			if (!pipeConfig_ || error < bestError ||
++			    (error == bestError && captureSize < pipeConfig_->captureSize))
+ 				pipeConfig_ = pipeConfig;
+ 		}
+ 
+@@ -1605,6 +1673,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
  	} else {
  		ipa::soft::IPAConfigInfo configInfo;
  		configInfo.sensorControls = data->sensor_->controls();
@@ -2132,7 +2178,7 @@ index e26f438d9..de220a9b3 100644
  		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
  	}
  }
-@@ -1727,8 +1784,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
+@@ -1727,8 +1801,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
  
  	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
  
@@ -2152,7 +2198,7 @@ index e26f438d9..de220a9b3 100644
  	data->conversionBuffers_.clear();
  
  	releasePipeline(data);
-@@ -1925,7 +1992,8 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
+@@ -1925,7 +2009,8 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
  
  	for (MediaEntity *sensor : sensors) {
  		std::unique_ptr<SimpleCameraData> data =

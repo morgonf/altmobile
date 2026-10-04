@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile6
+Release: alt1.mobile7
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -172,6 +172,11 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile7
+- simple pipeline: prefer sensor modes with the aspect ratio of the
+  stream; small 4:3 streams of the IMX519 came from its 16:9 modes
+  (flicker and a slow rear camera in dual video)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile6
 - GPU debayer of packed Bayer: Malvar-He-Cutler demosaic mixed with the
   bilinear one by demosaicSharpness (tuning file, 0.5 for the IMX519,
