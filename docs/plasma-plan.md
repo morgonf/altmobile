@@ -180,7 +180,7 @@ PIN, без окон plasma-nm, мобильный интернет подним
    проверено, apt предлагает сборки mobileN вместо Sisyphus). Осталось
    перевести в пакеты модули q6voice, свои модули настроек, тему и
    службы (список в конце `docs/install.md`).
-2. «Цвета»: подсказка поиска «Search…». Kirigami вообще не подгружает свой
+2. ~~«Цвета»: подсказка поиска «Search…».~~ Сделано 04.10: kf6-kirigami alt1.mobile1 (`kirigami-translations-retranslate.patch`) установлен, на снимке «Поиск…». Kirigami вообще не подгружает свой
    перевод `libkirigami6_qt.qm`: файл и строка есть, загрузчик ECM в
    libKirigami.so.6 есть (`qAddPreRoutine`), но strace не показывает ни
    одной попытки открыть `.qm`. Касается всех встроенных строк Kirigami.
