@@ -1,0 +1,17 @@
+{
+    "KPlugin": {
+        "Description": "Location services and GPS",
+        "Description[ru]": "Определение местоположения и GPS",
+        "FormFactors": [
+            "handset",
+            "tablet"
+        ],
+        "Icon": "mark-location",
+        "Name": "Location",
+        "Name[ru]": "Местоположение"
+    },
+    "X-KDE-Keywords": "location,gps,geoclue,position,maps",
+    "X-KDE-Keywords[ru]": "местоположение,gps,геолокация,координаты,карты,спутники",
+    "X-KDE-System-Settings-Parent-Category": "security",
+    "X-KDE-Weight": 50
+}
