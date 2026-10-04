@@ -1,0 +1,58 @@
+--- a/src/iio-sensor-proxy.c	2026-10-04 03:33:07.468942248 -0400
++++ b/src/iio-sensor-proxy.c	2026-10-04 03:33:07.517941159 -0400
+@@ -336,6 +336,44 @@
+ 				       props_changed, NULL);
+ }
+ 
++/* ALT Mobile: whether a sensor exists is public, and clients such as
++ * KWin watch HasAccelerometer without claiming the sensor (it only claims
++ * it once auto-rotation is on). Sent per client only, the change never
++ * reached them when the sensors appeared after the bus name, so tell
++ * everyone; readings still go only to the claiming clients. */
++static void
++broadcast_has_properties (SensorData     *data,
++			  PropertiesMask  mask)
++{
++	GVariantBuilder props_builder;
++	gboolean compass = (mask & PROP_HAS_COMPASS) != 0;
++
++	g_variant_builder_init (&props_builder, G_VARIANT_TYPE ("a{sv}"));
++	if (mask & PROP_HAS_ACCELEROMETER)
++		g_variant_builder_add (&props_builder, "{sv}", "HasAccelerometer",
++				       g_variant_new_boolean (driver_type_exists (data, DRIVER_TYPE_ACCEL)));
++	if (mask & PROP_HAS_AMBIENT_LIGHT)
++		g_variant_builder_add (&props_builder, "{sv}", "HasAmbientLight",
++				       g_variant_new_boolean (driver_type_exists (data, DRIVER_TYPE_LIGHT)));
++	if (mask & PROP_HAS_PROXIMITY)
++		g_variant_builder_add (&props_builder, "{sv}", "HasProximity",
++				       g_variant_new_boolean (driver_type_exists (data, DRIVER_TYPE_PROXIMITY)));
++	if (compass)
++		g_variant_builder_add (&props_builder, "{sv}", "HasCompass",
++				       g_variant_new_boolean (driver_type_exists (data, DRIVER_TYPE_COMPASS)));
++
++	g_dbus_connection_emit_signal (data->connection,
++				       NULL,
++				       compass ? SENSOR_PROXY_COMPASS_DBUS_PATH : SENSOR_PROXY_DBUS_PATH,
++				       "org.freedesktop.DBus.Properties",
++				       "PropertiesChanged",
++				       g_variant_new ("(s@a{sv}@as)",
++						      compass ? SENSOR_PROXY_COMPASS_IFACE_NAME : SENSOR_PROXY_IFACE_NAME,
++						      g_variant_builder_end (&props_builder),
++						      g_variant_new_strv (NULL, 0)),
++				       NULL);
++}
++
+ static void
+ send_dbus_event (SensorData     *data,
+ 		 PropertiesMask  mask)
+@@ -349,6 +387,10 @@
+ 	g_assert (data->connection);
+ 	g_assert ((mask & PROP_ALL) == 0 || (mask & PROP_ALL_COMPASS) == 0);
+ 
++	if (mask & (PROP_HAS_ACCELEROMETER | PROP_HAS_AMBIENT_LIGHT |
++		    PROP_HAS_PROXIMITY | PROP_HAS_COMPASS))
++		broadcast_has_properties (data, mask);
++
+ 	/* Make a list of the events each client for each sensor
+ 	 * is interested in */
+ 	ht = g_hash_table_new (g_str_hash, g_str_equal);
