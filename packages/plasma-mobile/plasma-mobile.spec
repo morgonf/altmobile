@@ -11,7 +11,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile3
+Release: alt1.mobile4
 %K6init
 
 Group: Graphical desktop/KDE
@@ -40,7 +40,9 @@ Source902: info-device-name.patch
 Source903: plasma-mobile-shell-qml.patch
 Source904: plasma-mobile-lockscreen-notifications.patch
 Source905: plasma-mobile-notifications-i18nd.patch
+Source906: plasma-mobile-quicksettings-edit.patch
 Source950: kcm_mobile_info.ru-add.po
+Source951: plasma-mobile-shell.ru-add.po
 
 BuildRequires(pre): rpm-build-kf6 rpm-build-ubt
 BuildRequires: libvulkan-devel libdrm-devel
@@ -111,9 +113,13 @@ patch -p1 -s < %SOURCE902
 patch -p1 -s < %SOURCE903
 patch -p1 -s < %SOURCE904
 patch -p1 -s < %SOURCE905
+patch -p1 -s < %SOURCE906
 msgcat --use-first %SOURCE950 po/ru/kcm_mobile_info.po > po/ru/kcm_mobile_info.po.tmp
 cat po/ru/kcm_mobile_info.po.tmp > po/ru/kcm_mobile_info.po
 rm -f po/ru/kcm_mobile_info.po.tmp
+msgcat --use-first %SOURCE951 po/ru/plasma_org.kde.plasma.private.mobileshell.po > po/ru/mobileshell.po.tmp
+cat po/ru/mobileshell.po.tmp > po/ru/plasma_org.kde.plasma.private.mobileshell.po
+rm -f po/ru/mobileshell.po.tmp
 
 %build
 %K6build \
@@ -170,6 +176,12 @@ rm -f po/ru/kcm_mobile_info.po.tmp
 #/usr/share/dbus-1/interfaces/org.kde.plasmashell.*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile4
+- screen rotation quick setting: retry the orientation sensor for two
+  minutes, it comes up after the shell now and the tile stayed hidden
+- quick settings drawer: an "Edit" button opens Settings, Shell, Quick
+  Settings directly
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile3
 - Lock screen notifications: show, hide the content (application and time
   only) or hide (plasmamobilerc [Lockscreen] lockscreenNotifications,

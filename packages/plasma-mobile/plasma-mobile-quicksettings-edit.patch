@@ -1,0 +1,162 @@
+diff -ruN -x .git a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml	2026-09-12 04:24:49.000000000 -0400
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml	2026-10-04 17:03:35.362637934 -0400
+@@ -180,10 +180,17 @@
+                 }
+             }
+ 
++            // ALT Mobile: page dots in the middle, a button to edit the
++            // quick settings at the right
++            Item {
++                Layout.fillWidth: true
++                Layout.topMargin: Kirigami.Units.smallSpacing
++                implicitHeight: Math.max(editButton.implicitHeight, indicatorLoader.implicitHeight)
++
+             Loader {
+                 id: indicatorLoader
+ 
+-                Layout.alignment: Qt.AlignCenter
++                anchors.centerIn: parent
+                 Layout.topMargin: Kirigami.Units.smallSpacing
+                 Layout.leftMargin: Kirigami.Units.smallSpacing
+                 Layout.rightMargin: Kirigami.Units.smallSpacing
+@@ -209,6 +216,28 @@
+                     }
+                 }
+             }
++
++            PlasmaComponents.ToolButton {
++                id: editButton
++                anchors.right: parent.right
++                anchors.rightMargin: Kirigami.Units.smallSpacing
++                anchors.verticalCenter: parent.verticalCenter
++                visible: !actionDrawer.restrictedPermissions
++                icon.name: "document-edit"
++                text: i18ndc("plasma_org.kde.plasma.private.mobileshell", "@action:button edit the quick settings", "Edit")
++                display: PlasmaComponents.ToolButton.IconOnly
++
++                PlasmaComponents.ToolTip.visible: pressed
++                PlasmaComponents.ToolTip.text: text
++
++                onClicked: {
++                    // the settings module looks for the marker and opens
++                    // its quick settings page
++                    MobileShell.ShellUtil.executeCommand("sh -c 'touch \"${XDG_RUNTIME_DIR}/alt-mobile-open-quicksettings\"; exec plasma-open-settings kcm_mobileshell'");
++                    actionDrawer.close();
++                }
++            }
++            }
+         }
+ 
+         // Brightness slider
+diff -ruN -x .git a/kcms/mobileshell/kcm.cpp b/kcms/mobileshell/kcm.cpp
+--- a/kcms/mobileshell/kcm.cpp	2026-09-12 04:24:49.000000000 -0400
++++ b/kcms/mobileshell/kcm.cpp	2026-10-04 17:01:57.435144149 -0400
+@@ -9,15 +9,33 @@
+ #include <KQuickManagedConfigModule>
+ #include <KSharedConfig>
+ 
++#include <QFile>
++#include <QStandardPaths>
++
+ class KCMMobileShell : public KQuickManagedConfigModule
+ {
+     Q_OBJECT
++    // ALT Mobile: the "Edit" button of the quick settings drawer leaves a
++    // marker in the runtime directory, the module then opens the quick
++    // settings page directly (plasma-settings has no way to pass arguments)
++    Q_PROPERTY(bool openQuickSettings READ openQuickSettings CONSTANT)
+ 
+ public:
+     KCMMobileShell(QObject *parent, const KPluginMetaData &data)
+         : KQuickManagedConfigModule(parent, data)
+     {
+         setButtons({});
++
++        const QString marker = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + QStringLiteral("/alt-mobile-open-quicksettings");
++        m_openQuickSettings = QFile::exists(marker);
++        if (m_openQuickSettings) {
++            QFile::remove(marker);
++        }
++    }
++
++    bool openQuickSettings() const
++    {
++        return m_openQuickSettings;
+     }
+ 
+ Q_SIGNALS:
+@@ -25,6 +43,7 @@
+ 
+ private:
+     KSharedConfig::Ptr m_config;
++    bool m_openQuickSettings = false;
+ };
+ 
+ K_PLUGIN_CLASS_WITH_JSON(KCMMobileShell, "kcm_mobileshell.json")
+diff -ruN -x .git a/kcms/mobileshell/ui/main.qml b/kcms/mobileshell/ui/main.qml
+--- a/kcms/mobileshell/ui/main.qml	2026-09-12 04:24:49.000000000 -0400
++++ b/kcms/mobileshell/ui/main.qml	2026-10-04 17:01:57.436144134 -0400
+@@ -17,6 +17,13 @@
+ 
+     title: i18n("Shell")
+ 
++    // ALT Mobile: opened from the "Edit" button of the quick settings drawer
++    Component.onCompleted: {
++        if (kcm.openQuickSettings) {
++            Qt.callLater(() => kcm.push("QuickSettingsForm.qml"));
++        }
++    }
++
+     topPadding: 0
+     bottomPadding: 0
+     leftPadding: 0
+diff -ruN -x .git a/quicksettings/screenrotation/screenrotationutil.cpp b/quicksettings/screenrotation/screenrotationutil.cpp
+--- a/quicksettings/screenrotation/screenrotationutil.cpp	2026-09-12 04:24:49.000000000 -0400
++++ b/quicksettings/screenrotation/screenrotationutil.cpp	2026-10-04 16:58:21.741461721 -0400
+@@ -22,6 +22,27 @@
+ {
+     connect(m_sensor, &QOrientationSensor::activeChanged, this, &ScreenRotationUtil::availableChanged);
+ 
++    // ALT Mobile: the orientation sensor may come up after the shell (the
++    // session no longer waits for iio-sensor-proxy). Retry the backend for
++    // a while, otherwise the quick setting stays hidden for the session.
++    m_available = m_sensor->connectToBackend();
++    if (!m_available) {
++        auto *retry = new QTimer(this);
++        retry->setInterval(2000);
++        connect(retry, &QTimer::timeout, this, [this, retry]() {
++            if (m_sensor->connectToBackend()) {
++                m_available = true;
++                retry->stop();
++                retry->deleteLater();
++                Q_EMIT availableChanged();
++            } else if (++m_availableRetries >= 60) {
++                retry->stop();
++                retry->deleteLater();
++            }
++        });
++        retry->start();
++    }
++
+     connect(KScreen::ConfigMonitor::instance(), &KScreen::ConfigMonitor::configurationChanged, this, [this]() {
+         Q_EMIT autoScreenRotationEnabledChanged();
+     });
+@@ -78,7 +99,7 @@
+ 
+ bool ScreenRotationUtil::isAvailable()
+ {
+-    return m_sensor->connectToBackend();
++    return m_available;
+ }
+ 
+ void ScreenRotationUtil::actuallySetAutoScreenRotationEnabled(bool value)
+diff -ruN -x .git a/quicksettings/screenrotation/screenrotationutil.h b/quicksettings/screenrotation/screenrotationutil.h
+--- a/quicksettings/screenrotation/screenrotationutil.h	2026-09-12 04:24:49.000000000 -0400
++++ b/quicksettings/screenrotation/screenrotationutil.h	2026-10-04 16:58:21.742461706 -0400
+@@ -33,4 +33,5 @@
+     QOrientationSensor *m_sensor{nullptr};
+ 
+     bool m_available{false};
++    int m_availableRetries{0};
+ };

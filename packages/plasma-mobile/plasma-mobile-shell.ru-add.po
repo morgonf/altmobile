@@ -1,0 +1,8 @@
+# ALT Mobile: перевод для plasma-mobile-quicksettings-edit.patch
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgctxt "@action:button edit the quick settings"
+msgid "Edit"
+msgstr "Изменить"
