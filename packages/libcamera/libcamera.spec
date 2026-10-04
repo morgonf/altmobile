@@ -175,6 +175,8 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile5
 - IMX371, IMX376 tuning: colour matrices borrowed from the IMX519 (faded
   colours and grey shadows on the front camera without a CCM)
+- soft IPA: exposureBias (Agc) and contrast (Adjust) in the tuning file;
+  IMX371 one stop darker with contrast 1.3 (hazy, overexposed picture)
 
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile4
 - software ISP: cancel frames queued while stopped (they still reached the
