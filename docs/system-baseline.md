@@ -139,3 +139,17 @@ kaccounts, plasma-keyboard, libssc), удалений нет. `rpm -V` чист�
 его (Auto Rotate Policy always) благодаря рассылке свойств Has* в
 iio-sensor-proxy alt1.3. Модули камер, фокуса и NFC грузятся из пакета
 (`updates/`), шрифт консоли `ter-v32n` применён, упавших служб нет.
+
+## Почему сон стоит 40 мА (04.10.2026 вечер)
+
+`/sys/kernel/debug/qcom_stats` после 60 с сна (`rtcwake -m freeze`):
+`aosd` и `cxsd` по 0, то есть SoC ни разу не дошёл до общего сна (AOSS,
+отключение XO) и до отключения питания CX. Сопроцессоры засыпают сами
+(счётчики modem, adsp, cdsp, slpi растут), кластер процессоров во сне
+уходит в `cluster-sleep-0` (PSCI OSI, в `pm_genpd` S2idle 1). Значит,
+во сне кто-то держит голос за XO или CX. В бодрствовании включены GDSC
+`usb30_prim_gdsc` (кабеля нет), `ufs_card_gdsc` (слота карты UFS у 6T
+нет), `mdss_gdsc` и блоки MMU. Нормальный sdm845 во сне доходит до
+`cxsd` и тратит около 5–10 мА. Кого искать: включённые во сне часы
+(`clk_summary`), голоса interconnect и регуляторов RPMh, драйверы без
+runtime PM.
