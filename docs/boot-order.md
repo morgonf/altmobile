@@ -17,7 +17,7 @@
 | 2. DSP | `hexagonrpcd-sdsp` | файлы реестра для процессора датчиков SLPI | пакет ALT, `system/sensors/` |
 | 2. DSP | `hexagonrpcd-adsp-audio`, `configure-q6voiced`, `q6voiced`, `q6echo-activate` | звонки и эхоподавление | `system/`, `kernel/` |
 | 3. Датчики | `iio-sensor-proxy` (с `ExecStartPre=alt-sensors-wait.sh`) | запуск, только когда акселерометр реально отвечает (~30 с после старта) | `system/sensors/` |
-| 4. Сеанс | `plasma-mobile.service` | после `iio-sensor-proxy`, иначе KWin читает ориентацию `undefined` и автоповорот не работает | `system/plasma/`, `system/sensors/` |
+| 4. Сеанс | `plasma-mobile.service` | запускает `iio-sensor-proxy`, но не ждёт его (с 04.10.2026, iio-sensor-proxy 3.9-alt1.3 сообщает KWin о датчиках, когда они появятся) | `system/plasma/`, `system/sensors/` |
 | 5. Пользователь | `alt-sim-pin-notify` (user), агент geoclue (autostart) | уведомление о запертой SIM, доступ программ к GPS | `system/sim/`, `system/gps/` |
 
 ## Правила, найденные на практике
@@ -27,8 +27,9 @@
   (`Boot failed: -110`), датчики возвращает только перезагрузка телефона.
 - `hexagonrpcd-sdsp` стартует на ~12-й секунде, данные датчиков идут с
   ~30-й: всё, что читает датчики, должно ждать `alt-sensors-wait.sh`.
-- Слой 4 ждёт слой 3: экран Plasma появляется на 10-20 секунд позже, зато
-  автоповорот работает с первого включения.
+- До 04.10.2026 слой 4 ждал слой 3: экран Plasma появлялся на 10-20 секунд
+  позже ради автоповорота с первого включения. Теперь не ждёт, проверка
+  при ближайшей перезагрузке.
 
 ## Остатки Phosh в автозапуске
 
