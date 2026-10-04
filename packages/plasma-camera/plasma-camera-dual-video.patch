@@ -1,16 +1,17 @@
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
-index 205d61c..58b6c8c 100644
+index 205d61c..6aefaaa 100644
 --- a/src/CMakeLists.txt
 +++ b/src/CMakeLists.txt
-@@ -16,6 +16,7 @@ set(plasma-camera_SRCS
+@@ -16,6 +16,8 @@ set(plasma-camera_SRCS
      plasmacamera/path.cpp
      plasmacamera/settings.cpp
      plasmacamera/worker.cpp
 +    plasmacamera/gstrecorder.cpp
++    plasmacamera/dualcompositor.cpp
      resources.qrc
  )
  
-@@ -40,6 +41,7 @@ target_link_libraries(
+@@ -40,6 +42,7 @@ target_link_libraries(
  
  find_package(PkgConfig)
  pkg_check_modules(LIBCAMERA REQUIRED IMPORTED_TARGET libcamera)
@@ -18,7 +19,7 @@ index 205d61c..58b6c8c 100644
  include_directories(${CMAKE_SOURCE_DIR} ${LIBCAMERA_INCLUDE_DIRS})
  
  kconfig_add_kcfg_files(plasma-camera GENERATE_MOC camerasettings.kcfgc)
-@@ -63,7 +65,7 @@ if(ANDROID)
+@@ -63,7 +66,7 @@ if(ANDROID)
  
      ecm_add_android_apk(plasma-camera ANDROID_DIR ${CMAKE_SOURCE_DIR})
  else()
@@ -175,21 +176,19 @@ index 8070691..4a4deea 100644
                  Qt.openUrlExternally(preview.imageUrl);
          }
 diff --git a/src/plasmacamera.cpp b/src/plasmacamera.cpp
-index 5c358de..d6e4303 100644
+index 5c358de..2013665 100644
 --- a/src/plasmacamera.cpp
 +++ b/src/plasmacamera.cpp
-@@ -8,6 +8,10 @@
+@@ -8,6 +8,8 @@
  #include <sys/mman.h>
  #include <plasmacameramanager.h>
  
-+#include <QPainter>
-+
-+static QImage uprightImage(const QImage &frame, int degrees, bool mirror);
++#include "plasmacamera/dualcompositor.h"
 +
  #include "plasmacamera.h"
  
  PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
-@@ -53,8 +57,11 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+@@ -53,8 +55,28 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
          setBusy(false);
      });
  
@@ -198,18 +197,35 @@ index 5c358de..d6e4303 100644
 +    // resend frames that we received from the camera worker, combined with
 +    // the second camera in dual video
 +    connect(m_cameraWorker, &Worker::viewFinderFrame, this, [this](const QImage &frame) {
-+        Q_EMIT viewFinderFrame(m_dualMode > 0 && !frame.isNull() ? composeDual(frame) : frame);
++        if (m_dualMode == 0 || frame.isNull()) {
++            Q_EMIT viewFinderFrame(frame);
++            return;
++        }
++        // Dual video: combined in the compositor thread. A frame is skipped
++        // while two are still in work.
++        if (m_compositor->pendingFrames >= 2) {
++            return;
++        }
++        m_compositor->pendingFrames++;
++        DualCompositor *compositor = m_compositor;
++        const int mode = m_dualMode;
++        const bool swapped = m_dualSwapped;
++        const int degrees = m_softwareRotationDegrees;
++        const bool mirror = m_mirrorOutput;
++        QMetaObject::invokeMethod(compositor, [compositor, frame, mode, swapped, degrees, mirror]() {
++            compositor->compose(frame, mode, swapped, degrees, mirror);
++        }, Qt::QueuedConnection);
 +    });
      connect(m_cameraWorker, &Worker::stillCaptureFrames, this, &PlasmaCamera::stillCaptureFrames);
      connect(m_cameraWorker, &Worker::stillCaptureFrames, this, [this]() {
          // Finished taking image
-@@ -88,6 +95,24 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+@@ -88,6 +110,45 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
      }, Qt::QueuedConnection);
  
      m_cameraThread->start();
 +
 +    // ALT Mobile: the second camera of dual video, in its own thread. Its
-+    // frames are kept upright for composeDual().
++    // frames go to the compositor (DualCompositor).
 +    m_pipWorker = new Worker();
 +    m_pipThread = new QThread();
 +    m_pipWorker->moveToThread(m_pipThread);
@@ -219,24 +235,48 @@ index 5c358de..d6e4303 100644
 +    connect(m_pipThread, &QThread::finished, m_pipThread, &QThread::deleteLater);
 +    connect(m_pipWorker, &Worker::errorOccurred, this, &PlasmaCamera::setError);
 +    connect(m_pipWorker, &Worker::viewFinderFrame, this, [this](const QImage &frame) {
-+        if (m_dualMode > 0 && !frame.isNull()) {
-+            m_pipFrame = uprightImage(frame, m_pipRotationDegrees, m_pipMirror);
++        if (m_dualMode == 0 || frame.isNull() || m_compositor->pendingSecond >= 1) {
++            return;
 +        }
++        m_compositor->pendingSecond++;
++        DualCompositor *compositor = m_compositor;
++        const int degrees = m_pipRotationDegrees;
++        const bool mirror = m_pipMirror;
++        QMetaObject::invokeMethod(compositor, [compositor, frame, degrees, mirror]() {
++            compositor->setSecondFrame(frame, degrees, mirror);
++        }, Qt::QueuedConnection);
 +    });
++
++    // The compositor of dual video in its own thread
++    m_compositor = new DualCompositor();
++    m_composeThread = new QThread();
++    m_compositor->moveToThread(m_composeThread);
++    connect(m_composeThread, &QThread::finished, m_compositor, &QObject::deleteLater);
++    connect(m_compositor, &DualCompositor::composed, this, [this](const QImage &frame, const QRectF &smallRect) {
++        if (m_dualMode == 0) {
++            return;
++        }
++        m_pipRect = smallRect;
++        Q_EMIT viewFinderFrame(frame);
++    });
++    m_composeThread->start();
 +    connect(this, &PlasmaCamera::cameraDeviceChanged, this, &PlasmaCamera::dualAvailableChanged);
 +    m_pipThread->start();
  }
  
  PlasmaCamera::~PlasmaCamera()
-@@ -103,6 +128,7 @@ PlasmaCamera::~PlasmaCamera()
+@@ -103,6 +164,10 @@ PlasmaCamera::~PlasmaCamera()
      // shutdown in worker will emit finished() which is connected to quit() in the thread
      // BlockingQueuedConnection allows the Q_EMIT in shutdown to go through while QueuedConnection with wait does not
      QMetaObject::invokeMethod(m_cameraWorker, "shutdown", Qt::BlockingQueuedConnection);
 +    QMetaObject::invokeMethod(m_pipWorker, "shutdown", Qt::BlockingQueuedConnection);
++    m_composeThread->quit();
++    m_composeThread->wait();
++    delete m_composeThread;
  }
  
  bool PlasmaCamera::error() const
-@@ -125,6 +151,72 @@ void PlasmaCamera::stopCamera()
+@@ -125,6 +190,43 @@ void PlasmaCamera::stopCamera()
      setActive(false);
  }
  
@@ -277,39 +317,10 @@ index 5c358de..d6e4303 100644
 +    }
 +}
 +
-+// A deep copy of the frame as shown: mirrored (front cameras), then turned
-+// clockwise. The viewfinder frames point into camera buffers.
-+static QImage uprightImage(const QImage &frame, int degrees, bool mirror)
-+{
-+    QImage image = mirror ? frame.mirrored() : frame.copy();
-+    if (degrees != 0) {
-+        image = image.transformed(QTransform().rotate(degrees));
-+    }
-+    if (image.format() != QImage::Format_RGB32 && image.format() != QImage::Format_ARGB32_Premultiplied) {
-+        image = image.convertToFormat(QImage::Format_RGB32);
-+    }
-+    return image;
-+}
-+
-+// Draw the image into the target, cropped to its aspect ratio
-+static void drawCover(QPainter &painter, const QImage &image, const QRectF &target)
-+{
-+    QRectF source(image.rect());
-+    const qreal targetAspect = target.width() / target.height();
-+    if (source.width() / source.height() > targetAspect) {
-+        const qreal w = source.height() * targetAspect;
-+        source = QRectF((source.width() - w) / 2, 0, w, source.height());
-+    } else {
-+        const qreal h = source.width() / targetAspect;
-+        source = QRectF(0, (source.height() - h) / 2, source.width(), h);
-+    }
-+    painter.drawImage(target, image, source);
-+}
-+
  // ALT Mobile: the switch button skips a camera that only repeats another
  // one of the same side. The second rear camera of the OnePlus 6T (IMX376)
  // has about the angle of the main one and no colour calibration; it stays
-@@ -141,6 +233,12 @@ bool PlasmaCamera::switchToNextCamera()
+@@ -141,6 +243,12 @@ bool PlasmaCamera::switchToNextCamera()
          return false;
      }
  
@@ -322,7 +333,7 @@ index 5c358de..d6e4303 100644
      const std::vector<std::shared_ptr<libcamera::Camera>> cameras = m_cameraManager->cameras();
      if (cameras.empty()) {
          qDebug() << "Failed to find any cameras";
-@@ -213,7 +311,8 @@ QCameraFormat PlasmaCamera::cameraFormat() const
+@@ -213,7 +321,8 @@ QCameraFormat PlasmaCamera::cameraFormat() const
  
  bool PlasmaCamera::captureImage()
  {
@@ -332,7 +343,7 @@ index 5c358de..d6e4303 100644
          return false;
      }
  
-@@ -273,14 +372,15 @@ float PlasmaCamera::fps() const
+@@ -273,14 +382,15 @@ float PlasmaCamera::fps() const
      return m_fps;
  }
  
@@ -350,7 +361,7 @@ index 5c358de..d6e4303 100644
  }
  
  void PlasmaCamera::setScreenRotationDegrees(int degrees)
-@@ -290,7 +390,7 @@ void PlasmaCamera::setScreenRotationDegrees(int degrees)
+@@ -290,7 +400,7 @@ void PlasmaCamera::setScreenRotationDegrees(int degrees)
  
  bool PlasmaCamera::mirrorOutput() const
  {
@@ -359,7 +370,7 @@ index 5c358de..d6e4303 100644
  }
  
  bool PlasmaCamera::nightMode() const
-@@ -400,6 +500,8 @@ void PlasmaCamera::setCameraDevice(const QString &cameraDeviceId)
+@@ -400,6 +510,8 @@ void PlasmaCamera::setCameraDevice(const QString &cameraDeviceId)
      }
  
      qDebug() << "Using camera: " << cameraDeviceId;
@@ -368,7 +379,7 @@ index 5c358de..d6e4303 100644
      m_cameraId = cameraDeviceId;
  
      startCameraInternal();
-@@ -462,6 +564,23 @@ void PlasmaCamera::setExposureValue(const float exposureValue)
+@@ -462,6 +574,23 @@ void PlasmaCamera::setExposureValue(const float exposureValue)
  
  void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
  {
@@ -392,7 +403,7 @@ index 5c358de..d6e4303 100644
      if (!m_settings.canSetAfWindow() || m_activeArea.isNull()) {
          return;
      }
-@@ -470,23 +589,9 @@ void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
+@@ -470,23 +599,9 @@ void PlasmaCamera::focusAt(qreal u, qreal v, const bool lock)
      if (m_mirrorOutput) {
          u = 1.0 - u;
      }
@@ -419,7 +430,7 @@ index 5c358de..d6e4303 100644
  
      // A window of a fifth of the frame around the point
      const unsigned int w = m_activeArea.width / 5;
-@@ -663,6 +768,7 @@ void PlasmaCamera::startCameraInternal()
+@@ -663,6 +778,7 @@ void PlasmaCamera::startCameraInternal()
  
  void PlasmaCamera::stopCameraInternal()
  {
@@ -427,7 +438,7 @@ index 5c358de..d6e4303 100644
      setState(State::Stopping);
  
      // Clear the current camera
-@@ -788,3 +894,169 @@ bool PlasmaCamera::acquire()
+@@ -788,3 +904,118 @@ bool PlasmaCamera::acquire()
  
      return true;
  }
@@ -519,8 +530,8 @@ index 5c358de..d6e4303 100644
 +    m_pipCamera = camera;
 +    m_pipRotationDegrees = softwareRotationFor(camera);
 +    m_pipMirror = isFrontCamera(camera);
-+    m_pipFrame = QImage();
 +    m_dualSwapped = false;
++    QMetaObject::invokeMethod(m_compositor, &DualCompositor::clear, Qt::QueuedConnection);
 +
 +    Settings settings;
 +    settings.load(camera->controls());
@@ -542,63 +553,12 @@ index 5c358de..d6e4303 100644
 +    // unsetCamera() stops the stream and releases the camera
 +    QMetaObject::invokeMethod(m_pipWorker, "unsetCamera", Qt::BlockingQueuedConnection);
 +    m_pipCamera.reset();
-+    m_pipFrame = QImage();
 +    m_dualSwapped = false;
++    QMetaObject::invokeMethod(m_compositor, &DualCompositor::clear, Qt::QueuedConnection);
 +    updateMainStreamWidth();
 +}
-+
-+QImage PlasmaCamera::composeDual(const QImage &frame)
-+{
-+    QImage mainImage = uprightImage(frame, m_softwareRotationDegrees, m_mirrorOutput);
-+    const bool swapped = m_dualSwapped && !m_pipFrame.isNull();
-+    const QSize size = mainImage.size();
-+
-+    if (m_dualMode == 2) {
-+        // Split: the large picture on top, the other one below
-+        QImage canvas(size, QImage::Format_RGB32);
-+        QPainter painter(&canvas);
-+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-+        const QRectF top(0, 0, size.width(), size.height() / 2.0);
-+        const QRectF bottom(0, size.height() / 2.0, size.width(), size.height() / 2.0);
-+        canvas.fill(Qt::black);
-+        drawCover(painter, swapped ? m_pipFrame : mainImage, top);
-+        if (!m_pipFrame.isNull()) {
-+            drawCover(painter, swapped ? mainImage : m_pipFrame, bottom);
-+        }
-+        painter.fillRect(QRectF(0, size.height() / 2.0 - 2, size.width(), 4), Qt::white);
-+        m_pipRect = QRectF(0, 0.5, 1, 0.5);
-+        return canvas;
-+    }
-+
-+    // Picture in picture: the large picture fills the frame, the small one
-+    // takes a third of the width in the upper right corner, below the top
-+    // bar of the viewfinder
-+    QImage small = swapped ? mainImage : m_pipFrame;
-+    QImage canvas;
-+    if (swapped) {
-+        canvas = QImage(size, QImage::Format_RGB32);
-+    } else {
-+        canvas = std::move(mainImage);
-+    }
-+    QPainter painter(&canvas);
-+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-+    if (swapped) {
-+        drawCover(painter, m_pipFrame, QRectF(canvas.rect()));
-+    }
-+    if (!small.isNull()) {
-+        const qreal w = size.width() / 3.0;
-+        const qreal h = w * small.height() / small.width();
-+        const qreal margin = size.width() / 25.0;
-+        const QRectF rect(size.width() - margin - w, size.height() * 0.12, w, h);
-+        painter.drawImage(rect, small);
-+        painter.setPen(QPen(Qt::white, std::max<qreal>(2, size.width() / 300.0)));
-+        painter.drawRect(rect);
-+        m_pipRect = QRectF(rect.x() / size.width(), rect.y() / size.height(), w / size.width(), h / size.height());
-+    }
-+    return canvas;
-+}
 diff --git a/src/plasmacamera.h b/src/plasmacamera.h
-index 7add8e6..c48159d 100644
+index 7add8e6..b27fdb0 100644
 --- a/src/plasmacamera.h
 +++ b/src/plasmacamera.h
 @@ -61,6 +61,13 @@ class PlasmaCamera : public QObject
@@ -638,7 +598,7 @@ index 7add8e6..c48159d 100644
  
      // Photos
      /*
-@@ -309,6 +325,13 @@ private:
+@@ -309,6 +325,12 @@ private:
       */
      bool acquire();
  
@@ -646,13 +606,12 @@ index 7add8e6..c48159d 100644
 +    std::shared_ptr<libcamera::Camera> partnerCamera() const;
 +    bool startPip();
 +    void stopPip();
-+    QImage composeDual(const QImage &frame);
 +    void updateMainStreamWidth();
 +
      bool m_error = false;
      QString m_errorString;
  
-@@ -347,4 +370,16 @@ private:
+@@ -347,4 +369,17 @@ private:
      std::shared_ptr<libcamera::Camera> m_camera;
  
      QCameraFormat m_cameraFormat = QCameraFormat();
@@ -666,15 +625,179 @@ index 7add8e6..c48159d 100644
 +    std::shared_ptr<libcamera::Camera> m_pipCamera;
 +    int m_pipRotationDegrees = 0;
 +    bool m_pipMirror = false;
-+    QImage m_pipFrame; // upright
 +    QRectF m_pipRect; // of the small picture, 0..1 of the combined frame
++    class DualCompositor *m_compositor;
++    QThread *m_composeThread;
  };
+diff --git a/src/plasmacamera/dualcompositor.cpp b/src/plasmacamera/dualcompositor.cpp
+new file mode 100644
+index 0000000..1ac64cc
+--- /dev/null
++++ b/src/plasmacamera/dualcompositor.cpp
+@@ -0,0 +1,101 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#include "dualcompositor.h"
++
++#include <QPainter>
++#include <QTransform>
++
++#include <algorithm>
++
++QImage DualCompositor::uprightImage(const QImage &frame, const int degrees, const bool mirror)
++{
++    // A deep copy: viewfinder frames point into camera buffers
++    QImage image = mirror ? frame.mirrored() : frame.copy();
++    if (degrees != 0) {
++        image = image.transformed(QTransform().rotate(degrees));
++    }
++    if (image.format() != QImage::Format_RGB32 && image.format() != QImage::Format_ARGB32_Premultiplied) {
++        image = image.convertToFormat(QImage::Format_RGB32);
++    }
++    return image;
++}
++
++// Draw the image into the target, cropped to its aspect ratio
++static void drawCover(QPainter &painter, const QImage &image, const QRectF &target)
++{
++    QRectF source(image.rect());
++    const qreal targetAspect = target.width() / target.height();
++    if (source.width() / source.height() > targetAspect) {
++        const qreal w = source.height() * targetAspect;
++        source = QRectF((source.width() - w) / 2, 0, w, source.height());
++    } else {
++        const qreal h = source.width() / targetAspect;
++        source = QRectF(0, (source.height() - h) / 2, source.width(), h);
++    }
++    painter.drawImage(target, image, source);
++}
++
++void DualCompositor::setSecondFrame(const QImage &frame, const int degrees, const bool mirror)
++{
++    m_second = uprightImage(frame, degrees, mirror);
++    pendingSecond--;
++}
++
++void DualCompositor::clear()
++{
++    m_second = QImage();
++}
++
++void DualCompositor::compose(const QImage &frame, const int mode, const bool swappedRequested, const int degrees, const bool mirror)
++{
++    QImage mainImage = uprightImage(frame, degrees, mirror);
++    const bool swapped = swappedRequested && !m_second.isNull();
++    const QSize size = mainImage.size();
++
++    if (mode == 2) {
++        // Split: the large picture on top, the other one below
++        QImage canvas(size, QImage::Format_RGB32);
++        canvas.fill(Qt::black);
++        {
++            QPainter painter(&canvas);
++            painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
++            const QRectF top(0, 0, size.width(), size.height() / 2.0);
++            const QRectF bottom(0, size.height() / 2.0, size.width(), size.height() / 2.0);
++            drawCover(painter, swapped ? m_second : mainImage, top);
++            if (!m_second.isNull()) {
++                drawCover(painter, swapped ? mainImage : m_second, bottom);
++            }
++            painter.fillRect(QRectF(0, size.height() / 2.0 - 2, size.width(), 4), Qt::white);
++        }
++        pendingFrames--;
++        Q_EMIT composed(canvas, QRectF(0, 0.5, 1, 0.5));
++        return;
++    }
++
++    // Picture in picture: the large picture fills the frame, the small one
++    // sits in the upper right corner. The viewfinder shows the picture below
++    // the top bar and above the bottom controls, so only the bottom corners
++    // are covered by buttons.
++    const QImage small = swapped ? mainImage : m_second;
++    QImage canvas = swapped ? QImage(size, QImage::Format_RGB32) : std::move(mainImage);
++    QRectF rect;
++    {
++        QPainter painter(&canvas);
++        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
++        if (swapped) {
++            drawCover(painter, m_second, QRectF(canvas.rect()));
++        }
++        if (!small.isNull()) {
++            const qreal w = size.width() * 0.3;
++            const qreal h = w * small.height() / small.width();
++            const qreal margin = size.width() / 50.0;
++            rect = QRectF(size.width() - margin - w, margin, w, h);
++            painter.drawImage(rect, small);
++            painter.setPen(QPen(Qt::white, std::max<qreal>(2, size.width() / 300.0)));
++            painter.drawRect(rect);
++        }
++    }
++    pendingFrames--;
++    Q_EMIT composed(canvas, QRectF(rect.x() / size.width(), rect.y() / size.height(), rect.width() / size.width(), rect.height() / size.height()));
++}
+diff --git a/src/plasmacamera/dualcompositor.h b/src/plasmacamera/dualcompositor.h
+new file mode 100644
+index 0000000..2be525e
+--- /dev/null
++++ b/src/plasmacamera/dualcompositor.h
+@@ -0,0 +1,50 @@
++// SPDX-FileCopyrightText: 2026 morgonf
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++#pragma once
++
++#include <QImage>
++#include <QObject>
++#include <QRectF>
++
++#include <atomic>
++
++/**
++ * ALT Mobile: combines the frames of the two cameras of dual video into one
++ * upright frame, in its own thread. On the GUI thread the turning and
++ * scaling held back the viewfinder.
++ */
++class DualCompositor : public QObject
++{
++    Q_OBJECT
++
++public:
++    using QObject::QObject;
++
++    // Requests not finished yet: the caller skips frames above a limit, so
++    // that the queue does not grow when the thread falls behind
++    std::atomic<int> pendingFrames{0};
++    std::atomic<int> pendingSecond{0};
++
++    /** The frame as shown: mirrored (front cameras), then turned clockwise */
++    static QImage uprightImage(const QImage &frame, int degrees, bool mirror);
++
++public Q_SLOTS:
++    /** A frame of the second camera, kept upright for the next compose() */
++    void setSecondFrame(const QImage &frame, int degrees, bool mirror);
++    void clear();
++
++    /**
++     * Combine a frame of the main camera with the last one of the second.
++     * mode 1 picture in picture, 2 split; swapped puts the second camera
++     * large (on top in the split).
++     */
++    void compose(const QImage &frame, int mode, bool swapped, int degrees, bool mirror);
++
++Q_SIGNALS:
++    /** smallRect is the small picture (or the lower half), 0..1 of the frame */
++    void composed(const QImage &frame, const QRectF &smallRect);
++
++private:
++    QImage m_second;
++};
 diff --git a/src/plasmacamera/gstrecorder.cpp b/src/plasmacamera/gstrecorder.cpp
 new file mode 100644
-index 0000000..071d8b6
+index 0000000..ad80635
 --- /dev/null
 +++ b/src/plasmacamera/gstrecorder.cpp
-@@ -0,0 +1,260 @@
+@@ -0,0 +1,264 @@
 +// SPDX-FileCopyrightText: 2026 morgonf
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +
@@ -803,6 +926,7 @@ index 0000000..071d8b6
 +
 +void GstRecorder::push(const QImage &frame)
 +{
++    const QMutexLocker lock(&m_mutex);
 +    if (!m_source || m_stopping || frame.size() != m_size || frame.format() != m_format) {
 +        return;
 +    }
@@ -852,6 +976,7 @@ index 0000000..071d8b6
 +
 +void GstRecorder::stop()
 +{
++    const QMutexLocker lock(&m_mutex);
 +    if (!m_pipeline || m_stopping) {
 +        return;
 +    }
@@ -921,6 +1046,7 @@ index 0000000..071d8b6
 +void GstRecorder::teardown(const bool ok)
 +{
 +    m_busTimer.stop();
++    QMutexLocker lock(&m_mutex);
 +    if (m_source) {
 +        gst_object_unref(m_source);
 +        m_source = nullptr;
@@ -933,14 +1059,15 @@ index 0000000..071d8b6
 +    m_stopping = false;
 +    const QString path = m_path;
 +    m_path.clear();
++    lock.unlock();
 +    Q_EMIT finished(path, ok);
 +}
 diff --git a/src/plasmacamera/gstrecorder.h b/src/plasmacamera/gstrecorder.h
 new file mode 100644
-index 0000000..ea41f9a
+index 0000000..ea119f0
 --- /dev/null
 +++ b/src/plasmacamera/gstrecorder.h
-@@ -0,0 +1,68 @@
+@@ -0,0 +1,72 @@
 +// SPDX-FileCopyrightText: 2026 morgonf
 +// SPDX-License-Identifier: GPL-2.0-or-later
 +
@@ -948,6 +1075,7 @@ index 0000000..ea41f9a
 +
 +#include <QElapsedTimer>
 +#include <QImage>
++#include <QMutex>
 +#include <QObject>
 +#include <QTimer>
 +
@@ -978,7 +1106,8 @@ index 0000000..ea41f9a
 +     * the recorder does not rotate). bitrate in bits per second.
 +     */
 +    bool start(const QString &path, const QSize &size, QImage::Format format, int bitrate, bool audio);
-+    /** Add a frame; frames of another size or format are skipped */
++    /** Add a frame; frames of another size or format are skipped. May be
++     * called from another thread than the rest. */
 +    void push(const QImage &frame);
 +    /** Finish the file; finished() follows when it is written */
 +    void stop();
@@ -999,6 +1128,8 @@ index 0000000..ea41f9a
 +    void pollBus();
 +    void teardown(bool ok);
 +
++    // Guards the pipeline against push() from the recording thread
++    QMutex m_mutex;
 +    GstElement *m_pipeline = nullptr;
 +    GstElement *m_source = nullptr;
 +    QTimer m_busTimer;
@@ -1106,10 +1237,10 @@ index 0e8f2c8..1445cbc 100644
      int m_stillSkipFrames = 0; // frames left for AE and AWB to settle
      QImage m_lastFrame; // shallow, for a deep copy shown during the switch
 diff --git a/src/plasmacameramanager.cpp b/src/plasmacameramanager.cpp
-index ba42964..22ac208 100644
+index ba42964..8ac655e 100644
 --- a/src/plasmacameramanager.cpp
 +++ b/src/plasmacameramanager.cpp
-@@ -31,6 +31,23 @@ PlasmaCameraManager::PlasmaCameraManager(QObject *parent)
+@@ -31,6 +31,24 @@ PlasmaCameraManager::PlasmaCameraManager(QObject *parent)
      // Set to default audio input
      setAudioRecordingEnabledInternal(true);
  
@@ -1127,13 +1258,14 @@ index ba42964..22ac208 100644
 +        setIsSavingVideo(false);
 +        Q_EMIT isRecordingVideoChanged();
 +    });
++    m_recordPool.setMaxThreadCount(1);
 +    m_durationTimer.setInterval(250);
 +    connect(&m_durationTimer, &QTimer::timeout, this, &PlasmaCameraManager::recordingDurationChanged);
 +
      // m_session links m_videoInput and m_audioInput to m_recorder
      m_session.setVideoFrameInput(&m_videoInput);
      connect(&m_videoFrameTimer, &QTimer::timeout, this, &PlasmaCameraManager::processVideoFrame);
-@@ -164,10 +181,17 @@ void PlasmaCameraManager::setAudioRecordingEnabledInternal(bool enabled)
+@@ -164,10 +182,17 @@ void PlasmaCameraManager::setAudioRecordingEnabledInternal(bool enabled)
  
  bool PlasmaCameraManager::isRecordingVideo() const
  {
@@ -1155,7 +1287,7 @@ index ba42964..22ac208 100644
  }
  
  bool PlasmaCameraManager::isSavingVideo() const
-@@ -177,30 +201,63 @@ bool PlasmaCameraManager::isSavingVideo() const
+@@ -177,30 +202,82 @@ bool PlasmaCameraManager::isSavingVideo() const
  
  void PlasmaCameraManager::startRecordingVideo()
  {
@@ -1200,39 +1332,58 @@ index ba42964..22ac208 100644
      setIsSavingVideo(true);
 +    m_gstRecorder.stop();
 +}
- 
--    m_videoFrameTimer.stop();
++
 +void PlasmaCameraManager::recordFrame(const QImage &image)
 +{
 +    if (!m_recordPending && (!m_gstRecorder.isActive() || m_gstRecorder.isStopping())) {
 +        return;
 +    }
 +
-+    QImage frame = m_recordMirror ? image.mirrored() : image;
-+    if (m_recordRotation != 0) {
-+        frame = frame.transformed(QTransform().rotate(m_recordRotation));
-+    }
-+    if (!*GstRecorder::gstFormat(frame.format())) {
-+        frame = frame.convertToFormat(QImage::Format_RGB32);
-+    }
++    const int rotation = m_recordRotation;
++    const bool mirror = m_recordMirror;
 +
 +    if (m_recordPending) {
++        // The recording takes the size and format the frames will have once
++        // turned (a quarter turn swaps the sides)
++        QSize size = image.size();
++        if (rotation == 90 || rotation == 270) {
++            size.transpose();
++        }
++        const QImage::Format format = *GstRecorder::gstFormat(image.format()) ? image.format() : QImage::Format_RGB32;
++
 +        m_recordPending = false;
 +        // Bits per second by the quality setting, for about 1 MP
 +        static const int kBitrates[] = {2000000, 4000000, 6000000, 10000000, 14000000};
 +        const int bitrate = kBitrates[std::clamp(static_cast<int>(m_quality), 0, 4)];
 +        const QString path = PlasmaLibcameraUtils::generateVideoFileName(m_outputPath);
-+        if (!m_gstRecorder.start(path, frame.size(), frame.format(), bitrate, m_audioRecordingEnabled)) {
++        if (!m_gstRecorder.start(path, size, format, bitrate, m_audioRecordingEnabled)) {
 +            m_durationTimer.stop();
 +            Q_EMIT isRecordingVideoChanged();
 +            return;
 +        }
 +    }
-+    m_gstRecorder.push(frame);
+ 
+-    m_videoFrameTimer.stop();
++    // Away from the GUI thread; a frame is skipped while two are in work
++    if (m_recordInFlight >= 2) {
++        return;
++    }
++    m_recordInFlight++;
++    m_recordPool.start([this, image, rotation, mirror]() {
++        QImage frame = mirror ? image.mirrored() : image;
++        if (rotation != 0) {
++            frame = frame.transformed(QTransform().rotate(rotation));
++        }
++        if (!*GstRecorder::gstFormat(frame.format())) {
++            frame = frame.convertToFormat(QImage::Format_RGB32);
++        }
++        m_gstRecorder.push(frame);
++        m_recordInFlight--;
++    });
  }
  
  int PlasmaCameraManager::captureImage()
-@@ -549,6 +606,8 @@ void PlasmaCameraManager::processViewfinderFrame(const QImage &image)
+@@ -549,6 +626,8 @@ void PlasmaCameraManager::processViewfinderFrame(const QImage &image)
      // Set as video frame for video recording
      m_videoFrame = std::move(frame);
      m_frameRecorded = false;
@@ -1242,18 +1393,21 @@ index ba42964..22ac208 100644
  
  qreal PlasmaCameraManager::zoom() const
 diff --git a/src/plasmacameramanager.h b/src/plasmacameramanager.h
-index 03ca002..1bbfed1 100644
+index 03ca002..70fa857 100644
 --- a/src/plasmacameramanager.h
 +++ b/src/plasmacameramanager.h
-@@ -5,6 +5,7 @@
+@@ -5,6 +5,10 @@
  #pragma once
  
  #include <KAboutData>
 +#include <QElapsedTimer>
++#include <QThreadPool>
++
++#include <atomic>
  #include <QOrientationSensor>
  #include <QQmlEngine>
  #include <QtMultimedia>
-@@ -13,6 +14,7 @@
+@@ -13,6 +17,7 @@
  #include <libcamera/camera_manager.h>
  
  #include "plasmacamera.h"
@@ -1261,7 +1415,7 @@ index 03ca002..1bbfed1 100644
  
  /*!
   * \brief Manages the libcamera camera controller (similar to QMediaCaptureSession)
-@@ -46,6 +48,9 @@ class PlasmaCameraManager : public QObject
+@@ -46,6 +51,9 @@ class PlasmaCameraManager : public QObject
  
      Q_PROPERTY(bool isRecordingVideo READ isRecordingVideo NOTIFY isRecordingVideoChanged)
      Q_PROPERTY(bool isSavingVideo READ isSavingVideo NOTIFY isSavingVideoChanged)
@@ -1271,7 +1425,7 @@ index 03ca002..1bbfed1 100644
  
      // Digital zoom: photos keep the central 1/zoom of the frame
      Q_PROPERTY(qreal zoom READ zoom WRITE setZoom NOTIFY zoomChanged)
-@@ -144,6 +149,8 @@ public:
+@@ -144,6 +152,8 @@ public:
  
      bool isRecordingVideo() const;
      bool isSavingVideo() const;
@@ -1280,7 +1434,7 @@ index 03ca002..1bbfed1 100644
  
      qreal zoom() const;
      void setZoom(qreal zoom);
-@@ -186,6 +193,8 @@ Q_SIGNALS:
+@@ -186,6 +196,8 @@ Q_SIGNALS:
      void isSavingVideoChanged();
      void zoomChanged();
      void processingPhotoChanged();
@@ -1289,7 +1443,7 @@ index 03ca002..1bbfed1 100644
  
      void framesDropped();
  
-@@ -307,4 +316,15 @@ private:
+@@ -307,4 +319,18 @@ private:
  
      bool m_isSavingVideo = false;
      bool m_droppedFrames = false;
@@ -1302,6 +1456,9 @@ index 03ca002..1bbfed1 100644
 +    int m_recordRotation = 0;
 +    bool m_recordMirror = false;
 +    QElapsedTimer m_recordingClock;
++    // Frames are turned, copied and pushed in this one thread, in order
++    QThreadPool m_recordPool;
++    std::atomic<int> m_recordInFlight{0};
 +    QTimer m_durationTimer;
 +    QUrl m_videoLocation;
  };

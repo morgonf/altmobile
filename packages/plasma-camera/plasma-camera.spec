@@ -5,7 +5,7 @@
 
 Name: %rname
 Version: 2.1.1
-Release: alt2.mobile4
+Release: alt2.mobile5
 %K6init
 
 Group:  Video
@@ -75,6 +75,11 @@ mv $M.new $M
 %_datadir/metainfo/*.xml
 
 %changelog
+* Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile5
+- dual video: frames combined in their own thread (DualCompositor), video
+  frames turned and pushed to GStreamer in another one; the small picture
+  sits in the upper right corner, clear of the controls
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile4
 - dual video: the rear and the front camera at once, picture in picture
   (a tap on the small picture swaps them) or split, recorded as one video
