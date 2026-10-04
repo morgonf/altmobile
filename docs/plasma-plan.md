@@ -175,6 +175,11 @@ PIN, без окон plasma-nm, мобильный интернет подним
    русские каталоги (`l10n/install-l10n.sh`), отступы строки состояния
    (`plasmamobilerc [Panels][WhenOnTop]`), шрифты (`plasma-look.sh`),
    пересобранные модули и `scripts/boot-mark-successful.sh`.
+   04.10: порядок установки с нуля собран в `docs/install.md`, наши RPM
+   ставятся из локального репозитория apt (`scripts/local-repo.sh`,
+   проверено, apt предлагает сборки mobileN вместо Sisyphus). Осталось
+   перевести в пакеты модули q6voice, свои модули настроек, тему и
+   службы (список в конце `docs/install.md`).
 2. «Цвета»: подсказка поиска «Search…». Kirigami вообще не подгружает свой
    перевод `libkirigami6_qt.qm`: файл и строка есть, загрузчик ECM в
    libKirigami.so.6 есть (`qAddPreRoutine`), но strace не показывает ни
