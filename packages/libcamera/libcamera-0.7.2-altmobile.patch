@@ -1876,7 +1876,7 @@ index 629e1a32d..a05851692 100644
  
  std::string IPASoftSimple::logPrefix() const
 diff --git a/src/libcamera/pipeline/simple/simple.cpp b/src/libcamera/pipeline/simple/simple.cpp
-index e26f438d9..faeecd08f 100644
+index e26f438d9..de220a9b3 100644
 --- a/src/libcamera/pipeline/simple/simple.cpp
 +++ b/src/libcamera/pipeline/simple/simple.cpp
 @@ -33,6 +33,7 @@
@@ -1919,7 +1919,17 @@ index e26f438d9..faeecd08f 100644
  SimpleFrameInfo *SimpleFrames::find(uint32_t frame)
  {
  	auto info = frameInfo_.find(frame);
-@@ -371,7 +383,7 @@ private:
+@@ -280,7 +292,8 @@ class SimpleCameraData : public Camera::Private
+ public:
+ 	SimpleCameraData(SimplePipelineHandler *pipe,
+ 			 unsigned int numStreams,
+-			 MediaEntity *sensor);
++			 MediaEntity *sensor,
++			 const std::set<MediaEntity *> &taken);
+ 
+ 	bool isValid() const { return sensor_ != nullptr; }
+ 	SimplePipelineHandler *pipe();
+@@ -371,7 +384,7 @@ private:
  
  	void ispStatsReady(uint32_t frame, uint32_t bufferId);
  	void metadataReady(uint32_t frame, const ControlList &metadata);
@@ -1928,7 +1938,140 @@ index e26f438d9..faeecd08f 100644
  };
  
  class SimpleCameraConfiguration : public CameraConfiguration
-@@ -570,6 +582,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+@@ -468,7 +481,8 @@ private:
+ 
+ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+ 				   unsigned int numStreams,
+-				   MediaEntity *sensor)
++				   MediaEntity *sensor,
++				   const std::set<MediaEntity *> &taken)
+ 	: Camera::Private(pipe), streams_(numStreams), rawStream_(nullptr)
+ {
+ 	/*
+@@ -480,6 +494,13 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+ 	 *
+ 	 * For instance, on the IPU-based i.MX6Q, the shortest path will skip
+ 	 * encoders and image converters, and will end in a CSI capture device.
++	 *
++	 * Devices such as qcom-camss can route every sensor through several
++	 * receivers and capture devices. The shortest path is the same for all
++	 * sensors there, and the cameras then can't run at the same time. The
++	 * search therefore first avoids the entities taken by the cameras
++	 * created before this one, and falls back to the plain shortest path
++	 * when no such path exists.
+ 	 */
+ 	std::unordered_set<MediaEntity *> visited;
+ 	std::queue<std::tuple<MediaEntity *, MediaPad *>> queue;
+@@ -490,57 +511,70 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
+ 	MediaEntity *video = nullptr;
+ 	MediaPad *sinkPad;
+ 
+-	queue.push({ sensor, nullptr });
++	for (bool avoid : { true, false }) {
++		if (!avoid && taken.empty())
++			break;
+ 
+-	while (!queue.empty()) {
+-		std::tie(entity, sinkPad) = queue.front();
+-		queue.pop();
++		visited.clear();
++		parents.clear();
++		queue = {};
++		queue.push({ sensor, nullptr });
+ 
+-		/* Found the capture device. */
+-		if (entity->function() == MEDIA_ENT_F_IO_V4L) {
+-			LOG(SimplePipeline, Debug)
+-				<< "Found capture device " << entity->name();
+-			video = entity;
+-			break;
+-		}
++		while (!queue.empty()) {
++			std::tie(entity, sinkPad) = queue.front();
++			queue.pop();
+ 
+-		visited.insert(entity);
++			/* Found the capture device. */
++			if (entity->function() == MEDIA_ENT_F_IO_V4L) {
++				LOG(SimplePipeline, Debug)
++					<< "Found capture device " << entity->name();
++				video = entity;
++				break;
++			}
+ 
+-		/*
+-		 * Add direct downstream entities to the search queue. If the
+-		 * current entity supports the subdev internal routing API,
+-		 * restrict the search to downstream entities reachable through
+-		 * active routes.
+-		 */
++			visited.insert(entity);
+ 
+-		std::vector<const MediaPad *> pads;
+-		bool supportsRouting = false;
++			/*
++			 * Add direct downstream entities to the search queue. If the
++			 * current entity supports the subdev internal routing API,
++			 * restrict the search to downstream entities reachable through
++			 * active routes.
++			 */
+ 
+-		if (sinkPad) {
+-			pads = routedSourcePads(sinkPad);
+-			if (!pads.empty())
+-				supportsRouting = true;
+-		}
++			std::vector<const MediaPad *> pads;
++			bool supportsRouting = false;
+ 
+-		if (pads.empty()) {
+-			for (const MediaPad *pad : entity->pads()) {
+-				if (!(pad->flags() & MEDIA_PAD_FL_SOURCE))
+-					continue;
+-				pads.push_back(pad);
++			if (sinkPad) {
++				pads = routedSourcePads(sinkPad);
++				if (!pads.empty())
++					supportsRouting = true;
+ 			}
+-		}
+ 
+-		for (const MediaPad *pad : pads) {
+-			for (MediaLink *link : pad->links()) {
+-				MediaEntity *next = link->sink()->entity();
+-				if (visited.find(next) == visited.end()) {
+-					queue.push({ next, link->sink() });
++			if (pads.empty()) {
++				for (const MediaPad *pad : entity->pads()) {
++					if (!(pad->flags() & MEDIA_PAD_FL_SOURCE))
++						continue;
++					pads.push_back(pad);
++				}
++			}
+ 
+-					Entity e{ entity, supportsRouting, sinkPad, pad, link };
+-					parents.insert({ next, e });
++			for (const MediaPad *pad : pads) {
++				for (MediaLink *link : pad->links()) {
++					MediaEntity *next = link->sink()->entity();
++					if (avoid && taken.count(next))
++						continue;
++					if (visited.find(next) == visited.end()) {
++						queue.push({ next, link->sink() });
++
++						Entity e{ entity, supportsRouting, sinkPad, pad, link };
++						parents.insert({ next, e });
++					}
+ 				}
+ 			}
+ 		}
++
++		if (video)
++			break;
+ 	}
+ 
+ 	if (!video)
+@@ -570,6 +604,12 @@ SimpleCameraData::SimpleCameraData(SimplePipelineHandler *pipe,
  		{ V4L2_CID_ANALOGUE_GAIN, { delays.gainDelay, false } },
  		{ V4L2_CID_EXPOSURE, { delays.exposureDelay, false } },
  	};
@@ -1941,7 +2084,7 @@ index e26f438d9..faeecd08f 100644
  	delayedCtrls_ = std::make_unique<DelayedControls>(sensor_->device(), params);
  
  	LOG(SimplePipeline, Debug)
-@@ -1041,7 +1059,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
+@@ -1041,7 +1081,7 @@ void SimpleCameraData::metadataReady(uint32_t frame, const ControlList &metadata
  	tryCompleteRequest(info->request);
  }
  
@@ -1950,7 +2093,7 @@ index e26f438d9..faeecd08f 100644
  {
  	delayedCtrls_->push(sensorControls);
  	/*
-@@ -1052,10 +1070,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
+@@ -1052,10 +1092,21 @@ void SimpleCameraData::setSensorControls(const ControlList &sensorControls)
  	 * but it also bypasses delayedCtrls_, creating AGC regulation issues.
  	 * Both problems should be fixed.
  	 */
@@ -1976,7 +2119,7 @@ index e26f438d9..faeecd08f 100644
  }
  
  /* Retrieve all source pads connected to a sink pad through active routes. */
-@@ -1605,6 +1634,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
+@@ -1605,6 +1656,12 @@ int SimplePipelineHandler::configure(Camera *camera, CameraConfiguration *c)
  	} else {
  		ipa::soft::IPAConfigInfo configInfo;
  		configInfo.sensorControls = data->sensor_->controls();
@@ -1989,7 +2132,7 @@ index e26f438d9..faeecd08f 100644
  		return data->swIsp_->configure(inputCfg, outputCfgs, configInfo);
  	}
  }
-@@ -1727,8 +1762,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
+@@ -1727,8 +1784,18 @@ void SimplePipelineHandler::stopDevice(Camera *camera)
  
  	video->bufferReady.disconnect(data, &SimpleCameraData::imageBufferReady);
  
@@ -2009,6 +2152,16 @@ index e26f438d9..faeecd08f 100644
  	data->conversionBuffers_.clear();
  
  	releasePipeline(data);
+@@ -1925,7 +1992,8 @@ bool SimplePipelineHandler::matchDevice(std::shared_ptr<MediaDevice> media,
+ 
+ 	for (MediaEntity *sensor : sensors) {
+ 		std::unique_ptr<SimpleCameraData> data =
+-			std::make_unique<SimpleCameraData>(this, numStreams, sensor);
++			std::make_unique<SimpleCameraData>(this, numStreams, sensor,
++							   entities);
+ 		if (!data->isValid()) {
+ 			LOG(SimplePipeline, Error)
+ 				<< "No valid pipeline for sensor '"
 diff --git a/src/libcamera/shaders/bayer_1x_packed.frag b/src/libcamera/shaders/bayer_1x_packed.frag
 index 0b641a5f3..7df188830 100644
 --- a/src/libcamera/shaders/bayer_1x_packed.frag

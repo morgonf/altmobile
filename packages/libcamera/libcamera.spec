@@ -176,6 +176,8 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 - GPU debayer of packed Bayer: Malvar-He-Cutler demosaic mixed with the
   bilinear one by demosaicSharpness (tuning file, 0.5 for the IMX519,
   IMX371 and IMX376); fine detail was blurred
+- simple pipeline: give each camera its own CSID and VFE on qcom-camss,
+  so that two or three cameras stream at the same time (was EBUSY)
 
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile5
 - IMX371, IMX376 tuning: colour matrices borrowed from the IMX519 (faded
