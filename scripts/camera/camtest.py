@@ -14,7 +14,8 @@ log = open("/tmp/.private/altlinux/pc-test.log", "w")
 env = dict(os.environ, LIBCAMERA_LOG_LEVELS="*:2,IPASoftAutoFocus:0,IPASoftExposure:0,IPASoftAwb:0,IPASoftBL:0")
 if "nolaunch" not in sys.argv[1]:
     subprocess.run(["pkill", "-x", "plasma-camera"]); time.sleep(1)
-    subprocess.Popen(["plasma-camera"], stdout=log, stderr=log, env=env)
+    # PC_BIN: a build to test instead of the installed one
+    subprocess.Popen([os.environ.get("PC_BIN", "plasma-camera")], stdout=log, stderr=log, env=env)
 for cmd in sys.argv[1].split(";"):
     a = cmd.split()
     if not a or a[0] == "nolaunch": continue
