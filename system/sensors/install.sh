@@ -9,7 +9,8 @@ mkdir -p /etc/systemd/system/iio-sensor-proxy.service.d
 install -m 644 iio-sensor-proxy-ssc.conf /etc/systemd/system/iio-sensor-proxy.service.d/ssc.conf
 install -m 755 alt-sensors-wait.sh /usr/local/bin/
 mkdir -p /etc/systemd/system/plasma-mobile.service.d
-install -m 644 plasma-mobile-after-sensors.conf /etc/systemd/system/plasma-mobile.service.d/after-sensors.conf
+rm -f /etc/systemd/system/plasma-mobile.service.d/after-sensors.conf
+install -m 644 plasma-mobile-sensors.conf /etc/systemd/system/plasma-mobile.service.d/sensors.conf
 systemctl daemon-reload
 udevadm control --reload
 udevadm trigger --subsystem-match=misc
