@@ -1,0 +1,16 @@
+--- a/src/modulesmodel.cpp
++++ b/src/modulesmodel.cpp
+@@ -84,6 +84,13 @@
+             }
+         }
+ 
++        // ALT Mobile: a module the layout places (not hidden) is shown on the
++        // phone whatever its form factors say (kcm_soundtheme lists none)
++        const QString placed = KConfigGroup(altLayout(), QStringLiteral("Modules")).readEntry(data.pluginId());
++        if (!placed.isEmpty() && placed != QLatin1String("hidden")) {
++            return true;
++        }
++
+         // Check platform
+ 
+         auto kRuntimePlatforms = KRuntimePlatform::runtimePlatform();

@@ -15,7 +15,7 @@
 | libcamera | 0.7.2-alt1.mobile4 | установлен 04.10, `rpm -V` чистый |
 | plasma-camera | 2.1.1-alt2.mobile3 | установлен 04.10 |
 | iio-sensor-proxy | 3.9-alt1.3 | установлен 04.10, SSC включён в спецификации, Has* рассылаются всем клиентам |
-| plasma-settings | 26.08.1-alt0.3 | установлен 04.10, с раскладкой групп |
+| plasma-settings | 26.08.1-alt0.4 | установлен 04.10, с раскладкой групп |
 | kernel-modules-altmobile-qualcomm-sdm845 | 1.0-alt1.mobile1 | установлен 04.10, работа модулей проверяется после перезагрузки; прежние в `/var/lib/altmobile/updates-backup-<ядро>` |
 | neard | 0.20-alt1.1 | пакет с 01.10 |
 | plasma-pa, kscreen, bluedevil, kaccounts-integration, kscreenlocker, plasma-mobile, kwin, plasma-workspace | `.mobile1` | спецификации готовы, деревья по ним совпали с рабочими (`scripts/bp-compare.sh`), собираются очередью с 04.10 01:41 |

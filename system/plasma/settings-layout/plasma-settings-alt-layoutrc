@@ -18,6 +18,7 @@ kcm_nighttime=alt-display,3
 
 kcm_pulseaudio=alt-sound,1
 kcm_notifications=alt-sound,2
+kcm_soundtheme=alt-sound,3
 
 kcm_altappearance=alt-appearance,1
 kcm_colors=alt-appearance,2
