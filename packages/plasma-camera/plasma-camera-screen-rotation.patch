@@ -1,0 +1,413 @@
+diff -ru a/src/contents/ui/camera/CameraControls.qml b/src/contents/ui/camera/CameraControls.qml
+--- a/src/contents/ui/camera/CameraControls.qml	2026-10-04 04:26:22.172445881 -0400
++++ b/src/contents/ui/camera/CameraControls.qml	2026-10-04 04:26:11.762434048 -0400
+@@ -28,12 +28,21 @@
+     signal timerDurationRequested(duration: int)
+     signal switchCaptureModeRequested(captureMode: int)
+ 
+-    height: controlsLayout.implicitHeight
++    // ALT Mobile: a column at the side of the landscape screen
++    property bool vertical: false
++    // Room at the outer edge: the notch of the front camera
++    property real edgeMargin: 0
++
++    implicitHeight: controlsLayout.implicitHeight
++    implicitWidth: controlsLayout.implicitWidth + Kirigami.Units.largeSpacing * 2 + edgeMargin
++    height: implicitHeight
+     color: Qt.rgba(0, 0, 0, 0.3)
+ 
+     ColumnLayout {
+         id: controlsLayout
+-        width: parent.width
++        width: root.vertical ? implicitWidth : parent.width
++        anchors.centerIn: root.vertical ? parent : undefined
++        anchors.horizontalCenterOffset: -root.edgeMargin / 2
+ 
+         // Select timer strip
+         TimerSelectStrip {
+@@ -48,18 +57,23 @@
+         }
+ 
+         // Main footer controls row
+-        RowLayout {
+-            spacing: Kirigami.Units.gridUnit
++        GridLayout {
++            flow: root.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
++            rows: root.vertical ? -1 : 1
++            columns: root.vertical ? 1 : -1
++            rowSpacing: Kirigami.Units.largeSpacing
++            columnSpacing: Kirigami.Units.gridUnit
+             Layout.fillWidth: true
+             Layout.alignment: Qt.AlignHCenter
+ 
+             Item {
+-                Layout.fillWidth: true
++                Layout.fillWidth: !root.vertical
+             }
+ 
+             // Captured photo/video preview
+             Item {
+                 id: capturedPreview
++                Layout.alignment: Qt.AlignHCenter
+                 implicitWidth: 40
+                 implicitHeight: 40
+ 
+@@ -105,8 +119,9 @@
+                 icon.name: "clock"
+                 icon.color: "white"
+ 
+-                Layout.fillWidth: true
++                Layout.fillWidth: !root.vertical
+                 Layout.maximumWidth: height
++                Layout.alignment: Qt.AlignHCenter
+                 onClicked: {
+                     timerSelectStrip.shown = !timerSelectStrip.shown;
+                 }
+@@ -115,19 +130,33 @@
+             // Capture photo/video button
+             CaptureButton {
+                 id: captureButton
++                Layout.alignment: Qt.AlignHCenter
+                 captureMode: root.captureMode
+                 isRecording: captureController.isRecording
+                 enabled: root.captureEnabled
+                 onClicked: root.captureButtonClicked()
+             }
+ 
++            // Photo or video in the side column, the selector does not fit
++            QQC2.ToolButton {
++                visible: root.vertical
++                Layout.alignment: Qt.AlignHCenter
++                icon.name: root.captureMode === CameraPage.CaptureMode.Photo ? "emblem-videos-symbolic" : "camera-photo-symbolic"
++                icon.color: "white"
++                text: root.captureMode === CameraPage.CaptureMode.Photo ? i18n("Video") : i18n("Photo")
++                display: QQC2.ToolButton.IconOnly
++                onClicked: root.switchCaptureModeRequested(root.captureMode === CameraPage.CaptureMode.Photo
++                                                           ? CameraPage.CaptureMode.Video : CameraPage.CaptureMode.Photo)
++            }
++
+             QQC2.ToolButton {
+                 id: switchCameraButton
+                 icon.name: "circular-arrow-shape"
+                 icon.color: "white"
+ 
+-                Layout.fillWidth: true
++                Layout.fillWidth: !root.vertical
+                 Layout.maximumWidth: height
++                Layout.alignment: Qt.AlignHCenter
+ 
+                 enabled: root.switchCameraEnabled
+                 opacity: enabled ? 1 : 0 // use opacity instead of visible, so space is still used
+@@ -137,6 +166,7 @@
+             Item {
+                 implicitWidth: 40
+                 implicitHeight: 40
++                Layout.alignment: Qt.AlignHCenter
+ 
+                 QQC2.ToolButton {
+                     id: settingsButton
+@@ -149,17 +179,18 @@
+             }
+ 
+             Item {
+-                Layout.fillWidth: true
++                Layout.fillWidth: !root.vertical
+             }
+         }
+ 
+         Components.RadioSelector {
+             id: modeSelector
+ 
++            visible: !root.vertical
+             Layout.alignment: Qt.AlignHCenter
+             Layout.fillWidth: true
+-            Layout.margins: Kirigami.Units.largeSpacing * 3
+-            Layout.maximumWidth: Kirigami.Units.gridUnit * 10
++            Layout.margins: root.vertical ? Kirigami.Units.smallSpacing : Kirigami.Units.largeSpacing * 3
++            Layout.maximumWidth: Kirigami.Units.gridUnit * (root.vertical ? 6 : 10)
+             consistentWidth: true
+ 
+             Kirigami.Theme.inherit: false
+diff -ru a/src/contents/ui/camera/CameraExtraControls.qml b/src/contents/ui/camera/CameraExtraControls.qml
+--- a/src/contents/ui/camera/CameraExtraControls.qml	2026-10-04 04:26:22.166445874 -0400
++++ b/src/contents/ui/camera/CameraExtraControls.qml	2026-10-04 04:26:11.818434111 -0400
+@@ -26,28 +26,41 @@
+     signal nightModeChangeRequested(enabled: bool)
+     signal flashModeChangeRequested(mode: int)
+ 
+-    height: controlsLayout.implicitHeight
++    // ALT Mobile: a column at the side of the landscape screen
++    property bool vertical: false
++    // Room at the outer edge: the notch of the front camera
++    property real edgeMargin: 0
++
++    implicitHeight: controlsLayout.implicitHeight
++    implicitWidth: controlsRow.implicitWidth + Kirigami.Units.largeSpacing * 2 + edgeMargin
++    height: implicitHeight
+     color: Qt.rgba(0, 0, 0, 0.3)
+ 
+     ColumnLayout {
+         id: controlsLayout
+         spacing: Kirigami.Units.smallSpacing
+         anchors.left: parent.left
++        anchors.leftMargin: root.edgeMargin
+         anchors.right: parent.right
+-        anchors.top: parent.top
++        anchors.top: root.vertical ? undefined : parent.top
++        anchors.verticalCenter: root.vertical ? parent.verticalCenter : undefined
+ 
+         Kirigami.Theme.inherit: false
+         Kirigami.Theme.colorSet: Kirigami.Theme.Complementary
+ 
+-        RowLayout {
++        GridLayout {
+             id: controlsRow
+ 
+-            spacing: Kirigami.Units.largeSpacing
++            flow: root.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
++            rows: root.vertical ? -1 : 1
++            columns: root.vertical ? 1 : -1
++            rowSpacing: Kirigami.Units.largeSpacing
++            columnSpacing: Kirigami.Units.largeSpacing
+             Layout.fillWidth: true
+             Layout.topMargin: Kirigami.Units.largeSpacing
+             Layout.bottomMargin: Kirigami.Units.largeSpacing
+ 
+-            Item { Layout.fillWidth: true }
++            Item { Layout.fillWidth: !root.vertical }
+ 
+             QQC2.ToolButton {
+                 id: audioRecordingButton
+@@ -55,6 +68,7 @@
+                 icon.color: 'white'
+                 text: root.audioRecordingEnabled ? i18n("Microphone is enabled") : i18n("Microphone is disabled")
+                 display: QQC2.ToolButton.IconOnly
++                Layout.alignment: Qt.AlignHCenter
+                 visible: root.audioRecordingEnabledShown
+                 onClicked: root.audioEnabledChangeRequested(!root.audioRecordingEnabled)
+ 
+@@ -71,6 +85,7 @@
+                     : root.flashMode === 1 ? i18n("Automatic flash")
+                     : i18n("Flash on")
+                 display: QQC2.ToolButton.IconOnly
++                Layout.alignment: Qt.AlignHCenter
+                 visible: root.flashShown
+                 onClicked: root.flashModeChangeRequested((root.flashMode + 1) % 3)
+ 
+@@ -97,6 +112,7 @@
+                 icon.color: root.nightModeEnabled ? Kirigami.Theme.highlightColor : 'white'
+                 text: root.nightModeEnabled ? i18n("Night mode is on") : i18n("Night mode is off")
+                 display: QQC2.ToolButton.IconOnly
++                Layout.alignment: Qt.AlignHCenter
+                 visible: root.nightModeShown
+                 checkable: true
+                 checked: root.nightModeEnabled
+@@ -112,6 +128,7 @@
+                 icon.color: "white"
+                 text: i18n("Exposure")
+                 display: QQC2.ToolButton.IconOnly
++                Layout.alignment: Qt.AlignHCenter
+                 visible: root.exposureValueEnabled
+                 onClicked: exposureSelectStrip.shown = !exposureSelectStrip.shown
+ 
+@@ -119,7 +136,7 @@
+                 QQC2.ToolTip.text: text
+             }
+ 
+-            Item { Layout.fillWidth: true }
++            Item { Layout.fillWidth: !root.vertical }
+         }
+ 
+         ExposureSelectStrip {
+diff -ru a/src/contents/ui/camera/CameraPage.qml b/src/contents/ui/camera/CameraPage.qml
+--- a/src/contents/ui/camera/CameraPage.qml	2026-10-04 04:26:22.178445888 -0400
++++ b/src/contents/ui/camera/CameraPage.qml	2026-10-04 04:26:11.818434111 -0400
+@@ -24,6 +24,36 @@
+ 
+     globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
+ 
++    // ALT Mobile: with auto-rotation the 4:3 picture leaves bars at the
++    // sides of a landscape screen, the controls go there
++    readonly property bool landscape: width > height
++
++    states: State {
++        name: "landscape"
++        when: root.landscape
++
++        AnchorChanges {
++            target: cameraExtraControls
++            anchors.right: undefined
++            anchors.bottom: viewfinder.bottom
++        }
++        AnchorChanges {
++            target: controlContainer
++            anchors.left: undefined
++            anchors.top: viewfinder.top
++        }
++        PropertyChanges {
++            cameraExtraControls.vertical: true
++            cameraExtraControls.edgeMargin: Kirigami.Units.gridUnit * 1.5
++            cameraExtraControls.width: cameraExtraControls.implicitWidth
++            cameraExtraControls.height: viewfinder.height
++            controlContainer.vertical: true
++            controlContainer.edgeMargin: Kirigami.Units.gridUnit * 1.5
++            controlContainer.width: controlContainer.implicitWidth
++            controlContainer.height: viewfinder.height
++        }
++    }
++
+     required property PlasmaCamera camera
+ 
+     enum CaptureMode {
+@@ -111,7 +141,7 @@
+         anchors.fill: parent
+ 
+         camera: root.camera
+-        bottomMargin: controlContainer.height
++        bottomMargin: root.landscape ? 0 : controlContainer.height
+         // Video is recorded from the full frames, so no zoom there yet
+         zoomEnabled: root.captureMode === CameraPage.CaptureMode.Photo
+         onZoomChanged: root.captureSession.zoom = zoom
+@@ -176,7 +206,7 @@
+         ViewfinderVideoDurationOverlay {
+             anchors.horizontalCenter: parent.horizontalCenter
+             anchors.bottom: parent.bottom
+-            anchors.bottomMargin: controlContainer.height + Kirigami.Units.largeSpacing
++            anchors.bottomMargin: (root.landscape ? 0 : controlContainer.height) + Kirigami.Units.largeSpacing
+ 
+             visible: root.captureSession.isRecordingVideo
+             duration: root.captureSession.recorder.duration
+diff -ru a/src/plasmacamera.cpp b/src/plasmacamera.cpp
+--- a/src/plasmacamera.cpp	2026-10-04 04:26:32.658457804 -0400
++++ b/src/plasmacamera.cpp	2026-10-04 04:26:32.655457800 -0400
+@@ -263,6 +263,16 @@
+     return m_softwareRotationDegrees;
+ }
+ 
++int PlasmaCamera::viewfinderRotationDegrees() const
++{
++    return (m_softwareRotationDegrees + m_screenRotationDegrees) % 360;
++}
++
++void PlasmaCamera::setScreenRotationDegrees(int degrees)
++{
++    m_screenRotationDegrees = degrees;
++}
++
+ bool PlasmaCamera::mirrorOutput() const
+ {
+     return m_mirrorOutput;
+@@ -446,7 +456,7 @@
+         u = 1.0 - u;
+     }
+     qreal sx = u, sy = v;
+-    switch (m_softwareRotationDegrees) {
++    switch (viewfinderRotationDegrees()) {
+     case 90:
+         sx = v;
+         sy = 1.0 - u;
+diff -ru a/src/plasmacamera.h b/src/plasmacamera.h
+--- a/src/plasmacamera.h	2026-10-04 04:26:32.658457804 -0400
++++ b/src/plasmacamera.h	2026-10-04 04:26:32.655457800 -0400
+@@ -187,6 +187,9 @@
+     Settings settings() const;
+     float fps() const;
+     int softwareRotationDegrees() const;
++    // ALT Mobile: the viewfinder also turns with the screen (auto-rotation)
++    int viewfinderRotationDegrees() const;
++    void setScreenRotationDegrees(int degrees);
+     bool mirrorOutput() const;
+ 
+     bool nightMode() const;
+@@ -313,6 +316,7 @@
+ 
+     // The amount of degrees to rotate captured input by.
+     int m_softwareRotationDegrees = 0.0f;
++    int m_screenRotationDegrees = 0;
+ 
+     // Whether the camera output should be mirrored
+     bool m_mirrorOutput = false;
+diff -ru a/src/plasmacameramanager.cpp b/src/plasmacameramanager.cpp
+--- a/src/plasmacameramanager.cpp	2026-10-04 04:26:22.154445860 -0400
++++ b/src/plasmacameramanager.cpp	2026-10-04 04:26:22.129445832 -0400
+@@ -2,6 +2,8 @@
+ // SPDX-FileCopyrightText: 2025 Devin Lin <devin@kde.org>
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++#include <QGuiApplication>
++#include <QScreen>
+ #include <QSize>
+ #include <QThreadPool>
+ 
+@@ -36,6 +38,13 @@
+ 
+     m_orientationSensor.start();
+ 
++    // ALT Mobile: with auto-rotation the compositor turns the window, the
++    // camera image has to turn back by the same angle
++    if (QScreen *screen = QGuiApplication::primaryScreen()) {
++        connect(screen, &QScreen::orientationChanged, this, &PlasmaCameraManager::updateFromScreenOrientation);
++        updateFromScreenOrientation();
++    }
++
+     // Listen to audio inputs changing, and change audio device if needed
+     QMediaDevices *mediaDevices = new QMediaDevices(this);
+     connect(mediaDevices, &QMediaDevices::audioInputsChanged, this, [this]() {
+@@ -268,6 +277,7 @@
+         m_plasmaCamera = plasmaCamera;
+ 
+         if (m_plasmaCamera) {
++            m_plasmaCamera->setScreenRotationDegrees(m_screenRotationDegrees);
+             connect(plasmaCamera, &PlasmaCamera::availableChanged, this, &PlasmaCameraManager::setReadyForCapture);
+             connect(plasmaCamera, &PlasmaCamera::settingsChanged, this, &PlasmaCameraManager::setSettings);
+             connect(plasmaCamera, &PlasmaCamera::viewFinderFrame, this, &PlasmaCameraManager::processViewfinderFrame);
+@@ -516,7 +526,7 @@
+     // Do software rotation
+     // From testing, most drivers don't seem to implement hardware orientation correctly (CameraConfiguration::orientation),
+     // it either isn't supported or just crashes. So we will just use software rotation for best hardware compatibility.
+-    switch (m_plasmaCamera->softwareRotationDegrees()) {
++    switch (m_plasmaCamera->viewfinderRotationDegrees()) {
+     case 0:
+         break;
+     case 90:
+@@ -750,6 +760,21 @@
+     return newImageCaptureId;
+ }
+ 
++void PlasmaCameraManager::updateFromScreenOrientation()
++{
++    QScreen *screen = QGuiApplication::primaryScreen();
++    if (!screen || screen->orientation() == Qt::PrimaryOrientation) {
++        return;
++    }
++    // The panel of a phone is portrait
++    const int degrees = screen->angleBetween(Qt::PortraitOrientation, screen->orientation());
++    qInfo() << "Screen orientation:" << screen->orientation() << degrees;
++    m_screenRotationDegrees = degrees;
++    if (m_plasmaCamera) {
++        m_plasmaCamera->setScreenRotationDegrees(degrees);
++    }
++}
++
+ float PlasmaCameraManager::outputOrientationDegrees() const
+ {
+     return m_plasmaCamera->softwareRotationDegrees() + m_orientationSensorDegrees;
+diff -ru a/src/plasmacameramanager.h b/src/plasmacameramanager.h
+--- a/src/plasmacameramanager.h	2026-10-04 04:26:22.160445867 -0400
++++ b/src/plasmacameramanager.h	2026-10-04 04:26:11.817434110 -0400
+@@ -228,6 +228,7 @@
+     void processCaptureImage(const QQueue<QImage> &frames);
+     void processVideoFrame();
+     void updateFromOrientationSensor();
++    void updateFromScreenOrientation();
+ 
+     void setIsSavingVideo(bool isSavingVideo);
+ 
+@@ -292,6 +293,7 @@
+     // Device orientation for correct rotation
+     QOrientationSensor m_orientationSensor;
+     float m_orientationSensorDegrees = 0.0f;
++    int m_screenRotationDegrees = 0;
+ 
+     // internal
+     Settings m_settings;

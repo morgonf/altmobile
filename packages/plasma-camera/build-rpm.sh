@@ -1,5 +1,5 @@
 #!/bin/sh
-# Сборка RPM plasma-camera 2.1.1-alt2.mobile1 на телефоне, от пользователя.
+# Сборка RPM plasma-camera 2.1.1-alt2.mobile2 на телефоне, от пользователя.
 # В %_sourcedir (у ALT ~/RPM/SOURCES) нужен тарбол plasma-camera-2.1.1.tar (каталог
 # plasma-camera-2.1.1/ из gear ALT), патчи, .po и mo-merge.py кладутся
 # этим скриптом. Сборка в два потока: в четыре не хватает MemoryMax.
