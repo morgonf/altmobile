@@ -261,10 +261,10 @@ index 49c1f26c3..65949cb76 100644
  } /* namespace ipa::soft::algorithms */
 diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
 new file mode 100644
-index 000000000..ae8caa608
+index 000000000..f6c9c67fe
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.cpp
-@@ -0,0 +1,448 @@
+@@ -0,0 +1,549 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Copyright (C) 2025 Vasiliy Doylov <nekodevelopper@gmail.com>
@@ -310,6 +310,14 @@ index 000000000..ae8caa608
 + * sharpness was credited to the wrong position, the best position came out
 + * at random and the focus never settled.
 + *
++ * A search normally climbs from the current position instead (ALT
++ * Mobile): kCoarseStep probes in the direction the sharpness grows until
++ * it falls, then the peak is taken from a parabola through the best probe
++ * and its two neighbours. From close to the focus that is three probes,
++ * from the far end of the travel about six, against 18 for the two pass
++ * sweep (4-5 s on the IMX519). When the probes see no clear peak (deep
++ * out of focus, a flat region) the full sweep runs.
++ *
 + * After a sweep the reference sharpness is measured again at the chosen
 + * position (it is lower than the sweep maximum when the scene is noisy).
 + * In continuous mode focus is considered lost when the sharpness differs
@@ -328,6 +336,8 @@ index 000000000..ae8caa608
 + * reconfiguration, the last one counts: exposure settles meanwhile.
 + */
 +static constexpr unsigned int kRebaseStats = 3;
++/* Probes that differ by less than this share show no peak to climb */
++static constexpr double kClimbFlat = 0.05;
 +/* Below this normalised sharpness the region is flat: report failure */
 +static constexpr uint64_t kFlatSharpness = 2;
 +/* Relative change of exposure times gain between statistics: AE settled */
@@ -510,7 +520,12 @@ index 000000000..ae8caa608
 +	f.stop = 100;
 +	f.step = kCoarseStep;
 +	f.skip = kSettleStats + 1;
-+	k.focus_pos = 0;
++	/* Climb from where the lens is */
++	f.phase = 2;
++	probes_.clear();
++	climbStart_ = std::clamp(k.focus_pos.value_or(0.0), 0.0, 100.0);
++	climbDir_ = climbStart_ + kCoarseStep <= 100.0 ? 1 : -1;
++	k.focus_pos = climbStart_;
 +	k.focus_sweep = true;
 +	k.afState = controls::AfStateScanning;
 +	moved_ = false;
@@ -623,6 +638,11 @@ index 000000000..ae8caa608
 +		return;
 +	}
 +
++	if (f.phase == 2) {
++		climb(context, focus_pos, sharp, sweep);
++		return;
++	}
++
 +	LOG(IPASoftAutoFocus, Debug) << "Sweep pos " << focus_pos << " sharpness " << sharp;
 +	if (sharp > f.sharpness_max) {
 +		f.sharpness_max = sharp;
@@ -646,18 +666,99 @@ index 000000000..ae8caa608
 +		return;
 +	}
 +
-+	/* Done: keep sharpness_max to detect a scene change */
++	finish(context, focus_pos, sweep, f.focus_max_pos, f.sharpness_max);
++}
++
++/* Done: keep sharpness_max to detect a scene change */
++void Af::finish(IPAContext &context, double &focus_pos, bool &sweep,
++		double pos, uint64_t sharpness)
++{
++	auto &f = context.configuration.focus;
++	auto &k = context.activeState.knobs;
++
 +	sweep = false;
 +	refLayout_ = layout_;
 +	refValid_ = true;
++	f.focus_max_pos = pos;
++	f.sharpness_max = sharpness;
 +	f.lost = 0;
 +	f.skip = kSettleStats + 1;
 +	rebase_ = kRebaseStats;
-+	focus_pos = f.focus_max_pos;
-+	k.afState = f.sharpness_max > kFlatSharpness ? controls::AfStateFocused
-+						     : controls::AfStateFailed;
-+	LOG(IPASoftAutoFocus, Debug) << "Sweep end. Best focus: " << f.focus_max_pos
-+				     << " sharpness " << f.sharpness_max << " steps " << steps_;
++	focus_pos = pos;
++	k.afState = sharpness > kFlatSharpness ? controls::AfStateFocused
++					       : controls::AfStateFailed;
++	LOG(IPASoftAutoFocus, Debug) << "Sweep end. Best focus: " << pos
++				     << " sharpness " << sharpness << " steps " << steps_;
++}
++
++void Af::climb(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep)
++{
++	auto &f = context.configuration.focus;
++
++	LOG(IPASoftAutoFocus, Debug) << "Climb pos " << focus_pos << " sharpness " << sharp;
++	probes_.emplace_back(focus_pos, sharp);
++
++	auto best = std::max_element(probes_.begin(), probes_.end(),
++				     [](const auto &a, const auto &b) { return a.second < b.second; });
++	const bool rising = best == probes_.end() - 1;
++
++	auto next = [&](double pos) {
++		focus_pos = pos;
++		f.skip = kSettleStats;
++	};
++
++	if (rising) {
++		const double pos = focus_pos + climbDir_ * kCoarseStep;
++		if (pos >= 0.0 && pos <= 100.0)
++			return next(pos);
++	} else if (probes_.size() == 2 && climbDir_ == 1 &&
++		   climbStart_ - kCoarseStep >= 0.0) {
++		/* Falls on the first probe up: try down from the start */
++		climbDir_ = -1;
++		f.skip = kSettleStats + 1;
++		focus_pos = climbStart_ - kCoarseStep;
++		return;
++	}
++
++	/* The peak is bracketed (or at an end of the travel) */
++	const double bestPos = best->first;
++	const uint64_t bestSharp = best->second;
++	uint64_t lo = bestSharp;
++	const std::pair<double, uint64_t> *left = nullptr, *right = nullptr;
++	for (const auto &p : probes_) {
++		lo = std::min(lo, p.second);
++		if (std::abs(p.first - (bestPos - kCoarseStep)) < 0.5)
++			left = &p;
++		if (std::abs(p.first - (bestPos + kCoarseStep)) < 0.5)
++			right = &p;
++	}
++
++	if (bestSharp <= kFlatSharpness ||
++	    static_cast<double>(bestSharp - lo) < kClimbFlat * bestSharp) {
++		/* No peak in sight: sweep the whole travel */
++		LOG(IPASoftAutoFocus, Debug) << "No peak to climb, full sweep";
++		f.phase = 0;
++		f.sharpness_max = 0;
++		f.focus_max_pos = 0;
++		f.skip = kSettleStats + 1;
++		focus_pos = 0;
++		return;
++	}
++
++	double peak = bestPos;
++	if (left && right) {
++		/* Vertex of the parabola through the three probes */
++		const double a = static_cast<double>(left->second);
++		const double b = static_cast<double>(bestSharp);
++		const double c = static_cast<double>(right->second);
++		const double den = a - 2.0 * b + c;
++		if (den < 0.0)
++			peak = bestPos + kCoarseStep * (a - c) / (2.0 * den);
++		peak = std::clamp(peak, bestPos - kCoarseStep / 2, bestPos + kCoarseStep / 2);
++	}
++	peak = std::clamp(peak, 0.0, 100.0);
++
++	finish(context, focus_pos, sweep, peak, bestSharp);
 +}
 +
 +void Af::process(IPAContext &context,
@@ -715,10 +816,10 @@ index 000000000..ae8caa608
 +} /* namespace libcamera */
 diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
 new file mode 100644
-index 000000000..feffd6d2b
+index 000000000..8898fe982
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.h
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,96 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Copyright (C) 2025 Vasiliy Doylov <nekodevelopper@gmail.com>
@@ -730,6 +831,8 @@ index 000000000..feffd6d2b
 +
 +#include <array>
 +#include <optional>
++#include <utility>
++#include <vector>
 +
 +#include <libcamera/base/span.h>
 +
@@ -763,6 +866,9 @@ index 000000000..feffd6d2b
 +	void updateFocus(IPAContext &context, IPAFrameContext &frameContext);
 +	void step(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep);
 +	void restart(IPAContext &context);
++	void climb(IPAContext &context, double &focus_pos, uint64_t sharp, bool &sweep);
++	void finish(IPAContext &context, double &focus_pos, bool &sweep,
++		    double pos, uint64_t sharpness);
 +	uint32_t windowsToMask(const IPAContext &context, Span<const Rectangle> windows) const;
 +	uint64_t regionSharpness(const IPAContext &context, const SwIspStats *stats) const;
 +	bool sceneMoved(IPAContext &context);
@@ -771,6 +877,11 @@ index 000000000..feffd6d2b
 +	int32_t metering_ = 0;
 +	uint32_t windowMask_ = 0;
 +	unsigned int steps_ = 0;
++
++	/* Hill climb: positions probed and their sharpness, search direction */
++	std::vector<std::pair<double, uint64_t>> probes_;
++	double climbStart_ = 0.0;
++	int climbDir_ = 1;
 +
 +	/*
 +	 * Focus kept across configure() of the same camera, e.g. when an
