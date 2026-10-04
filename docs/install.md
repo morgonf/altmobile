@@ -82,8 +82,10 @@
    отступы строки состояния), `keyboard.sh` (языки ru и en),
    `default-apps.sh`. От root: `browsers.sh` (масштаб Firefox и Chromium),
    `hide-apps.sh` (лишнее из меню).
-7. Свои модули «Тема и обои» и «NFC»: `packages/alt-settings/*/build.sh`
-   и `install.sh`.
+7. Свои модули «Тема и обои», «NFC», «Доступ по SSH», «Хранилище» и
+   «Местоположение»: `packages/alt-settings/*/build.sh` и `install.sh`
+   (у SSH и «Хранилища» ещё помощники KAuth, их ставит тот же
+   `install.sh`).
 
 ## Ещё не пакетами
 
@@ -93,7 +95,8 @@
 - Модули q6voice с эхоподавлением (`kernel/`, `scripts/q6install.sh`) и
   калибровка. Модули камеры и NFC уже в пакете
   `kernel-modules-altmobile-qualcomm-sdm845`.
-- Модули настроек `kcm_altappearance` и `kcm_altnfc`.
+- Свои модули настроек `packages/alt-settings` (пять модулей и два
+  помощника KAuth).
 - Тема ALT, каталоги переводов, службы SIM, GPS и NFC.
 
 ## Проверка
