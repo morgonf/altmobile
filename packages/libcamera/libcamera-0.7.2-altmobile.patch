@@ -261,10 +261,10 @@ index 49c1f26c3..65949cb76 100644
  } /* namespace ipa::soft::algorithms */
 diff --git a/src/ipa/simple/algorithms/af.cpp b/src/ipa/simple/algorithms/af.cpp
 new file mode 100644
-index 000000000..8762df2f4
+index 000000000..ae8caa608
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.cpp
-@@ -0,0 +1,359 @@
+@@ -0,0 +1,448 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Copyright (C) 2025 Vasiliy Doylov <nekodevelopper@gmail.com>
@@ -332,6 +332,19 @@ index 000000000..8762df2f4
 +static constexpr uint64_t kFlatSharpness = 2;
 +/* Relative change of exposure times gain between statistics: AE settled */
 +static constexpr double kAeSteady = 0.03;
++/*
++ * Scene change (sum of the differences of the cell shares, 0..2). The
++ * camera moved to another scene when the layout differs from the one of
++ * the focused scene by kSceneMoved; the new scene holds still when two
++ * statistics in a row differ by less than kSceneSteady, kStillStats
++ * times. A hand held phone shakes the layout by about 0.02. A sweep is
++ * dropped when the scene moves under it: a phone resting a moment while
++ * turning got focused on the view on the way, and that result became the
++ * reference for the scene it was turned to.
++ */
++static constexpr double kSceneMoved = 0.2;
++static constexpr double kSceneSteady = 0.05;
++static constexpr unsigned int kStillStats = 3;
 +
 +static constexpr unsigned int kGrid = SwIspStats::kAfGrid;
 +static constexpr uint32_t kCentreMask = 1u << (kGrid * kGrid / 2);
@@ -373,6 +386,9 @@ index 000000000..8762df2f4
 +		windowMask_ = kCentreMask;
 +	k.afMask = metering_ == controls::AfMeteringWindows ? windowMask_ : kCentreMask;
 +	rebase_ = lastPos_ ? kRebaseStats : 0;
++	/* The frame size changed, the layout of the scene did not */
++	moved_ = false;
++	still_ = 0;
 +	context.configuration.focus.skip = 1;
 +	context.configuration.focus.lost = 0;
 +	context.configuration.focus.sharpness_max = 0;
@@ -497,7 +513,43 @@ index 000000000..8762df2f4
 +	k.focus_pos = 0;
 +	k.focus_sweep = true;
 +	k.afState = controls::AfStateScanning;
++	moved_ = false;
++	still_ = 0;
++	/* The scene the sweep is for, from the next statistics if none yet */
++	refLayout_ = layout_;
++	refValid_ = layoutValid_;
 +	LOG(IPASoftAutoFocus, Debug) << "Starting focus sweep, cells 0x" << std::hex << k.afMask;
++}
++
++/*
++ * In continuous mode: the camera turned to another scene. Returns true
++ * while it waits for the new scene to hold still (the sharpness check is
++ * meaningless then) and when it started the search. The sharpness check
++ * alone missed the turn: exposure moves while the phone turns (no
++ * comparison then), and a new scene out of focus often differs from the
++ * old reference by less than kLostRatio.
++ */
++bool Af::sceneMoved(IPAContext &context)
++{
++	if (!refValid_)
++		return false;
++	if (!moved_ && sceneDiff_ > kSceneMoved) {
++		moved_ = true;
++		still_ = 0;
++		LOG(IPASoftAutoFocus, Debug) << "Scene moved: " << sceneDiff_;
++	}
++	if (!moved_)
++		return false;
++	if (aeMoving_ || sceneJitter_ > kSceneSteady) {
++		still_ = 0;
++		return true;
++	}
++	if (++still_ < kStillStats)
++		return true;
++
++	LOG(IPASoftAutoFocus, Debug) << "New scene holds still: " << sceneDiff_;
++	restart(context);
++	return true;
 +}
 +
 +/* Normalised sharpness over the selected cells */
@@ -531,6 +583,8 @@ index 000000000..8762df2f4
 +	if (!sweep) {
 +		if (k.afMode != controls::AfModeContinuous)
 +			return;
++		if (sceneMoved(context))
++			return;
 +		/*
 +		 * Exposure still moving: the sharpness of such frames is no
 +		 * reference and says nothing about the focus (clipped or noisy
@@ -544,6 +598,8 @@ index 000000000..8762df2f4
 +			rebase_--;
 +			f.sharpness_max = sharp;
 +			f.lost = 0;
++			refLayout_ = layout_;
++			refValid_ = true;
 +			return;
 +		}
 +		/* A flat scene (no sharpness at all) gives nothing to refocus on */
@@ -555,6 +611,15 @@ index 000000000..8762df2f4
 +			LOG(IPASoftAutoFocus, Debug) << "Focus lost: " << sharp << " vs " << f.sharpness_max;
 +			restart(context);
 +		}
++		return;
++	}
++
++	if (k.afMode == controls::AfModeContinuous && sceneDiff_ > kSceneMoved) {
++		/* Wait for the scene to hold still and search again then */
++		LOG(IPASoftAutoFocus, Debug) << "Scene moved during the sweep: " << sceneDiff_;
++		sweep = false;
++		moved_ = true;
++		still_ = 0;
 +		return;
 +	}
 +
@@ -583,6 +648,8 @@ index 000000000..8762df2f4
 +
 +	/* Done: keep sharpness_max to detect a scene change */
 +	sweep = false;
++	refLayout_ = layout_;
++	refValid_ = true;
 +	f.lost = 0;
 +	f.skip = kSettleStats + 1;
 +	rebase_ = kRebaseStats;
@@ -607,6 +674,28 @@ index 000000000..8762df2f4
 +		const double ae = agc.exposure * agc.again;
 +		aeMoving_ = lastAe_ > 0.0 && std::abs(ae - lastAe_) > kAeSteady * lastAe_;
 +		lastAe_ = ae;
++
++		uint64_t total = 0;
++		for (uint64_t g : stats->afGreen)
++			total += g;
++		if (total) {
++			Layout layout;
++			for (unsigned int i = 0; i < layout.size(); i++)
++				layout[i] = static_cast<double>(stats->afGreen[i]) / total;
++			if (!refValid_) {
++				refLayout_ = layout;
++				refValid_ = true;
++			}
++			double jitter = 0.0, diff = 0.0;
++			for (unsigned int i = 0; i < layout.size(); i++) {
++				jitter += layoutValid_ ? std::abs(layout[i] - layout_[i]) : 0.0;
++				diff += std::abs(layout[i] - refLayout_[i]);
++			}
++			sceneJitter_ = jitter;
++			sceneDiff_ = diff;
++			layout_ = layout;
++			layoutValid_ = true;
++		}
 +	}
 +	if (stats->valid && k.afMode != controls::AfModeManual)
 +		step(context, k.focus_pos.value(), regionSharpness(context, stats),
@@ -626,10 +715,10 @@ index 000000000..8762df2f4
 +} /* namespace libcamera */
 diff --git a/src/ipa/simple/algorithms/af.h b/src/ipa/simple/algorithms/af.h
 new file mode 100644
-index 000000000..330f95211
+index 000000000..feffd6d2b
 --- /dev/null
 +++ b/src/ipa/simple/algorithms/af.h
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,86 @@
 +/* SPDX-License-Identifier: LGPL-2.1-or-later */
 +/*
 + * Copyright (C) 2025 Vasiliy Doylov <nekodevelopper@gmail.com>
@@ -639,6 +728,7 @@ index 000000000..330f95211
 +
 +#pragma once
 +
++#include <array>
 +#include <optional>
 +
 +#include <libcamera/base/span.h>
@@ -675,6 +765,7 @@ index 000000000..330f95211
 +	void restart(IPAContext &context);
 +	uint32_t windowsToMask(const IPAContext &context, Span<const Rectangle> windows) const;
 +	uint64_t regionSharpness(const IPAContext &context, const SwIspStats *stats) const;
++	bool sceneMoved(IPAContext &context);
 +
 +	/* Kept across configure() too: the tapped region stays selected */
 +	int32_t metering_ = 0;
@@ -694,6 +785,21 @@ index 000000000..330f95211
 +	/* Exposure times gain at the last statistics, to see AE settle */
 +	double lastAe_ = 0.0;
 +	bool aeMoving_ = false;
++
++	/*
++	 * Scene seen by the camera: share of the green of each grid cell.
++	 * The reference is taken where the focus was found; the camera
++	 * turned to another scene when the shares moved away from it.
++	 */
++	using Layout = std::array<double, SwIspStats::kAfGrid * SwIspStats::kAfGrid>;
++	Layout layout_{};
++	Layout refLayout_{};
++	bool refValid_ = false;
++	bool layoutValid_ = false;
++	double sceneDiff_ = 0.0;
++	double sceneJitter_ = 0.0;
++	bool moved_ = false;
++	unsigned int still_ = 0;
 +};
 +
 +} /* namespace ipa::soft::algorithms */

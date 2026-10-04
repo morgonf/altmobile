@@ -177,6 +177,8 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
   colours and grey shadows on the front camera without a CCM)
 - soft IPA: exposureBias (Agc) and contrast (Adjust) in the tuning file;
   IMX371 one stop darker with contrast 1.3 (hazy, overexposed picture)
+- soft AF: search again when the camera turns to another scene (hand held
+  photos without a tap kept the focus of the previous scene)
 
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile4
 - software ISP: cancel frames queued while stopped (they still reached the
