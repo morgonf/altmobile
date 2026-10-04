@@ -39,6 +39,7 @@ Source901: envmanager-alt-lnf.patch
 Source902: info-device-name.patch
 Source903: plasma-mobile-shell-qml.patch
 Source904: plasma-mobile-lockscreen-notifications.patch
+Source905: plasma-mobile-notifications-i18nd.patch
 Source950: kcm_mobile_info.ru-add.po
 
 BuildRequires(pre): rpm-build-kf6 rpm-build-ubt
@@ -109,6 +110,7 @@ patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
 patch -p1 -s < %SOURCE903
 patch -p1 -s < %SOURCE904
+patch -p1 -s < %SOURCE905
 msgcat --use-first %SOURCE950 po/ru/kcm_mobile_info.po > po/ru/kcm_mobile_info.po.tmp
 cat po/ru/kcm_mobile_info.po.tmp > po/ru/kcm_mobile_info.po
 rm -f po/ru/kcm_mobile_info.po.tmp
@@ -172,6 +174,9 @@ rm -f po/ru/kcm_mobile_info.po.tmp
 - Lock screen notifications: show, hide the content (application and time
   only) or hide (plasmamobilerc [Lockscreen] lockscreenNotifications,
   ShellSettings.Settings.lockscreenNotifications)
+- Notification widgets translated on the lock screen too: explicit
+  plasma_org.kde.plasma.private.mobileshell domain (the greeter looked the
+  strings up in its own catalog, "now", "Reply" stayed English)
 
 * Sat Oct 03 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - ALT Mobile for the OnePlus 6T: status bar and navigation, Folio dock,

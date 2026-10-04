@@ -1,0 +1,130 @@
+diff -ruN a/components/mobileshell/qml/widgets/notifications/NotificationFooterActions.qml b/components/mobileshell/qml/widgets/notifications/NotificationFooterActions.qml
+--- a/components/mobileshell/qml/widgets/notifications/NotificationFooterActions.qml	2026-10-04 13:47:33.660931815 +0300
++++ b/components/mobileshell/qml/widgets/notifications/NotificationFooterActions.qml	2026-10-04 13:47:33.723496828 +0300
+@@ -55,7 +55,7 @@
+                 if (notificationItem.hasReplyAction) {
+                     buttons.unshift({
+                         actionName: "inline-reply",
+-                        label: notificationItem.replyActionLabel || i18nc("Reply to message", "Reply")
++                        label: notificationItem.replyActionLabel || i18ndc("plasma_org.kde.plasma.private.mobileshell", "Reply to message", "Reply")
+                     });
+                 }
+ 
+diff -ruN a/components/mobileshell/qml/widgets/notifications/NotificationReplyField.qml b/components/mobileshell/qml/widgets/notifications/NotificationReplyField.qml
+--- a/components/mobileshell/qml/widgets/notifications/NotificationReplyField.qml	2026-10-04 13:47:33.672499551 +0300
++++ b/components/mobileshell/qml/widgets/notifications/NotificationReplyField.qml	2026-10-04 13:47:33.723937613 +0300
+@@ -33,7 +33,7 @@
+     PlasmaComponents3.TextField {
+         id: replyTextField
+         Layout.fillWidth: true
+-        placeholderText: replyRow.placeholderText || i18nc("Text field placeholder", "Type a reply…")
++        placeholderText: replyRow.placeholderText || i18ndc("plasma_org.kde.plasma.private.mobileshell", "Text field placeholder", "Type a reply…")
+         onAccepted: {
+             if (replyButton.enabled) {
+                 replyRow.replied(text);
+@@ -52,7 +52,7 @@
+     PlasmaComponents3.Button {
+         id: replyButton
+         icon.name: replyRow.buttonIconName || "document-send"
+-        text: replyRow.buttonText || i18nc("@action:button", "Send")
++        text: replyRow.buttonText || i18ndc("plasma_org.kde.plasma.private.mobileshell", "@action:button", "Send")
+         enabled: replyTextField.length > 0
+         onClicked: replyRow.replied(replyTextField.text)
+     }
+diff -ruN a/components/mobileshell/qml/widgets/notifications/NotificationsUtils.js b/components/mobileshell/qml/widgets/notifications/NotificationsUtils.js
+--- a/components/mobileshell/qml/widgets/notifications/NotificationsUtils.js	2026-10-04 13:47:33.710833148 +0300
++++ b/components/mobileshell/qml/widgets/notifications/NotificationsUtils.js	2026-10-04 13:47:33.726275337 +0300
+@@ -12,14 +12,14 @@
+     if (notificationItem.notificationType === NotificationManager.Notifications.JobType) {
+         if (notificationItem.jobState === NotificationManager.Notifications.JobStateSuspended) {
+             if (notificationItem.summary) {
+-                return i18nc("Job name, e.g. Copying is paused", "%1 (Paused)", notificationItem.summary);
++                return i18ndc("plasma_org.kde.plasma.private.mobileshell", "Job name, e.g. Copying is paused", "%1 (Paused)", notificationItem.summary);
+             }
+         } else if (notificationItem.jobState === NotificationManager.Notifications.JobStateStopped) {
+             if (notificationItem.jobError) {
+                 if (notificationItem.summary) {
+-                    return i18nc("Job name, e.g. Copying has failed", "%1 (Failed)", notificationItem.summary);
++                    return i18ndc("plasma_org.kde.plasma.private.mobileshell", "Job name, e.g. Copying has failed", "%1 (Failed)", notificationItem.summary);
+                 } else {
+-                    return i18n("Job Failed");
++                    return i18nd("plasma_org.kde.plasma.private.mobileshell", "Job Failed");
+                 }
+             } else if (notificationItem.summary) {
+                 return i18ndc("plasma_applet_org.kde.plasma.notifications", "Job name, e.g. Copying has finished", "%1 (Finished)", notificationItem.summary);
+@@ -42,12 +42,12 @@
+ 
+     const deltaMinutes = Math.floor((Date.now() - time.getTime()) / 1000 / 60);
+     if (deltaMinutes < 1) {
+-        return i18n("now");
++        return i18nd("plasma_org.kde.plasma.private.mobileshell", "now");
+     }
+ 
+     // Received less than an hour ago, show relative minutes
+     if (deltaMinutes < 60) {
+-        return i18nc("Notification was added minutes ago, keep short", "%1m ago", deltaMinutes);
++        return i18ndc("plasma_org.kde.plasma.private.mobileshell", "Notification was added minutes ago, keep short", "%1m ago", deltaMinutes);
+     }
+     // Received less than a day ago, show time, 22 hours so the time isn't as ambiguous between today and yesterday
+     if (deltaMinutes < 60 * 22) {
+@@ -79,13 +79,13 @@
+     }
+ 
+     if (eta < 60) { // 1 minute
+-        return i18nc("seconds remaining, keep short", "%1 s remaining", Math.round(eta));
++        return i18ndc("plasma_org.kde.plasma.private.mobileshell", "seconds remaining, keep short", "%1 s remaining", Math.round(eta));
+     }
+     if (eta < 60 * 60) {// 1 hour
+-        return i18nc("minutes remaining, keep short", "%1m remaining", Math.round(eta / 60));
++        return i18ndc("plasma_org.kde.plasma.private.mobileshell", "minutes remaining, keep short", "%1m remaining", Math.round(eta / 60));
+     }
+     if (eta < 60 * 60 * 5) { // 5 hours max, if it takes even longer there's no real point in showing that
+-        return i18nc("hours remaining, keep short", "%1h remaining", Math.round(eta / 60 / 60));
++        return i18ndc("plasma_org.kde.plasma.private.mobileshell", "hours remaining, keep short", "%1h remaining", Math.round(eta / 60 / 60));
+     }
+ 
+     return "";
+diff -ruN a/components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml b/components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml
+--- a/components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml	2026-10-04 13:47:33.685476463 +0300
++++ b/components/mobileshell/qml/widgets/notifications/NotificationsWidget.qml	2026-10-04 13:47:33.724442981 +0300
+@@ -255,7 +255,7 @@
+             anchors.centerIn: parent
+             width: parent.width - (Kirigami.Units.gridUnit * 4)
+ 
+-            text: i18n("Notification service not available")
++            text: i18nd("plasma_org.kde.plasma.private.mobileshell", "Notification service not available")
+             visible: list.count === 0 && !NotificationManager.Server.valid && historyModelType === NotificationsModelType.NotificationsModel
+ 
+             PlasmaComponents3.Label {
+@@ -264,7 +264,7 @@
+                 // PlasmaExtras.PlaceholderMessage is internally a ColumnLayout, so we can use Layout.whatever properties here
+                 Layout.fillWidth: true
+                 wrapMode: Text.WordWrap
+-                text: currentOwner ? i18nc("Vendor and product name", "Notifications are currently provided by '%1 %2'", currentOwner.vendor, currentOwner.name) : ""
++                text: currentOwner ? i18ndc("plasma_org.kde.plasma.private.mobileshell", "Vendor and product name", "Notifications are currently provided by '%1 %2'", currentOwner.vendor, currentOwner.name) : ""
+                 visible: currentOwner && currentOwner.vendor && currentOwner.name
+             }
+         }
+@@ -426,8 +426,8 @@
+ 
+                         sourceComponent: PlasmaComponents3.ToolButton {
+                             icon.name: model.isGroupExpanded ? "arrow-up" : "arrow-down"
+-                            text: model.isGroupExpanded ? i18n("Show Fewer")
+-                            : i18nc("Expand to show n more notifications",
++                            text: model.isGroupExpanded ? i18nd("plasma_org.kde.plasma.private.mobileshell", "Show Fewer")
++                            : i18ndc("plasma_org.kde.plasma.private.mobileshell", "Expand to show n more notifications",
+                                     "Show %1 More", (model.groupChildrenCount - model.expandedGroupChildrenCount))
+                             onClicked: {
+                                 list.setGroupExpanded(model.index, !model.isGroupExpanded)
+diff -ruN a/components/mobileshell/qml/widgets/notifications/ThumbnailStrip.qml b/components/mobileshell/qml/widgets/notifications/ThumbnailStrip.qml
+--- a/components/mobileshell/qml/widgets/notifications/ThumbnailStrip.qml	2026-10-04 13:47:33.698517542 +0300
++++ b/components/mobileshell/qml/widgets/notifications/ThumbnailStrip.qml	2026-10-04 13:47:33.725442988 +0300
+@@ -131,7 +131,7 @@
+ 
+             PlasmaComponents3.ToolTip {
+                 id: tooltip
+-                text: i18n("More Options…")
++                text: i18nd("plasma_org.kde.plasma.private.mobileshell", "More Options…")
+             }
+         }
+     }
