@@ -1,0 +1,12 @@
+[Unit]
+Description=Ограничение заряда батареи (ALT Mobile)
+After=systemd-modules-load.service
+
+[Service]
+ExecStart=/usr/lib/alt-mobile/alt-charge-limit.sh
+# Остановка или падение службы включают зарядку обратно
+ExecStopPost=/bin/sh -c 'echo Charging > /sys/class/power_supply/pmi8998-charger/status'
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
