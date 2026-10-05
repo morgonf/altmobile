@@ -490,3 +490,26 @@ ACDB и обезличивает сетевые данные по неотсле
 `scripts/export-private.sed`. Переписывание детерминировано, старые коммиты
 получают те же хеши, поэтому новая выгрузка отправляется обычным push
 (`git push origin master:main`, ключ `~/.ssh/id_ed25519_nout`).
+
+## Звонилка, сообщения, контакты (05.10.2026)
+
+Собраны и установлены пакетами (`packages/plasma-dialer`, `spacebar`,
+`plasma-phonebook`): plasma-dialer 6.7.5, spacebar 6.7.5,
+plasma-phonebook 26.08.1. Для сборки поставлены `futuresql-qt6-devel`,
+`kf6-kcontacts-devel`, `libcallaudio-devel`, `libcurl-devel`,
+`libcares-devel`. Тестовые `*-fakeserver` и статическая библиотека
+`libktelephonymetatypes` в пакеты не входят. Службы ставятся в
+`/usr/libexec`, а не в `%_K6exec`.
+
+Автозапуск фоновых служб (`org.kde.modem.daemon`,
+`org.kde.telephony.daemon`, `org.kde.spacebar.daemon`) у пользователя
+выключен файлами `Hidden=true` в `~/.config/autostart`. Звонки и SMS пока
+обслуживают GNOME Calls и Chatty, иначе при входящем звонке звонили бы два
+приложения. Поэтому звонилка пишет «Службы телефонии не отвечают».
+Переключение на них делать вместе с отказом от Phosh (п. 10), когда
+будет SIM-карта: убрать файлы-скрытия, отключить автозапуск GNOME Calls и
+Chatty, проверить входящий и исходящий звонок, эхоподавление
+(`q6echo-activate` следит за ModemManager и от приложения не зависит) и
+SMS. Контакты и сообщения запускаются, звонилка открывается, проверено
+05.10 запуском в сеансе.
+
