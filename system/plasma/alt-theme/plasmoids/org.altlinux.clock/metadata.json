@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "morgonf@altlinux.org",
+                "Name": "morgonf"
+            }
+        ],
+        "Category": "Date and Time",
+        "Description": "Time, the day of the week and the date in the ALT Mobile theme",
+        "Description[ru]": "Время, день недели и дата в теме ALT Mobile",
+        "Icon": "preferences-system-time",
+        "Id": "org.altlinux.clock",
+        "License": "MIT",
+        "Name": "ALT Clock",
+        "Name[ru]": "Часы ALT",
+        "Version": "1.0"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

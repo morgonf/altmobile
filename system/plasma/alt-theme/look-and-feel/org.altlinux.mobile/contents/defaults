@@ -6,7 +6,7 @@
 widgetStyle=Breeze
 
 [kdeglobals][General]
-activeFont=PT Root UI,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1
+activeFont=PT Root UI,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 ColorScheme=ALTMobileDark
 Name=ALT Mobile
 

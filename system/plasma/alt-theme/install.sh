@@ -20,6 +20,12 @@ done
 rm -rf $S/wallpapers/ALTMobile
 cp -r wallpapers/ALTMobile $S/wallpapers/
 install -m 644 ALTMobile.colors ALTMobileDark.colors $S/color-schemes/
+# Виджет «Часы ALT» для главного экрана (11.10.2026): стандартные цифровые
+# часы на рабочем столе вписывают время в высоту области, размер не задать
+install -d $S/plasma/plasmoids
+rm -rf $S/plasma/plasmoids/org.altlinux.clock
+cp -r plasmoids/org.altlinux.clock $S/plasma/plasmoids/
+chmod -R u=rwX,go=rX $S/plasma/plasmoids/org.altlinux.clock
 rm -rf $S/icons/ALT
 cp -r icons/ALT $S/icons/
 chmod -R u=rwX,go=rX $S/plasma/look-and-feel/org.altlinux.mobile* $S/wallpapers/ALTMobile $S/icons/ALT

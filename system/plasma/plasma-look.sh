@@ -20,8 +20,16 @@ $K menuFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K toolBarFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K smallestReadableFont "$F,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
 $K fixed "Noto Sans Mono,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
-# Заголовок окна (kdeglobals [WM] activeFont): жирный того же семейства
-kwriteconfig6 --file kdeglobals --group WM --key activeFont "$F,11,-1,5,700,0,0,0,0,0,0,0,0,0,0,1"
+# Заголовок окна (kdeglobals [WM] activeFont): то же обычное начертание.
+# С 11.10.2026 по просьбе пользователя во всей теме одно начертание:
+# fonts.conf рядом прячет от fontconfig Light, Medium и Bold PT Root UI
+# и запрещает утолщение, поэтому элементы с Font.ExtraLight (часы) или
+# Font.Bold (заголовки, дата на экране блокировки) рисуются Regular;
+# sans-serif и system-ui ведут на PT Root UI (раньше Noto Sans).
+kwriteconfig6 --file kdeglobals --group WM --key activeFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+kwriteconfig6 --file kdeglobals --group General --key activeFont "$F,11,-1,5,400,0,0,0,0,0,0,0,0,0,0,1"
+install -D -m 644 "$(dirname "$0")/fonts.conf" "${XDG_CONFIG_HOME:-$HOME/.config}/fontconfig/fonts.conf"
+fc-cache -f >/dev/null 2>&1 || true
 # Приложения GTK: то же семейство и размер, что у Plasma (раньше от Phosh
 # осталось Adwaita Sans 14, шрифты в приложениях были разнобойными).
 # Hack в системе нет, fontconfig подставлял вместо него Noto Sans.
@@ -29,7 +37,7 @@ G="gsettings set org.gnome.desktop.interface"
 $G font-name "$F 11"
 $G document-font-name "$F 11"
 $G monospace-font-name "Noto Sans Mono 11"
-gsettings set org.gnome.desktop.wm.preferences titlebar-font "$F Bold 11"
+gsettings set org.gnome.desktop.wm.preferences titlebar-font "$F 11"
 # Значки Folio 72 при масштабе 3 (при 2.75 нужно 82, физически то же):
 # в ящике 3 столбца вместо 4 (столбцы считаются как
 # ширина / (значок + отступы)), просьба пользователя. Ключ в группе Folio
