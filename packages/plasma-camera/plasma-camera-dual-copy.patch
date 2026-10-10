@@ -1,0 +1,79 @@
+diff --git a/src/plasmacamera.cpp b/src/plasmacamera.cpp
+index 2013665..e90e18e 100644
+--- a/src/plasmacamera.cpp
++++ b/src/plasmacamera.cpp
+@@ -121,6 +121,10 @@ PlasmaCamera::PlasmaCamera(QObject *parent) : QObject(parent)
+     connect(m_pipWorker, &Worker::finished, m_pipWorker, &Worker::deleteLater);
+     connect(m_pipThread, &QThread::finished, m_pipThread, &QThread::deleteLater);
+     connect(m_pipWorker, &Worker::errorOccurred, this, &PlasmaCamera::setError);
++    // Its frames reach the compositor through queued calls, copy them first
++    QMetaObject::invokeMethod(m_pipWorker, [pip = m_pipWorker]() {
++        pip->setDeepCopyFrames(true);
++    }, Qt::QueuedConnection);
+     connect(m_pipWorker, &Worker::viewFinderFrame, this, [this](const QImage &frame) {
+         if (m_dualMode == 0 || frame.isNull() || m_compositor->pendingSecond >= 1) {
+             return;
+@@ -929,6 +933,12 @@ void PlasmaCamera::setDualMode(int mode)
+         stopPip();
+     }
+     m_dualMode = mode;
++    // The main camera frames go to the compositor too while dual video runs
++    Worker *main = m_cameraWorker;
++    const bool dual = mode > 0;
++    QMetaObject::invokeMethod(main, [main, dual]() {
++        main->setDeepCopyFrames(dual);
++    }, Qt::QueuedConnection);
+     Q_EMIT dualModeChanged();
+ }
+ 
+diff --git a/src/plasmacamera/worker.cpp b/src/plasmacamera/worker.cpp
+index 5f86a48..fe97be5 100644
+--- a/src/plasmacamera/worker.cpp
++++ b/src/plasmacamera/worker.cpp
+@@ -92,6 +92,11 @@ void Worker::setNightMode(const bool enabled)
+     m_nightMode = enabled;
+ }
+ 
++void Worker::setDeepCopyFrames(const bool enabled)
++{
++    m_deepCopyFrames = enabled;
++}
++
+ void Worker::setMaxViewfinderWidth(const int width)
+ {
+     if (m_maxViewfinderWidth == width) {
+@@ -553,6 +558,9 @@ void Worker::processRequestData()
+         auto *holder = new std::shared_ptr<Image>(image);
+         m_image = QImage(image->data(0).data(), m_size.width(), m_size.height(), static_cast<qsizetype>(size) / m_size.height(), NATIVE_FORMATS[m_format],
+                          [](void *p) { delete static_cast<std::shared_ptr<Image> *>(p); }, holder);
++        if (m_deepCopyFrames) {
++            m_image = m_image.copy();
++        }
+     } else {
+         m_converter.convert(image.get(), size, &m_image);
+     }
+diff --git a/src/plasmacamera/worker.h b/src/plasmacamera/worker.h
+index 1445cbc..60ebb3c 100644
+--- a/src/plasmacamera/worker.h
++++ b/src/plasmacamera/worker.h
+@@ -87,6 +87,12 @@ public Q_SLOTS:
+     // once (dual video). A running stream restarts at the new size.
+     void setMaxViewfinderWidth(int width);
+ 
++    // ALT Mobile: copy each viewfinder frame before its buffer goes back to
++    // the camera. Dual video hands the frames to the compositor thread
++    // through queued calls; a frame pointing into the buffer was overwritten
++    // by the next one meanwhile (black and green flicker of the small view).
++    void setDeepCopyFrames(bool enabled);
++
+ private Q_SLOTS:
+     void setError(int libcameraError);
+     void setError(const QString &errorString);
+@@ -173,6 +179,7 @@ private:
+     bool m_fullSizeStream = false; // the stream is at full size for a photo
+     int m_stillSkipFrames = 0; // frames left for AE and AWB to settle
+     QImage m_lastFrame; // shallow, for a deep copy shown during the switch
++    bool m_deepCopyFrames = false; // see setDeepCopyFrames()
+ 
+     // Night mode burst from the viewfinder stream
+     bool m_nightMode = false;

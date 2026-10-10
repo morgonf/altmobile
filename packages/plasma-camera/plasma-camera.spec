@@ -5,7 +5,7 @@
 
 Name: %rname
 Version: 2.1.1
-Release: alt2.mobile5
+Release: alt2.mobile6
 %K6init
 
 Group:  Video
@@ -33,6 +33,7 @@ Patch5: plasma-camera-zoom-fullsize.patch
 Patch6: plasma-camera-screen-rotation.patch
 Patch7: plasma-camera-switch-skip.patch
 Patch8: plasma-camera-dual-video.patch
+Patch9: plasma-camera-dual-copy.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: qt6-declarative-devel qt6-svg-devel qt6-wayland-devel qt6-multimedia-devel qt6-sensors-devel
@@ -56,6 +57,7 @@ Simple camera application for mobile devices.
 %patch6 -p1
 %patch7 -p1
 %patch8 -p1
+%patch9 -p1
 
 %build
 %K6build
@@ -75,6 +77,12 @@ mv $M.new $M
 %_datadir/metainfo/*.xml
 
 %changelog
+* Sat Oct 10 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile6
+- dual video: frames are copied in the camera thread before their buffer
+  goes back to libcamera; the small view of the second camera flickered
+  black and green (the next frame overwrote the buffer on the way to the
+  compositor)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 2.1.1-alt2.mobile5
 - dual video: frames combined in their own thread (DualCompositor), video
   frames turned and pushed to GStreamer in another one; the small picture
