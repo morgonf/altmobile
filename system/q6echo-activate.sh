@@ -45,6 +45,15 @@ while read -r line; do
 			   echo "10f1f 10e61 hex:$MODE" > $L &&
 			   echo "10ef4 10e12 0xC000" > $L; then
 				echo "эхоподавитель перезапущен, режим и усиление записаны"
+				# Уровни кодека в разговоре: на входящем 11.10.2026 собеседник
+				# слышал голос тише, чем на исходящем; ищем, не выставила ли
+				# звуковая служба уровни выключенного микрофона
+				for c in "ADC4 Volume" "DEC7 Volume" "RX0 Digital Volume" \
+					"AMIC MUX7" "ADC MUX7"; do
+					printf '%s=%s ' "$c" "$(amixer -c0 cget "name=$c" 2>/dev/null |
+						sed -n 's/^ *: values=//p')"
+				done
+				echo
 			else
 				echo "перезапустить эхоподавитель не удалось"
 			fi
