@@ -1,0 +1,32 @@
+--- a/ucm2/OnePlus/fajita/VoiceCall.conf
++++ b/ucm2/OnePlus/fajita/VoiceCall.conf
+@@ -69,17 +69,27 @@
+ 	EnableSequence [
+ 		cset "name='ADC MUX7' AMIC"
+ 		cset "name='AMIC MUX7' ADC4"
++
++		# Уровни под эхоподавитель ECNS v2: ADC4 как в заводском Android
++		# (mixer_paths_tavil.xml), DEC7 на 4 дБ выше заводских 84. ADC4 не
++		# отдаётся PipeWire как громкость микрофона: при 100% он ставил 20,
++		# эхо в микрофоне выходило громче исходного, а заводская калибровка
++		# подавителя рассчитана на 12.
++		cset "name='ADC4 Volume' 12"
++		cset "name='DEC7 Volume' 88"
+ 	]
+ 
+ 	DisableSequence [
+ 		cset "name='ADC MUX7' ZERO"
+ 		cset "name='AMIC MUX7' ZERO"
++
++		# вернуть уровни для обычной записи, как в BootSequence
++		cset "name='ADC4 Volume' 16"
++		cset "name='DEC7 Volume' 81"
+ 	]
+ 
+ 	Value {
+ 		CapturePriority 200
+ 		CapturePCM "hw:${CardId},1" # MultiMedia2
+-		CaptureMixerElem "ADC4"
+-		CaptureVolume "ADC4 Volume"
+ 	}
+ }

@@ -2,7 +2,7 @@
 
 Name: alsa-ucm-conf-sdm845
 Version: 1.2.10
-Release: alt1.mobile1
+Release: alt1.mobile2
 Summary: ALSA UCM configuration for Qualcomm sdm845 based devices
 License: BSD-3-Clause
 Group: System/Configuration/Hardware
@@ -14,6 +14,7 @@ Source: %name-%version.tar
 # ALT Mobile, OnePlus 6T: microphone gain and earpiece amplifier against
 # the acoustic echo in calls (docs/state.md, docs/measurements.md)
 Patch1: %name-fajita-echo.patch
+Patch2: %name-fajita-voicecall-levels.patch
 
 Requires: alsa-ucm-conf
 
@@ -26,6 +27,7 @@ sound on any sdm845 based phone.
 %prep
 %setup
 %patch1 -p1
+%patch2 -p1
 
 %build
 
@@ -48,6 +50,11 @@ cp -v ucm2/conf.d/sdm845/Xiaomi* %buildroot%_datadir/alsa/ucm2/conf.d/sdm845
 %_datadir/alsa/ucm2
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.2.10-alt1.mobile2
+- fajita VoiceCall: microphone levels for the ECNS v2 echo canceller
+  (ADC4 12, DEC7 88) and ADC4 not exported to PipeWire as the capture
+  volume; mobile1 overwrote the hand-installed file with the stock one.
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1.2.10-alt1.mobile1
 - OnePlus 6T (fajita): DEC7 Volume 81, EAR PA Volume 2 against the
   acoustic echo in calls (the values the phone ran with since 26.09)
