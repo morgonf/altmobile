@@ -1,0 +1,179 @@
+diff -ruN a/subprojects/libcall-ui/po/ru.po b/subprojects/libcall-ui/po/ru.po
+--- a/subprojects/libcall-ui/po/ru.po	2026-10-11 08:10:53.132095096 -0400
++++ b/subprojects/libcall-ui/po/ru.po	2026-10-11 08:10:53.155094800 -0400
+@@ -60,44 +60,42 @@
+ msgid "Hanging up…"
+ msgstr "Отключение…"
+ 
+-#~ msgid "Incoming phone call"
+-#~ msgstr "Входящий телефонный вызов"
+-
+-#~ msgid "Mute"
+-#~ msgstr "Отключить звук"
+-
+-#~ msgid "Speaker"
+-#~ msgstr "Громкая связь"
+-
+-#~ msgid "Add call"
+-#~ msgstr "Добавить вызов"
+-
+-#~ msgid "Hold"
+-#~ msgstr "Удерживать"
+-
+-#~ msgid "Dial Pad"
+-#~ msgstr "Панель набора"
+-
+-#~ msgid "Hang up"
+-#~ msgstr "Отключиться"
+-
+-#~ msgid "Answer"
+-#~ msgstr "Ответить"
+-
+-#~ msgid "Hide the dial pad"
+-#~ msgstr "Скрыть панель набора"
+-
+-#~ msgid "Enter a number"
+-#~ msgstr "Ввести номер"
+-
+-#~ msgid "Type a phone number"
+-#~ msgstr "Ввести номер телефона"
+-
+-#~ msgid "Call that phone number"
+-#~ msgstr "Вызов на этот номер телефона"
+-
+-#~ msgid "This call is not encrypted"
+-#~ msgstr "Этот вызов не зашифрован"
+-
+-#~ msgid "This call is encrypted"
+-#~ msgstr "Этот вызов зашифрован"
++#: src/cui-call-display.ui
++msgid "Mute"
++msgstr "Отключить звук"
++
++#: src/cui-call-display.ui
++msgid "Speaker"
++msgstr "Громкая связь"
++
++#: src/cui-call-display.ui
++msgid "Add call"
++msgstr "Добавить вызов"
++
++#: src/cui-call-display.ui
++msgid "Hold"
++msgstr "Удержать"
++
++#: src/cui-call-display.ui
++msgid "Dial Pad"
++msgstr "Панель набора"
++
++#: src/cui-dialpad.ui
++msgid "Enter a number"
++msgstr "Введите номер"
++
++#: src/cui-dialpad.ui
++msgid "Type a phone number"
++msgstr "Введите номер телефона"
++
++#: src/cui-dialpad.ui
++msgid "Call that phone number"
++msgstr "Позвонить на этот номер"
++
++#: src/cui-encryption-indicator.ui
++msgid "This call is not encrypted"
++msgstr "Этот вызов не зашифрован"
++
++#: src/cui-encryption-indicator.ui
++msgid "This call is encrypted"
++msgstr "Этот вызов зашифрован"
+diff -ruN a/subprojects/libcall-ui/src/cui-call-display.ui b/subprojects/libcall-ui/src/cui-call-display.ui
+--- a/subprojects/libcall-ui/src/cui-call-display.ui	2026-10-11 08:10:53.132095096 -0400
++++ b/subprojects/libcall-ui/src/cui-call-display.ui	2026-10-11 08:10:53.136095045 -0400
+@@ -156,7 +156,7 @@
+                       <object class="GtkLabel">
+                         <property name="valign">start</property>
+                         <property name="vexpand">True</property>
+-                        <property name="label" translatable="True">Mute</property>
++                        <property name="label" translatable="yes">Mute</property>
+                         <property name="justify">center</property>
+                         <property name="wrap">True</property>
+                         <property name="wrap-mode">word-char</property>
+@@ -171,7 +171,7 @@
+                       <object class="GtkLabel">
+                         <property name="valign">start</property>
+                         <property name="vexpand">True</property>
+-                        <property name="label" translatable="True">Speaker</property>
++                        <property name="label" translatable="yes">Speaker</property>
+                         <property name="justify">center</property>
+                         <property name="wrap">True</property>
+                         <property name="wrap-mode">word-char</property>
+@@ -186,7 +186,7 @@
+                       <object class="GtkLabel">
+                         <property name="valign">start</property>
+                         <property name="vexpand">True</property>
+-                        <property name="label" translatable="True">Add call</property>
++                        <property name="label" translatable="yes">Add call</property>
+                         <property name="justify">center</property>
+                         <property name="wrap">True</property>
+                         <property name="wrap-mode">word-char</property>
+@@ -231,7 +231,7 @@
+                       <object class="GtkLabel">
+                         <property name="valign">start</property>
+                         <property name="vexpand">True</property>
+-                        <property name="label" translatable="True">Hold</property>
++                        <property name="label" translatable="yes">Hold</property>
+                         <property name="justify">center</property>
+                         <property name="wrap">True</property>
+                         <property name="wrap-mode">word-char</property>
+@@ -269,7 +269,7 @@
+                       <object class="GtkLabel">
+                         <property name="valign">start</property>
+                         <property name="vexpand">True</property>
+-                        <property name="label" translatable="True">Dial Pad</property>
++                        <property name="label" translatable="yes">Dial Pad</property>
+                         <property name="justify">center</property>
+                         <property name="wrap">True</property>
+                         <property name="wrap-mode">word-char</property>
+diff -ruN a/subprojects/libcall-ui/src/cui-dialpad.ui b/subprojects/libcall-ui/src/cui-dialpad.ui
+--- a/subprojects/libcall-ui/src/cui-dialpad.ui	2026-10-11 08:10:53.133095083 -0400
++++ b/subprojects/libcall-ui/src/cui-dialpad.ui	2026-10-11 08:10:53.136095045 -0400
+@@ -17,8 +17,8 @@
+               <object class="GtkEntry" id="keypad_entry">
+                 <property name="hexpand">True</property>
+                 <property name="xalign">0.5</property>
+-                <property name="placeholder-text" translatable="True">Enter a number</property>
+-                <property name="tooltip-text" translatable="True">Type a phone number</property>
++                <property name="placeholder-text" translatable="yes">Enter a number</property>
++                <property name="tooltip-text" translatable="yes">Type a phone number</property>
+                 <signal name="activate" handler="dial_clicked_or_activated_cb" swapped="yes"/>
+                 <style>
+                   <class name="phone-number-entry"/>
+@@ -41,7 +41,7 @@
+                 <child type="center">
+                   <object class="GtkButton" id="dial">
+                     <property name="receives-default">True</property>
+-                    <property name="tooltip-text" translatable="True">Call that phone number</property>
++                    <property name="tooltip-text" translatable="yes">Call that phone number</property>
+                     <signal name="clicked" handler="dial_clicked_or_activated_cb" swapped="yes"/>
+                     <child>
+                       <object class="GtkImage">
+diff -ruN a/subprojects/libcall-ui/src/cui-encryption-indicator.ui b/subprojects/libcall-ui/src/cui-encryption-indicator.ui
+--- a/subprojects/libcall-ui/src/cui-encryption-indicator.ui	2026-10-11 08:10:53.133095083 -0400
++++ b/subprojects/libcall-ui/src/cui-encryption-indicator.ui	2026-10-11 08:10:53.136095045 -0400
+@@ -20,7 +20,7 @@
+             </child>
+             <child>
+               <object class="GtkLabel">
+-                <property name="label" translatable="True">This call is not encrypted</property>
++                <property name="label" translatable="yes">This call is not encrypted</property>
+               </object>
+             </child>
+           </object>
+@@ -41,7 +41,7 @@
+             </child>
+             <child>
+               <object class="GtkLabel">
+-                <property name="label" translatable="True">This call is encrypted</property>
++                <property name="label" translatable="yes">This call is encrypted</property>
+               </object>
+             </child>
+           </object>
