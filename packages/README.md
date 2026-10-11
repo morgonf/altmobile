@@ -20,10 +20,10 @@
 | kernel-modules-altmobile-qualcomm-sdm845 | 1.0-alt1.mobile1 | установлен 04.10, работа модулей проверяется после перезагрузки; прежние в `/var/lib/altmobile/updates-backup-<ядро>` |
 | gnome-compass, alsa-ucm-conf-sdm845 | `.mobile1` | установлены 04.10 |
 | neard | 0.20-alt1.1 | пакет с 01.10 |
-| ModemManager | 1.24.2-alt2.mobile1 | 11.10 на втором телефоне; QMI: подписка на индикации PDC и LOC до запроса (модем шлёт индикацию раньше ответа, каждое создание модема ждало 25 с), см. `system/sim/README.md` |
+| ModemManager | 1.24.2-alt2.mobile1 | 11.10 на обоих телефонах, в локальном репозитории; QMI: подписка на индикации PDC и LOC до запроса (модем шлёт индикацию раньше ответа, каждое создание модема ждало 25 с), см. `system/sim/README.md` |
 | plasma-pa, kscreen, bluedevil, kaccounts-integration, kwin, plasma-workspace, plasma-keyboard | `.mobile1` | собраны 04.10, списки файлов и зависимости совпадают с пакетами ALT; ставятся `scripts/install-built.sh` с перезагрузкой |
 | kscreenlocker | 6.7.5-alt1.mobile2 | собран 04.10 (без дубля обоев, выбор уведомлений на экране блокировки), ставится с перезагрузкой |
-| plasma-mobile | 6.7.5-alt1.mobile3 | в очереди после libcamera (уведомления на экране блокировки и их перевод) |
+| plasma-mobile | 6.7.5-alt1.mobile6 | установлен на оба телефона 11.10 через локальный репозиторий (экран блокировки только с PIN) |
 
 Пакетная сборка libcamera ALT идёт с включёнными проверками (ASSERT) и
 вскрыла три гонки при остановке камеры, которые сборка `buildtype=release`
