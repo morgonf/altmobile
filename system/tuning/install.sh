@@ -27,3 +27,11 @@ else
 	echo FONT=ter-v32n >> /etc/vconsole.conf
 fi
 grep FONT /etc/vconsole.conf
+# ttyescape (hkdm из postmarketOS): «Громкость вниз» + трижды «Питание»
+# переключали на tty2 с экранной клавиатурой buffyboard. На Android это
+# сочетание скриншота, оно нажималось случайно (11.10.2026), а buffyboard,
+# оставшаяся после возврата `chvt 1`, читала тачскрин и вписывала символы в
+# PIN экрана блокировки. Доступ в систему при зависшей графике есть по ssh.
+killall buffyboard 2>/dev/null || true
+systemctl disable --now hkdm.service
+systemctl mask hkdm.service
