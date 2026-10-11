@@ -33,6 +33,21 @@ for A in aarch64 noarch; do
 	echo "$A: $(ls "$D" | wc -l) пакетов"
 done
 
+# Удержание всего, что есть в репозитории, а не только основных пакетов:
+# неудержанный подпакет (-common, библиотека) при обновлении Sisyphus
+# тянет за собой по строгой зависимости и удержанный основной (11.10.2026
+# так apt-get dist-upgrade заменял наши kaccounts и spacebar)
+HOLD=/etc/apt/apt.conf.d/91-altmobile-repo-hold.conf
+{
+	echo "// Создан scripts/local-repo.sh: все пакеты локального репозитория ALT Mobile"
+	echo "RPM::Hold {"
+	for f in "$R"/*/RPMS.altmobile/*.rpm; do
+		rpm -qp --nosignature --qf '%{NAME}\n' "$f" 2>/dev/null
+	done | sort -u | sed 's/.*/\t"^&$";/'
+	echo "};"
+} > "$HOLD"
+echo "удержание: $(grep -c '"^' "$HOLD") пакетов в $HOLD"
+
 cat > "$LIST" <<EOF
 # ALT Mobile для OnePlus 6T: пакеты, собранные на телефоне (scripts/local-repo.sh)
 rpm file:$R aarch64 altmobile
