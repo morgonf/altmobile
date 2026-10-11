@@ -1,0 +1,11 @@
+[Unit]
+Description=Подхват SIM-карты по событиям модема (гнездо, сессия USIM)
+After=ModemManager.service
+
+[Service]
+ExecStart=/usr/local/bin/alt-sim-slots.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

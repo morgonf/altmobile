@@ -4,10 +4,10 @@ cd "$(dirname "$0")"
 # Окно PIN (sim-unlock/main.qml) запускает qml-qt6, а он в пакете -devel;
 # без него вместо нашего окна было системное, и PIN не уходил (11.10.2026)
 apt-get install -y qt6-declarative-devel >/dev/null
-install -m 755 alt-sim-hotplug.sh alt-sim-pin-notify.py alt-sim-unlock /usr/local/bin/
+install -m 755 alt-sim-hotplug.sh alt-sim-slots.py alt-sim-pin-notify.py alt-sim-unlock /usr/local/bin/
 install -D -m 644 sim-unlock/main.qml /usr/share/alt-mobile/sim-unlock/main.qml
 install -m 644 50-alt-mobile-sim.rules /etc/polkit-1/rules.d/
-install -m 644 alt-sim-hotplug.service /etc/systemd/system/
+install -m 644 alt-sim-hotplug.service alt-sim-slots.service /etc/systemd/system/
 install -m 644 alt-sim-pin-notify.service /etc/systemd/user/
 # Подключение поднимает alt-sim-hotplug, когда модем готов (см. скрипт)
 nmcli con modify mts connection.autoconnect no
@@ -16,6 +16,6 @@ nmcli con modify mts connection.autoconnect no
 # sim-pin2, которое модем сообщает уже после разблокировки
 su altlinux -c "kwriteconfig6 --file plasma-nm --group General --key UnlockModemOnDetection false"
 systemctl daemon-reload
-systemctl enable alt-sim-hotplug.service
-systemctl restart alt-sim-hotplug.service
+systemctl enable alt-sim-hotplug.service alt-sim-slots.service
+systemctl restart alt-sim-hotplug.service alt-sim-slots.service
 systemctl --global enable alt-sim-pin-notify.service

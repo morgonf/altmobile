@@ -1,5 +1,5 @@
 [Unit]
-Description=Подхват SIM-карты, вставленной при работающем телефоне
+Description=Мобильный интернет и GPS при работающей SIM-карте
 After=ModemManager.service
 Wants=ModemManager.service
 

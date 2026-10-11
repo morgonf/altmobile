@@ -1,0 +1,322 @@
+diff --git a/src/mm-shared-qmi.c b/src/mm-shared-qmi.c
+index 4fd92cb..44379d7 100644
+--- a/src/mm-shared-qmi.c
++++ b/src/mm-shared-qmi.c
+@@ -2823,6 +2823,8 @@ typedef struct {
+     gulong        list_configs_indication_id;
+     gulong        get_selected_config_indication_id;
+     gulong        get_config_info_indication_id;
++    gboolean      list_configs_indication_received;
++    gboolean      get_selected_config_indication_received;
+ } LoadCarrierConfigContext;
+ 
+ /* Allow to cleanup action load right away, without being tied
+@@ -2932,6 +2934,7 @@ get_selected_config_indication (QmiClientPdc                            *client,
+ 
+     self = g_task_get_source_object (task);
+     ctx  = g_task_get_task_data (task);
++    ctx->get_selected_config_indication_received = TRUE;
+ 
+     if (!qmi_indication_pdc_get_selected_config_output_get_indication_result (output, &error_code, &error)) {
+         load_carrier_config_abort (task, error);
+@@ -2992,23 +2995,20 @@ get_selected_config_ready (QmiClientPdc *client,
+ 
+     ctx = g_task_get_task_data (task);
+ 
++    /* The indication may arrive before the response (seen on SDM845), so
++     * the indication handler and the timeout are already set up; only a
++     * failed request still needs handling here, if no indication came. */
+     output = qmi_client_pdc_get_selected_config_finish (client, res, &error);
+     if (!output || !qmi_message_pdc_get_selected_config_output_get_result (output, &error)) {
+-        load_carrier_config_abort (task, error);
+-        goto out;
++        if (!ctx->get_selected_config_indication_received)
++            load_carrier_config_abort (task, error);
++        else
++            g_error_free (error);
+     }
+ 
+-    ctx->timeout_id = g_timeout_add_seconds (LOAD_CARRIER_CONFIG_STEP_TIMEOUT_SECS,
+-                                             (GSourceFunc) load_carrier_config_timeout,
+-                                             task);
+-    ctx->get_selected_config_indication_id = g_signal_connect (ctx->client,
+-                                                               "get-selected-config",
+-                                                               G_CALLBACK (get_selected_config_indication),
+-                                                               task);
+-
+-out:
+     if (output)
+         qmi_message_pdc_get_selected_config_output_unref (output);
++    g_object_unref (task);
+ }
+ 
+ static void
+@@ -3093,6 +3093,7 @@ list_configs_indication (QmiClientPdc                      *client,
+ 
+     self = g_task_get_source_object (task);
+     ctx  = g_task_get_task_data (task);
++    ctx->list_configs_indication_received = TRUE;
+ 
+     if (!qmi_indication_pdc_list_configs_output_get_indication_result (output, &error_code, &error)) {
+         load_carrier_config_abort (task, error);
+@@ -3160,22 +3161,18 @@ list_configs_ready (QmiClientPdc *client,
+ 
+     ctx = g_task_get_task_data (task);
+ 
++    /* See get_selected_config_ready() */
+     output = qmi_client_pdc_list_configs_finish (client, res, &error);
+     if (!output || !qmi_message_pdc_list_configs_output_get_result (output, &error)) {
+-        load_carrier_config_abort (task, error);
+-        goto out;
++        if (!ctx->list_configs_indication_received)
++            load_carrier_config_abort (task, error);
++        else
++            g_error_free (error);
+     }
+ 
+-    ctx->timeout_id = g_timeout_add_seconds (LOAD_CARRIER_CONFIG_STEP_TIMEOUT_SECS,
+-                                             (GSourceFunc) load_carrier_config_timeout,
+-                                             task);
+-    ctx->list_configs_indication_id = g_signal_connect (ctx->client,
+-                                                        "list-configs",
+-                                                        G_CALLBACK (list_configs_indication),
+-                                                        task);
+-out:
+     if (output)
+         qmi_message_pdc_list_configs_output_unref (output);
++    g_object_unref (task);
+ }
+ 
+ static void
+@@ -3198,12 +3195,20 @@ load_carrier_config_step (GTask *task)
+         input = qmi_message_pdc_list_configs_input_new ();
+         qmi_message_pdc_list_configs_input_set_config_type (input, QMI_PDC_CONFIGURATION_TYPE_SOFTWARE, NULL);
+         qmi_message_pdc_list_configs_input_set_token (input, ctx->token++, NULL);
++        /* Listen before sending: the indication may come before the response */
++        ctx->timeout_id = g_timeout_add_seconds (LOAD_CARRIER_CONFIG_STEP_TIMEOUT_SECS,
++                                                 (GSourceFunc) load_carrier_config_timeout,
++                                                 task);
++        ctx->list_configs_indication_id = g_signal_connect (ctx->client,
++                                                            "list-configs",
++                                                            G_CALLBACK (list_configs_indication),
++                                                            task);
+         qmi_client_pdc_list_configs (ctx->client,
+                                      input,
+                                      5,
+                                      NULL,
+                                      (GAsyncReadyCallback)list_configs_ready,
+-                                     task);
++                                     g_object_ref (task));
+         qmi_message_pdc_list_configs_input_unref (input);
+         return;
+     }
+@@ -3214,12 +3219,20 @@ load_carrier_config_step (GTask *task)
+         input = qmi_message_pdc_get_selected_config_input_new ();
+         qmi_message_pdc_get_selected_config_input_set_config_type (input, QMI_PDC_CONFIGURATION_TYPE_SOFTWARE, NULL);
+         qmi_message_pdc_get_selected_config_input_set_token (input, ctx->token++, NULL);
++        /* Listen before sending: the indication may come before the response */
++        ctx->timeout_id = g_timeout_add_seconds (LOAD_CARRIER_CONFIG_STEP_TIMEOUT_SECS,
++                                                 (GSourceFunc) load_carrier_config_timeout,
++                                                 task);
++        ctx->get_selected_config_indication_id = g_signal_connect (ctx->client,
++                                                                   "get-selected-config",
++                                                                   G_CALLBACK (get_selected_config_indication),
++                                                                   task);
+         qmi_client_pdc_get_selected_config (ctx->client,
+                                             input,
+                                             5,
+                                             NULL,
+                                             (GAsyncReadyCallback)get_selected_config_ready,
+-                                            task);
++                                            g_object_ref (task));
+         qmi_message_pdc_get_selected_config_input_unref (input);
+         return;
+     }
+@@ -4719,6 +4732,7 @@ typedef struct {
+     QmiClient *client;
+     glong      indication_id;
+     guint      timeout_id;
++    gboolean   indication_received;
+ } LoadSuplServerContext;
+ 
+ static void
+@@ -4865,6 +4879,12 @@ loc_location_get_server_indication_cb (QmiClientLoc                    *client,
+     guint16                 ipv4_port    = 0;
+     GError                 *error        = NULL;
+     gchar                  *str          = NULL;
++    LoadSuplServerContext  *ctx;
++
++    ctx = g_task_get_task_data (task);
++    if (ctx->indication_received)
++        return;
++    ctx->indication_received = TRUE;
+ 
+     if (!qmi_indication_loc_get_server_output_get_indication_status (output, &status, &error)) {
+         g_prefix_error (&error, "QMI operation failed: ");
+@@ -4932,32 +4952,34 @@ loc_get_server_ready (QmiClientLoc *client,
+ 
+     ctx = g_task_get_task_data (task);
+ 
++    /* The indication may arrive before the response (seen on SDM845): the
++     * handler was connected before sending the request, and if it already
++     * completed the task there is nothing left to do here. Otherwise the
++     * task ownership is shared between signal and timeout (or a failed
++     * request); the one which is scheduled first will cancel the other.
++     * This callback only holds its own extra reference. */
+     output = qmi_client_loc_get_server_finish (client, res, &error);
+-    if (!output) {
++    if (!output)
+         g_prefix_error (&error, "QMI operation failed: ");
+-        g_task_return_error (task, error);
+-        g_object_unref (task);
+-        return;
+-    }
++    else
++        qmi_message_loc_get_server_output_get_result (output, &error);
+ 
+-    if (!qmi_message_loc_get_server_output_get_result (output, &error)) {
+-        g_task_return_error (task, error);
+-        g_object_unref (task);
+-        qmi_message_loc_get_server_output_unref (output);
+-        return;
++    if (!ctx->indication_received) {
++        if (error) {
++            ctx->indication_received = TRUE;
++            g_task_return_error (task, error);
++            g_object_unref (task);
++            error = NULL;
++        } else
++            ctx->timeout_id = g_timeout_add_seconds (10,
++                                                     (GSourceFunc)loc_location_get_server_indication_timed_out,
++                                                     task);
+     }
+ 
+-    /* The task ownership is shared between signal and timeout; the one which is
+-     * scheduled first will cancel the other. */
+-    ctx->indication_id = g_signal_connect (ctx->client,
+-                                           "get-server",
+-                                           G_CALLBACK (loc_location_get_server_indication_cb),
+-                                           task);
+-    ctx->timeout_id = g_timeout_add_seconds (10,
+-                                             (GSourceFunc)loc_location_get_server_indication_timed_out,
+-                                             task);
+-
+-    qmi_message_loc_get_server_output_unref (output);
++    g_clear_error (&error);
++    if (output)
++        qmi_message_loc_get_server_output_unref (output);
++    g_object_unref (task);
+ }
+ 
+ static void
+@@ -4983,13 +5005,18 @@ loc_load_supl_server (GTask *task)
+         (QMI_LOC_SERVER_ADDRESS_TYPE_IPV4 | QMI_LOC_SERVER_ADDRESS_TYPE_URL),
+         NULL);
+ 
++    /* Listen before sending: the indication may come before the response */
++    ctx->indication_id = g_signal_connect (ctx->client,
++                                           "get-server",
++                                           G_CALLBACK (loc_location_get_server_indication_cb),
++                                           task);
+     qmi_client_loc_get_server (
+         QMI_CLIENT_LOC (ctx->client),
+         input,
+         10,
+         NULL, /* cancellable */
+         (GAsyncReadyCallback)loc_get_server_ready,
+-        task);
++        g_object_ref (task));
+     qmi_message_loc_get_server_input_unref (input);
+ }
+ 
+@@ -6567,6 +6594,7 @@ typedef struct {
+     QmiClientLoc *client;
+     glong         indication_id;
+     guint         timeout_id;
++    gboolean      indication_received;
+ } LoadSupportedAssistanceDataContext;
+ 
+ static void
+@@ -6623,6 +6651,12 @@ loc_location_get_predicted_orbits_data_source_indication_cb (QmiClientLoc
+     GError                 *error = NULL;
+     GArray                 *server_list = NULL;
+     gboolean                supported = FALSE;
++    LoadSupportedAssistanceDataContext *ctx;
++
++    ctx = g_task_get_task_data (task);
++    if (ctx->indication_received)
++        return;
++    ctx->indication_received = TRUE;
+ 
+     if (!qmi_indication_loc_get_predicted_orbits_data_source_output_get_indication_status (output, &status, &error)) {
+         g_prefix_error (&error, "QMI operation failed: ");
+@@ -6690,32 +6724,29 @@ loc_location_get_predicted_orbits_data_source_ready (QmiClientLoc *client,
+ 
+     ctx = g_task_get_task_data (task);
+ 
++    /* See loc_get_server_ready() */
+     output = qmi_client_loc_get_predicted_orbits_data_source_finish (client, res, &error);
+-    if (!output) {
++    if (!output)
+         g_prefix_error (&error, "QMI operation failed: ");
+-        g_task_return_error (task, error);
+-        g_object_unref (task);
+-        return;
+-    }
++    else
++        qmi_message_loc_get_predicted_orbits_data_source_output_get_result (output, &error);
+ 
+-    if (!qmi_message_loc_get_predicted_orbits_data_source_output_get_result (output, &error)) {
+-        g_task_return_error (task, error);
+-        g_object_unref (task);
+-        qmi_message_loc_get_predicted_orbits_data_source_output_unref (output);
+-        return;
++    if (!ctx->indication_received) {
++        if (error) {
++            ctx->indication_received = TRUE;
++            g_task_return_error (task, error);
++            g_object_unref (task);
++            error = NULL;
++        } else
++            ctx->timeout_id = g_timeout_add_seconds (10,
++                                                     (GSourceFunc)loc_location_get_predicted_orbits_data_source_indication_timed_out,
++                                                     task);
+     }
+ 
+-    /* The task ownership is shared between signal and timeout; the one which is
+-     * scheduled first will cancel the other. */
+-    ctx->indication_id = g_signal_connect (ctx->client,
+-                                           "get-predicted-orbits-data-source",
+-                                           G_CALLBACK (loc_location_get_predicted_orbits_data_source_indication_cb),
+-                                           task);
+-    ctx->timeout_id = g_timeout_add_seconds (10,
+-                                             (GSourceFunc)loc_location_get_predicted_orbits_data_source_indication_timed_out,
+-                                             task);
+-
+-    qmi_message_loc_get_predicted_orbits_data_source_output_unref (output);
++    g_clear_error (&error);
++    if (output)
++        qmi_message_loc_get_predicted_orbits_data_source_output_unref (output);
++    g_object_unref (task);
+ }
+ 
+ void
+@@ -6741,12 +6772,17 @@ mm_shared_qmi_location_load_supported_assistance_data (MMIfaceModemLocation  *se
+     ctx->client = QMI_CLIENT_LOC (g_object_ref (client));
+     g_task_set_task_data (task, ctx, (GDestroyNotify)load_supported_assistance_data_context_free);
+ 
++    /* Listen before sending: the indication may come before the response */
++    ctx->indication_id = g_signal_connect (ctx->client,
++                                           "get-predicted-orbits-data-source",
++                                           G_CALLBACK (loc_location_get_predicted_orbits_data_source_indication_cb),
++                                           task);
+     qmi_client_loc_get_predicted_orbits_data_source (ctx->client,
+                                                      NULL,
+                                                      10,
+                                                      NULL,
+                                                      (GAsyncReadyCallback)loc_location_get_predicted_orbits_data_source_ready,
+-                                                     task);
++                                                     g_object_ref (task));
+ }
+ 
+ /*****************************************************************************/
