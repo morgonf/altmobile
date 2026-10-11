@@ -43,6 +43,9 @@ gsettings set org.gnome.desktop.wm.preferences titlebar-font "$F 11"
 # ширина / (значок + отступы)), просьба пользователя. Ключ в группе Folio
 # контейнера, как в foliosettings.cpp (умолчание 48). Пишется при остановленной
 # оболочке, иначе она перезапишет файл при выходе.
+# Без щелчка при смене громкости: во время разговора его слышал собеседник
+# (11.10.2026)
+kwriteconfig6 --file plasmaparc --group General --key AudioFeedback false
 systemctl --user stop plasma-plasmashell.service
 kwriteconfig6 --file plasma-org.kde.plasma.mobileshell-appletsrc \
 	--group Containments --group 1 --group Folio --key delegateIconSize 72

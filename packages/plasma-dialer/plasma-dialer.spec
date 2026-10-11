@@ -1,6 +1,6 @@
 Name: plasma-dialer
 Version: 6.7.5
-Release: alt1.mobile2
+Release: alt1.mobile3
 %K6init
 
 Group: Communications
@@ -57,6 +57,10 @@ rm -rf %buildroot%_includedir/KF6/kTelephonyMetaTypes
 %_datadir/metainfo/org.kde.plasma.dialer.appdata.xml
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile3
+- Quit when started on the lockscreen without a call (fullscreen, no
+  navigation, the phone could not be used).
+
 * Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - Dial pad keys enter the digit on press (taps were lost on release);
   long press on 0 replaces it with +, on 1 calls voicemail.
