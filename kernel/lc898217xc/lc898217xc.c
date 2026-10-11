@@ -26,6 +26,24 @@
 #define LC898217XC_MAX_FOCUS_POS (2048 - 1)
 #define LC898217XC_MIN_FOCUS_POS 0
 #define LC898217XC_FOCUS_STEPS 1
+
+/*
+ * ALT Mobile: the focus control exposes only the useful travel, as for
+ * SA3103: libcamera's autofocus sweeps in percent of the control range and
+ * spent most of its steps where nothing is sharp. OnePlus 6T IMX519 module,
+ * measured 11.10.2026 (sharpness of frames over the travel): a room 2-3 m
+ * away sharpest at ~410, an object at 10-15 cm at ~675, all blurred above
+ * ~800. 400 keeps roughly 1 m to infinity sharp as a fixed focus.
+ */
+static int focus_min = 250;
+module_param(focus_min, int, 0444);
+MODULE_PARM_DESC(focus_min, "Lowest focus position offered to userspace");
+static int focus_max = 900;
+module_param(focus_max, int, 0444);
+MODULE_PARM_DESC(focus_max, "Highest focus position offered to userspace");
+static int focus_default = 400;
+module_param(focus_default, int, 0444);
+MODULE_PARM_DESC(focus_default, "Focus position after power-up");
 #define LC898217XC_DAC_ADDR CCI_REG16(0x84)
 
 static const char *const lc898217xc_supply_names[] = {
@@ -85,18 +103,27 @@ static int __maybe_unused lc898217xc_runtime_resume(struct device *dev)
 
 	usleep_range(8000, 10000);
 
-	return ret;
+	/* The DAC forgets the position without power: set it again */
+	return lc898217xc_set_dac(lc898217xc, lc898217xc->focus->val);
 }
 
 static int lc898217xc_set_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct lc898217xc *lc898217xc = container_of(ctrl->handler,
 						     struct lc898217xc, ctrls);
+	struct device *dev = lc898217xc->sd.dev;
+	int ret;
 
-	if (ctrl->id == V4L2_CID_FOCUS_ABSOLUTE)
-		return lc898217xc_set_dac(lc898217xc, ctrl->val);
+	if (ctrl->id != V4L2_CID_FOCUS_ABSOLUTE)
+		return 0;
 
-	return 0;
+	/* Powered off: the value is applied at the next power-up */
+	if (!pm_runtime_get_if_in_use(dev))
+		return 0;
+
+	ret = lc898217xc_set_dac(lc898217xc, ctrl->val);
+	pm_runtime_put_autosuspend(dev);
+	return ret;
 }
 
 static const struct v4l2_ctrl_ops lc898217xc_ctrl_ops = {
@@ -138,10 +165,12 @@ static int lc898217xc_init_controls(struct lc898217xc *lc898217xc)
 
 	v4l2_ctrl_handler_init(hdl, 1);
 
+	focus_min = clamp(focus_min, LC898217XC_MIN_FOCUS_POS, LC898217XC_MAX_FOCUS_POS);
+	focus_max = clamp(focus_max, focus_min, LC898217XC_MAX_FOCUS_POS);
+	focus_default = clamp(focus_default, focus_min, focus_max);
 	lc898217xc->focus = v4l2_ctrl_new_std(hdl, ops, V4L2_CID_FOCUS_ABSOLUTE,
-					      LC898217XC_MIN_FOCUS_POS,
-					      LC898217XC_MAX_FOCUS_POS,
-					      LC898217XC_FOCUS_STEPS, 0);
+					      focus_min, focus_max,
+					      LC898217XC_FOCUS_STEPS, focus_default);
 
 	if (hdl->error)
 		return hdl->error;

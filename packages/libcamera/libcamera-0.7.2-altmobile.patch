@@ -2516,7 +2516,7 @@ index 49382b4c2..02c0c6b61 100644
  		return -EINVAL;
  
 diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
-index 02651fe87..63fafd410 100644
+index 02651fe87..21fcd1861 100644
 --- a/src/libcamera/software_isp/debayer_egl.cpp
 +++ b/src/libcamera/software_isp/debayer_egl.cpp
 @@ -121,6 +121,7 @@ int DebayerEGL::getShaderVariableLocations(void)
@@ -2544,7 +2544,25 @@ index 02651fe87..63fafd410 100644
  	if (stats_->configure(inputCfg) != 0)
  		return -EINVAL;
  
-@@ -504,6 +508,9 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
+@@ -340,10 +344,14 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	window_.height = outputCfg.size.height;
+ 
+ 	/*
+-	 * Don't pass x,y from window_ since process() already adjusts for it.
+-	 * But crop the window to 2/3 of its width and height for speedup.
++	 * The GPU scales the whole input frame to the output, so the
++	 * statistics cover the whole input frame too. window_ is the output
++	 * size centred in the input, as the CPU debayer crops it, and from
++	 * (0, 0) it measured only the top left corner of the sensor: a dark
++	 * corner drove AGC to the maximum over a bright scene, and the
++	 * autofocus measured the corner instead of the centre.
+ 	 */
+-	stats_->setWindow(Rectangle(window_.size()));
++	stats_->setWindow(Rectangle(inputCfg.size));
+ 
+ 	inputBufferCount_ = inputCfg.bufferCount;
+ 	outputBufferCount_ = outputCfg.bufferCount;
+@@ -504,6 +512,9 @@ void DebayerEGL::setShaderVariableValues(eGLImage &eglImageIn, const DebayerPara
  	glUniform1f(contrastExpUniformDataIn_, params.contrastExp);
  	LOG(Debayer, Debug) << " contrastExpUniformDataIn_ " << contrastExpUniformDataIn_ << " data " << params.contrastExp;
  

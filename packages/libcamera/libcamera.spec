@@ -8,7 +8,7 @@
 
 Name: libcamera
 Version: 0.7.2
-Release: alt1.mobile7
+Release: alt1.mobile8
 Epoch: 1
 
 Summary: A complex camera support library for Linux
@@ -172,6 +172,11 @@ mkdir -p %buildroot%_libdir/libcamera %buildroot%_datadir/libcamera
 
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile8
+- software isp: the GPU debayer measured statistics only in the top left
+  corner of the sensor (the output size from (0, 0)); AGC went to the
+  maximum over bright scenes and the autofocus measured the corner
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1:0.7.2-alt1.mobile7
 - simple pipeline: prefer sensor modes with the aspect ratio of the
   stream; small 4:3 streams of the IMX519 came from its 16:9 modes

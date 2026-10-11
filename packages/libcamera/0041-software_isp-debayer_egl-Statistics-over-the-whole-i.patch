@@ -1,0 +1,40 @@
+From c03accfe0e2455cae9916d76769204ec45dec7e6 Mon Sep 17 00:00:00 2001
+From: morgonf <morgonf@altlinux.org>
+Date: Sun, 11 Oct 2026 04:14:46 -0400
+Subject: [PATCH] software_isp: debayer_egl: Statistics over the whole input
+ frame
+
+The GPU debayer scales the whole input frame to the output, but the
+statistics window was the output size from (0, 0) of the input: only the
+top left corner of the sensor was measured. A dark corner drove AGC to
+the maximum gain and exposure over a bright scene, and the autofocus
+measured the corner instead of the centre. Measure the whole input frame.
+---
+ src/libcamera/software_isp/debayer_egl.cpp | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/libcamera/software_isp/debayer_egl.cpp b/src/libcamera/software_isp/debayer_egl.cpp
+index 63fafd410..21fcd1861 100644
+--- a/src/libcamera/software_isp/debayer_egl.cpp
++++ b/src/libcamera/software_isp/debayer_egl.cpp
+@@ -344,10 +344,14 @@ int DebayerEGL::configure(const StreamConfiguration &inputCfg,
+ 	window_.height = outputCfg.size.height;
+ 
+ 	/*
+-	 * Don't pass x,y from window_ since process() already adjusts for it.
+-	 * But crop the window to 2/3 of its width and height for speedup.
++	 * The GPU scales the whole input frame to the output, so the
++	 * statistics cover the whole input frame too. window_ is the output
++	 * size centred in the input, as the CPU debayer crops it, and from
++	 * (0, 0) it measured only the top left corner of the sensor: a dark
++	 * corner drove AGC to the maximum over a bright scene, and the
++	 * autofocus measured the corner instead of the centre.
+ 	 */
+-	stats_->setWindow(Rectangle(window_.size()));
++	stats_->setWindow(Rectangle(inputCfg.size));
+ 
+ 	inputBufferCount_ = inputCfg.bufferCount;
+ 	outputBufferCount_ = outputCfg.bufferCount;
+-- 
+2.50.1
+
