@@ -1,0 +1,103 @@
+diff -ruN a/greeter/authenticator.cpp b/greeter/authenticator.cpp
+--- a/greeter/authenticator.cpp
++++ b/greeter/authenticator.cpp
+@@ -183,7 +183,7 @@
+     QMetaObject::invokeMethod(
+         m_checkPass,
+         [this, response]() {
+-            Q_EMIT m_checkPass->promptResponseReceived(response);
++            m_checkPass->respond(response);
+         },
+         Qt::QueuedConnection);
+ }
+@@ -344,6 +344,8 @@
+         case ConvPutAuthUnavailable:
+         case ConvPutAuthAbort:
+             m_inAuthenticate = false;
++            // never carry a typed PIN over to a later attempt
++            m_pendingResponse.reset();
+             Q_EMIT inAuthenticateChanged(m_inAuthenticate);
+ 
+             Q_EMIT busyChanged(false);
+@@ -379,6 +381,18 @@
+             }
+ 
+             QByteArray response;
++            if (m_pendingResponse) {
++                qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Using the response received before the prompt", qUtf8Printable(m_service));
++                response = *m_pendingResponse;
++                m_pendingResponse.reset();
++                GSendInt(0);
++                Q_EMIT busyChanged(true);
++                GSendStr(response.data());
++                if (arr) {
++                    ::free(arr);
++                }
++                return;
++            }
+             QEventLoop e;
+ 
+             QObject::connect(this, &KCheckPass::promptResponseReceived, &e, [&](const QByteArray &_response) {
+@@ -394,7 +408,9 @@
+             });
+ 
+             qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Starting nested event loop to await response", qUtf8Printable(m_service));
++            m_awaitingResponse = true;
+             int rc = e.exec();
++            m_awaitingResponse = false;
+             if (rc != 0) {
+                 qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Nested event loop's exit code was not zero, bailing", qUtf8Printable(m_service));
+                 return;
+@@ -458,9 +474,20 @@
+ 
+ void KCheckPass::cancel()
+ {
++    m_pendingResponse.reset();
+     Q_EMIT cancelled();
+ }
+ 
++void KCheckPass::respond(const QByteArray &response)
++{
++    if (m_awaitingResponse) {
++        Q_EMIT promptResponseReceived(response);
++        return;
++    }
++    qCDebug(KSCREENLOCKER_GREET, "[PAM worker %s] Response before the prompt, keeping it", qUtf8Printable(m_service));
++    m_pendingResponse = response;
++}
++
+ void KCheckPass::cantCheck()
+ {
+     // TODO: better signal?
+diff -ruN a/greeter/authenticator.h b/greeter/authenticator.h
+--- a/greeter/authenticator.h
++++ b/greeter/authenticator.h
+@@ -20,6 +20,7 @@
+ #ifndef AUTHENTICATOR_H
+ #define AUTHENTICATOR_H
+ 
++#include <optional>
+ #include <QObject>
+ #include <QThread>
+ 
+@@ -127,6 +128,7 @@
+ 
+     void startAuth();
+     void cancel();
++    void respond(const QByteArray &response);
+ 
+ Q_SIGNALS:
+     void busyChanged(bool busy);
+@@ -166,6 +168,12 @@
+ 
+     bool m_unavailable = false;
+     bool m_inAuthenticate = false;
++    // ALT Mobile: kcheckpass asks for the password some time after startAuth()
++    // (SIGUSR1), and a PIN typed on the mobile lock screen often arrives
++    // first. It was emitted to nobody, the prompt then waited forever and the
++    // lock screen hung (OnePlus 6T, 11.10.2026). Kept here until the prompt.
++    bool m_awaitingResponse = false;
++    std::optional<QByteArray> m_pendingResponse;
+ };
+ 
+ Q_DECLARE_OPERATORS_FOR_FLAGS(PamAuthenticator::NoninteractiveAuthenticatorTypes)

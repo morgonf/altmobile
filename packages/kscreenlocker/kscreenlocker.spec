@@ -8,7 +8,7 @@
 
 Name: %rname
 Version: 6.7.5
-Release: alt1.mobile2
+Release: alt1.mobile4
 #Epoch: 2
 %K6init
 
@@ -45,6 +45,7 @@ Source900: kscreenlocker-greet-rearm.patch
 Source901: kscreenlocker-kcm-mobile.patch
 Source902: kscreenlocker-kcm-no-appearance.patch
 Source903: kscreenlocker-kcm-lock-notifications.patch
+Source904: kscreenlocker-greet-pending-response.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: glibc-devel
@@ -124,6 +125,7 @@ patch -p1 -s < %SOURCE900
 patch -p1 -s < %SOURCE901
 patch -p1 -s < %SOURCE902
 patch -p1 -s < %SOURCE903
+patch -p1 -s < %SOURCE904
 
 %build
 export PATH=$PWD/bin_fake:$PATH
@@ -184,6 +186,16 @@ install -m 0644 %SOURCE12 %buildroot/%_sysconfdir/pam.d/kde-smartcard
 
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile4
+- The pending response fix moved to greeter/authenticator.cpp (KCheckPass),
+  the file actually built with kcheckpass enabled; mobile3 patched the
+  unused PamWorker. kcheckpass prompts some time after startAuth().
+
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile3
+- greeter: keep a PIN typed before the PAM prompt and answer the prompt
+  with it; it was emitted to nobody, the next prompt waited forever and
+  the mobile lock screen hung.
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
 - Lock screen wallpaper only in "Theme and wallpapers" (kcm_altappearance),
   the duplicate page with a desktop combo box wider than the screen removed
