@@ -11,6 +11,16 @@
 # не включаем их обратно, пока карта снова не окажется заперта.
 CON=mts
 UP=0
+# Состояние кнопки «Местоположение» читается по маске geoclue, а запреты
+# (polkit, гашение GPS ниже) по флагу. Если маска есть, а флага нет (так
+# было на втором телефоне: маску перенесли с клоном из /etc, флаг в /var
+# нет), Satellite читал координаты у модема при выключенной кнопке
+if [ "$(systemctl is-enabled geoclue.service 2>/dev/null)" = masked ] &&
+   [ ! -e /var/lib/alt-mobile/location-off ]; then
+	mkdir -p -m 755 /var/lib/alt-mobile
+	touch /var/lib/alt-mobile/location-off
+	logger -t alt-sim-hotplug "geoclue запрещена, ставлю флаг location-off"
+fi
 while true; do
 	ST=$(mmcli -m any -K 2>/dev/null | sed -n 's/^modem.generic.state *: //p')
 	case "$ST" in
