@@ -1,0 +1,165 @@
+diff -ruN a/plasma-dialer/src/qml/call/AnswerButtons.qml b/plasma-dialer/src/qml/call/AnswerButtons.qml
+--- a/plasma-dialer/src/qml/call/AnswerButtons.qml	2026-09-08 06:55:56.000000000 -0400
++++ b/plasma-dialer/src/qml/call/AnswerButtons.qml	2026-10-11 10:07:11.644776797 -0400
+@@ -15,7 +15,7 @@
+     signal accepted()
+     signal rejected()
+ 
+-    Layout.minimumHeight: Kirigami.Units.gridUnit * 3
++    Layout.minimumHeight: Kirigami.Units.gridUnit * 4.5
+     Layout.fillWidth: true
+ 
+     RowLayout {
+@@ -41,6 +41,8 @@
+                     id: endCallIcon
+ 
+                     anchors.centerIn: parent
++                    width: Kirigami.Units.gridUnit * 2
++                    height: width
+                     source: "call-end-symbolic"
+ 
+                     SequentialAnimation {
+@@ -91,6 +93,8 @@
+                     id: acceptCallIcon
+ 
+                     anchors.centerIn: parent
++                    width: Kirigami.Units.gridUnit * 2
++                    height: width
+                     source: "call-start-symbolic"
+ 
+                     SequentialAnimation {
+diff -ruN a/plasma-dialer/src/qml/call/CallPageButton.qml b/plasma-dialer/src/qml/call/CallPageButton.qml
+--- a/plasma-dialer/src/qml/call/CallPageButton.qml	2026-09-08 06:55:56.000000000 -0400
++++ b/plasma-dialer/src/qml/call/CallPageButton.qml	2026-10-11 10:07:11.644776797 -0400
+@@ -43,8 +43,8 @@
+ 
+         Kirigami.Icon {
+             Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
+-            Layout.preferredHeight: Kirigami.Units.gridUnit * 1.5
+-            Layout.preferredWidth: Kirigami.Units.gridUnit * 1.5
++            Layout.preferredHeight: Kirigami.Units.gridUnit * 2.5
++            Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
+             color: buttonRoot.toggledOn ? Kirigami.Theme.highlightedTextColor : Kirigami.Theme.textColor
+             source: buttonRoot.iconSource
+         }
+diff -ruN a/plasma-dialer/src/qml/call/CallPage.qml b/plasma-dialer/src/qml/call/CallPage.qml
+--- a/plasma-dialer/src/qml/call/CallPage.qml	2026-09-08 06:55:56.000000000 -0400
++++ b/plasma-dialer/src/qml/call/CallPage.qml	2026-10-11 10:07:11.644776797 -0400
+@@ -92,8 +92,8 @@
+             id: buttonRow
+ 
+             Layout.alignment: Qt.AlignHCenter
+-            Layout.maximumWidth: Kirigami.Units.gridUnit * 16
+-            Layout.minimumHeight: Kirigami.Units.gridUnit * 3.5
++            Layout.maximumWidth: Kirigami.Units.gridUnit * 20
++            Layout.minimumHeight: Kirigami.Units.gridUnit * 5.5
+             Layout.preferredHeight: dialerButton.implicitHeight
+             spacing: Kirigami.Units.smallSpacing
+ 
+@@ -143,7 +143,7 @@
+         }
+ 
+         Item {
+-            Layout.minimumHeight: Kirigami.Units.gridUnit * 3.5
++            Layout.minimumHeight: Kirigami.Units.gridUnit * 5
+             Layout.fillWidth: true
+ 
+             Loader {
+@@ -197,15 +197,15 @@
+ 
+                 visible: callPage.callActive && (callPage.inCall || !callPage.callIncoming)
+                 anchors.centerIn: parent
+-                width: Kirigami.Units.gridUnit * 3.5
+-                height: Kirigami.Units.gridUnit * 3.5
++                width: Kirigami.Units.gridUnit * 4.5
++                height: Kirigami.Units.gridUnit * 4.5
+                 onClicked: {
+                     CallUtils.hangUp(activeDeviceUni(), activeCallUni());
+                 }
+ 
+                 background: Rectangle {
+                     anchors.centerIn: parent
+-                    height: Kirigami.Units.gridUnit * 3.5
++                    height: Kirigami.Units.gridUnit * 4.5
+                     width: height
+                     radius: height / 2
+                     color: "red"
+diff -ruN a/plasma-dialer/src/qml/dialpad/DialerButton.qml b/plasma-dialer/src/qml/dialpad/DialerButton.qml
+--- a/plasma-dialer/src/qml/dialpad/DialerButton.qml	2026-09-08 06:55:56.000000000 -0400
++++ b/plasma-dialer/src/qml/dialpad/DialerButton.qml	2026-10-11 10:07:11.644776797 -0400
+@@ -35,7 +35,9 @@
+         id: mouse
+ 
+         anchors.fill: parent
+-        onClicked: root.clicked(parent.text)
++        // Цифра вводится сразу по касанию: по отпусканию нажатие терялось,
++        // если палец чуть сдвигался или касание было долгим (ALT Mobile)
++        onPressed: root.clicked(parent.text)
+         onPressAndHold: root.held(parent.text)
+     }
+ 
+diff -ruN a/plasma-dialer/src/qml/dialpad/Dialpad.qml b/plasma-dialer/src/qml/dialpad/Dialpad.qml
+--- a/plasma-dialer/src/qml/dialpad/Dialpad.qml	2026-09-08 06:55:56.000000000 -0400
++++ b/plasma-dialer/src/qml/dialpad/Dialpad.qml	2026-10-11 10:07:11.644776797 -0400
+@@ -105,7 +105,13 @@
+             return onPadNumberPressed(text);
+         }
+         voicemail: showBottomRow // TODO: only show voicemail icon if voicemail number exists
+-        onHeld: !callActive && callVoicemail()
++        // «1» уже введена касанием: долгое касание вместо неё звонит на почту
++        onHeld: {
++            if (!callActive) {
++                pad.number = pad.number.slice(0, -1);
++                callVoicemail();
++            }
++        }
+     }
+ 
+     DialerButton {
+@@ -179,9 +185,6 @@
+         onClicked: (text) => {
+             return onPadNumberPressed(text);
+         }
+-        onHeld: (text) => {
+-            return onPadNumberPressed(text);
+-        }
+     }
+ 
+     DialerButton {
+@@ -191,7 +194,13 @@
+         onClicked: (text) => {
+             return onPadNumberPressed(text);
+         }
+-        onHeld: onPadNumberPressed("+")
++        // «0» уже введён касанием: долгое касание заменяет его на «+»
++        onHeld: {
++            if (callActive)
++                onPadNumberPressed("+");
++            else
++                pad.number = pad.number.slice(0, -1) + "+";
++        }
+     }
+ 
+     DialerButton {
+@@ -201,9 +210,6 @@
+         onClicked: (text) => {
+             return onPadNumberPressed(text);
+         }
+-        onHeld: (text) => {
+-            return onPadNumberPressed(text);
+-        }
+     }
+ 
+     Item {
+diff -ruN a/po/ru/plasma-dialer.po b/po/ru/plasma-dialer.po
+--- a/po/ru/plasma-dialer.po	2026-09-08 06:55:56.000000000 -0400
++++ b/po/ru/plasma-dialer.po	2026-10-11 10:07:11.644776797 -0400
+@@ -117,7 +117,7 @@
+ #: src/qml/DialerPage.qml:27
+ #, kde-format
+ msgid "Dialer"
+-msgstr "Номеронабиратель"
++msgstr "Набор"
+ 
+ #: src/qml/components/Sidebar.qml:121 src/qml/ContactsPage.qml:32
+ #: src/qml/DialerPage.qml:42 src/qml/HistoryPage.qml:47

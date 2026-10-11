@@ -1,6 +1,6 @@
 Name: plasma-dialer
 Version: 6.7.5
-Release: alt1.mobile1
+Release: alt1.mobile2
 %K6init
 
 Group: Communications
@@ -12,6 +12,7 @@ Requires: kf6-kirigami kf6-kirigami-addons ModemManager callaudiod
 
 # ALT Mobile, OnePlus 6T (packages/plasma-dialer of the oneplus6t repository)
 Source: https://download.kde.org/stable/plasma/%version/%name-%version.tar.xz
+Patch900: plasma-dialer-phone-ui.patch
 
 BuildRequires(pre): rpm-build-kf6
 BuildRequires: extra-cmake-modules qt6-base-devel qt6-declarative-devel qt6-wayland-devel qt6-multimedia-devel
@@ -27,6 +28,7 @@ history, USSD, with background daemons for the modem and telephony.
 
 %prep
 %setup
+%patch900 -p1
 
 %build
 %K6build
@@ -55,5 +57,11 @@ rm -rf %buildroot%_includedir/KF6/kTelephonyMetaTypes
 %_datadir/metainfo/org.kde.plasma.dialer.appdata.xml
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile2
+- Dial pad keys enter the digit on press (taps were lost on release);
+  long press on 0 replaces it with +, on 1 calls voicemail.
+- Bigger in-call and answer/decline buttons, sized for a thumb.
+- Russian: the Dialer tab is "Набор" (did not fit and broke mid-word).
+
 * Mon Oct 05 2026 morgonf <morgonf@altlinux.org> 6.7.5-alt1.mobile1
 - initial build for ALT Mobile (OnePlus 6T)
