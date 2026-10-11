@@ -1,0 +1,60 @@
+diff -ru a/shell/contents/lockscreen/LockScreen.qml b/shell/contents/lockscreen/LockScreen.qml
+--- a/shell/contents/lockscreen/LockScreen.qml	2026-09-12 04:24:49.000000000 -0400
++++ b/shell/contents/lockscreen/LockScreen.qml	2026-10-11 06:16:05.871219404 -0400
+@@ -37,13 +37,23 @@
+         forceActiveFocus();
+     }
+ 
+-    // Listen for keyboard events, and focus on input area
++    // ALT Mobile: PIN only. Upstream switched to the keyboard mode and added
++    // event.text to the password on any key, so the power and volume keys
++    // opened the virtual keyboard, and keys injected by another input device
++    // (buffyboard of ttyescape) ended up in the PIN. Only digits, Backspace
++    // and Enter of a hardware keyboard reach the keypad now.
+     Keys.onPressed: (event) => {
+-        root.lockScreenState.isKeyboardMode = true;
+-        flickable.goToOpenPosition();
+-        passwordBar.textField.forceActiveFocus();
+-
+-        passwordBar.keyPress(event.text);
++        if (event.key === Qt.Key_Backspace) {
++            passwordBar.keyPress("\x08");
++        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
++            passwordBar.keyPress("\r");
++        } else if (/^[0-9]$/.test(event.text)) {
++            flickable.goToOpenPosition();
++            passwordBar.keyPress(event.text);
++        } else {
++            return;
++        }
++        event.accepted = true;
+     }
+ 
+     Connections {
+diff -ru a/shell/contents/lockscreen/PasswordBar.qml b/shell/contents/lockscreen/PasswordBar.qml
+--- a/shell/contents/lockscreen/PasswordBar.qml	2026-09-12 04:24:49.000000000 -0400
++++ b/shell/contents/lockscreen/PasswordBar.qml	2026-10-11 06:16:05.871219404 -0400
+@@ -161,10 +161,7 @@
+     MouseArea {
+         anchors.fill: parent
+         onClicked: {
+-            // clicking on rectangle opens keyboard if not already open
+-            if (root.lockScreenState.isKeyboardMode) {
+-                Keyboards.KWinVirtualKeyboard.active = true;
+-            }
++            // ALT Mobile: PIN only, the virtual keyboard is never opened here
+         }
+ 
+         // toggle between showing keypad and not
+@@ -178,8 +175,9 @@
+             anchors.bottom: parent.bottom
+             anchors.margins: Kirigami.Units.smallSpacing
+ 
+-            // Don't show if the PIN display overlaps it
+-            visible: (dotDisplay.width / 2) < ((root.width / 2) - keyboardToggle.width - Kirigami.Units.smallSpacing)
++            // ALT Mobile: PIN only. The toggle opened the system virtual
++            // keyboard over the keypad (a letters layout for a PIN), hidden.
++            visible: false
+ 
+             implicitWidth: height
+             icon.name: root.lockScreenState.isKeyboardMode ? "input-dialpad-symbolic" : "input-keyboard-virtual-symbolic"
