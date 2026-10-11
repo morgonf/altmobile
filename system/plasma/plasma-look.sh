@@ -43,6 +43,13 @@ gsettings set org.gnome.desktop.wm.preferences titlebar-font "$F 11"
 # ширина / (значок + отступы)), просьба пользователя. Ключ в группе Folio
 # контейнера, как в foliosettings.cpp (умолчание 48). Пишется при остановленной
 # оболочке, иначе она перезапишет файл при выходе.
+# Блокировать экран, когда он гаснет по таймеру: автоблокировка
+# kscreenlocker по простою не срабатывала, разблокированный телефон засыпал,
+# и входящий приходил уведомлением в шторку (11.10.2026)
+for p in AC Battery LowBattery; do
+	kwriteconfig6 --file powerdevilrc --group $p --group Display --key LockBeforeTurnOffDisplay true
+done
+kwriteconfig6 --file kscreenlockerrc --group Daemon --key LockOnResume true
 # Без щелчка при смене громкости: во время разговора его слышал собеседник
 # (11.10.2026)
 kwriteconfig6 --file plasmaparc --group General --key AudioFeedback false

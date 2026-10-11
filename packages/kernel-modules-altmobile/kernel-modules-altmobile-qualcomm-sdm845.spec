@@ -6,8 +6,8 @@
 
 Name: kernel-modules-altmobile-%kflavour
 Version: 1.0
-Release: alt1.mobile1
-Summary: OnePlus 6T camera focus, camera sensor and NFC modules
+Release: alt1.mobile3
+Summary: OnePlus 6T camera focus, camera sensor, NFC and modem wakeup modules
 License: GPL-2.0-only
 Group: System/Kernel and hardware
 Url: https://github.com/morgonf/altmobile
@@ -19,6 +19,7 @@ Source: altmobile-kmodules-%version.tar
 Patch1: imx37x-alt-mobile.patch
 Patch2: nci-skip-classic-t2t.patch
 Patch3: nxp-nci-remove-deadlock.patch
+Patch4: qrtr-wake-on-voice-sms.patch
 
 ExclusiveArch: aarch64
 BuildRequires: kernel-headers-modules-%kflavour = %kver-%krel
@@ -33,7 +34,9 @@ Kernel modules for ALT Mobile on the OnePlus 6T (sdm845), built for the
 - imx371, imx376: front and secondary rear camera sensors with binned and
   full size modes, Quad Bayer full size for the IMX371, gain up to 16x;
 - nci, nxp-nci, nxp-nci_i2c: NFC without the nxp-nci unbind deadlock and
-  without MIFARE Classic reads that hung the PN553.
+  without MIFARE Classic reads that hung the PN553;
+- qrtr: QMI data from the modem voice (calls) and WMS (SMS) services to
+  user space wakes the system, so a sleeping phone rings.
 
 %prep
 %setup -n altmobile-kmodules-%version
@@ -43,17 +46,19 @@ cd nfc/nxp-nci
 # The ALT kernel patch changes only this line of firmware.c
 sed -i 's/\tstrcpy(fw_info->name, firmware_name);/\tstrscpy(fw_info->name, firmware_name);/' firmware.c
 git apply -p4 %PATCH3
+cd ../../qrtr
+git apply -p1 %PATCH4
 
 %build
 K=/lib/modules/%kname/build
-for d in sa3103 imx37x nfc/nci nfc/nxp-nci; do
+for d in sa3103 imx37x nfc/nci nfc/nxp-nci qrtr; do
 	%make_build -C $K M=$PWD/$d modules
 done
 
 %install
 D=%buildroot/lib/modules/%kname/updates
 mkdir -p $D
-install -m 644 sa3103/*.ko imx37x/*.ko nfc/nci/*.ko nfc/nxp-nci/*.ko $D/
+install -m 644 sa3103/*.ko imx37x/*.ko nfc/nci/*.ko nfc/nxp-nci/*.ko qrtr/*.ko $D/
 
 %post
 depmod -a %kname
@@ -65,6 +70,17 @@ depmod -a %kname
 /lib/modules/%kname/updates/*.ko
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.0-alt1.mobile3
+- Wake on incoming calls and SMS in qrtr instead of qcom_glink_smem: waking
+  on every modem GLINK interrupt resumed the phone seconds after each
+  suspend (WLAN firmware restart, service announcements). Now only QMI
+  DATA from the voice (9) and WMS (5) services to user space sockets
+  wakes the system (module parameter wake_services).
+
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.0-alt1.mobile2
+- qcom_glink_smem: arm IRQ wakeup on the modem edge (label "modem" or
+  wakeup-source) instead of IRQF_NO_SUSPEND, incoming calls wake the phone.
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 1.0-alt1.mobile1
 - sa3103, imx371, imx376, nci, nxp-nci as a package instead of files
   copied by hand to updates/

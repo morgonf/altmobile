@@ -1,0 +1,22 @@
+diff --git a/src/mm-iface-modem.c b/src/mm-iface-modem.c
+index d9b2e00..42ccbe4 100644
+--- a/src/mm-iface-modem.c
++++ b/src/mm-iface-modem.c
+@@ -6776,7 +6776,16 @@ mm_iface_modem_count_bearers (MMIfaceModem                   *self,
+         max = mm_bearer_list_get_max_active (list);
+ 
+     mm_bearer_list_foreach (list, (MMBearerListForeachFunc)bearer_count, &ctx);
+-    g_assert (max >= ctx.count);
++    /* COUNT_BEARERS_FLAG_ACTIVE/CONNECTED also count multiplexed bearers,
++     * while max is the limit for non-multiplexed ones: with one multiplexed
++     * data bearer (QMAP on qcom-soc) the count exceeded max and this
++     * assertion aborted ModemManager on every suspend in quick
++     * suspend/resume mode. */
++    if (ctx.count > max) {
++        mm_obj_dbg (self, "%u bearers counted, more than the limit %u (multiplexed bearers included)",
++                    ctx.count, max);
++        max = ctx.count;
++    }
+ 
+     if (out_max)
+         *out_max = max;

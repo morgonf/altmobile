@@ -11,7 +11,7 @@
 
 Name: ModemManager
 Version: 1.24.2
-Release: alt2.mobile1
+Release: alt2.mobile3
 License: GPLv2+
 Group: System/Configuration/Networking
 Summary: Mobile broadband modem management service
@@ -20,6 +20,8 @@ Vcs: https://gitlab.freedesktop.org/mobile-broadband/ModemManager.git
 Source: %name-%version.tar
 Patch: %name-%version-alt2.patch
 Patch900: 0001-qmi-listen-for-indications-before-sending-request.patch
+Patch901: 0002-count-bearers-no-abort-with-multiplexed.patch
+Patch902: 0003-manager-renew-auth-cancellable-after-cleanup.patch
 
 Requires: dbus >= %dbus_version
 
@@ -130,6 +132,8 @@ Requires: libmm-glib-devel = %version-%release
 %setup -n %name-%version
 %patch -p1
 %patch900 -p1
+%patch901 -p1
+%patch902 -p1
 
 %build
 %meson \
@@ -228,6 +232,17 @@ fi
 %endif
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.24.2-alt2.mobile3
+- Renew the manager authorization cancellable after cleanup: after a quick
+  suspend every authorized manager call failed with "Operation was
+  cancelled".
+
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.24.2-alt2.mobile2
+- Do not abort in mm_iface_modem_count_bearers() when active bearers
+  (multiplexed included) exceed the non-multiplexed limit: with a QMAP
+  data bearer ModemManager crashed on every suspend in quick
+  suspend/resume mode, and its restart woke the phone right away.
+
 * Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 1.24.2-alt2.mobile1
 - QMI: connect the PDC (list configs, get selected config) and LOC (get
   server, get predicted orbits data source) indication handlers before

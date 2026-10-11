@@ -1,0 +1,159 @@
+--- a/af_qrtr.c
++++ b/af_qrtr.c
+@@ -9,6 +9,7 @@
+ #include <linux/termios.h>	/* For TIOCINQ/OUTQ */
+ #include <linux/spinlock.h>
+ #include <linux/wait.h>
++#include <linux/pm_wakeup.h>
+ 
+ #include <net/sock.h>
+ 
+@@ -420,6 +421,105 @@
+ 	spin_unlock_irqrestore(&qrtr_nodes_lock, flags);
+ }
+ 
++/*
++ * Wake the system on QMI data from selected remote services (ALT Mobile,
++ * OnePlus 6T). In s2idle the GLINK interrupt of the modem keeps being
++ * handled (IRQF_NO_SUSPEND), but nothing resumed the system, so a sleeping
++ * phone did not ring. Waking on every modem interrupt is too much: WLAN
++ * firmware (a modem protection domain) restarts on suspend and service
++ * announcements woke the phone in a loop. Here only DATA packets from the
++ * listed QMI services to user space sockets (ModemManager) wake the system.
++ * Default: 5 WMS (SMS), 9 VOICE (calls). The (node, port) of each such
++ * service is learnt from the NEW_SERVER/DEL_SERVER packets passing here.
++ */
++static unsigned int wake_services[8] = { 5, 9 };
++static int n_wake_services = 2;
++module_param_array(wake_services, uint, &n_wake_services, 0644);
++MODULE_PARM_DESC(wake_services, "QMI services whose data to user space wakes the system");
++
++#define QRTR_WAKE_PORTS 16
++static struct {
++	bool used;
++	u32 node;
++	u32 port;
++	u32 service;
++} qrtr_wake_ports[QRTR_WAKE_PORTS];
++static DEFINE_SPINLOCK(qrtr_wake_lock);
++static struct wakeup_source *qrtr_ws;
++
++static bool qrtr_wake_service(u32 service)
++{
++	int i;
++
++	for (i = 0; i < n_wake_services && i < ARRAY_SIZE(wake_services); i++)
++		if (wake_services[i] == service)
++			return true;
++	return false;
++}
++
++static void qrtr_wake_track(int type, const struct qrtr_ctrl_pkt *pkt)
++{
++	u32 service = le32_to_cpu(pkt->server.service);
++	u32 node = le32_to_cpu(pkt->server.node);
++	u32 port = le32_to_cpu(pkt->server.port);
++	unsigned long flags;
++	int i, slot = -1;
++
++	if (type == QRTR_TYPE_NEW_SERVER && !qrtr_wake_service(service))
++		return;
++
++	spin_lock_irqsave(&qrtr_wake_lock, flags);
++	for (i = 0; i < QRTR_WAKE_PORTS; i++) {
++		if (qrtr_wake_ports[i].used && qrtr_wake_ports[i].node == node &&
++		    qrtr_wake_ports[i].port == port) {
++			if (type == QRTR_TYPE_DEL_SERVER)
++				qrtr_wake_ports[i].used = false;
++			goto out;
++		}
++		if (!qrtr_wake_ports[i].used && slot < 0)
++			slot = i;
++	}
++	if (type == QRTR_TYPE_NEW_SERVER && slot >= 0) {
++		qrtr_wake_ports[slot].node = node;
++		qrtr_wake_ports[slot].port = port;
++		qrtr_wake_ports[slot].service = service;
++		qrtr_wake_ports[slot].used = true;
++		pr_info("qrtr: service %u at %u:%u wakes the system\n",
++			service, node, port);
++	}
++out:
++	spin_unlock_irqrestore(&qrtr_wake_lock, flags);
++}
++
++static void qrtr_wake_forget_node(u32 node)
++{
++	unsigned long flags;
++	int i;
++
++	spin_lock_irqsave(&qrtr_wake_lock, flags);
++	for (i = 0; i < QRTR_WAKE_PORTS; i++)
++		if (qrtr_wake_ports[i].node == node)
++			qrtr_wake_ports[i].used = false;
++	spin_unlock_irqrestore(&qrtr_wake_lock, flags);
++}
++
++static bool qrtr_wake_port(u32 node, u32 port)
++{
++	unsigned long flags;
++	bool ret = false;
++	int i;
++
++	spin_lock_irqsave(&qrtr_wake_lock, flags);
++	for (i = 0; i < QRTR_WAKE_PORTS; i++)
++		if (qrtr_wake_ports[i].used && qrtr_wake_ports[i].node == node &&
++		    qrtr_wake_ports[i].port == port) {
++			ret = true;
++			break;
++		}
++	spin_unlock_irqrestore(&qrtr_wake_lock, flags);
++	return ret;
++}
++
+ /**
+  * qrtr_endpoint_post() - post incoming data
+  * @ep: endpoint handle
+@@ -520,6 +620,13 @@
+ 		qrtr_node_assign(node, le32_to_cpu(pkt->server.node));
+ 	}
+ 
++	if ((cb->type == QRTR_TYPE_NEW_SERVER ||
++	     cb->type == QRTR_TYPE_DEL_SERVER) &&
++	    size >= sizeof(struct qrtr_ctrl_pkt))
++		qrtr_wake_track(cb->type, data + hdrlen);
++	else if (cb->type == QRTR_TYPE_BYE)
++		qrtr_wake_forget_node(cb->src_node);
++
+ 	if (cb->type == QRTR_TYPE_RESUME_TX) {
+ 		qrtr_tx_resume(node, skb);
+ 	} else {
+@@ -527,6 +634,11 @@
+ 		if (!ipc)
+ 			goto err;
+ 
++		if (cb->type == QRTR_TYPE_DATA && qrtr_ws &&
++		    !ipc->sk.sk_kern_sock &&
++		    qrtr_wake_port(cb->src_node, cb->src_port))
++			pm_wakeup_ws_event(qrtr_ws, 3000, true);
++
+ 		if (sock_queue_rcv_skb(&ipc->sk, skb)) {
+ 			qrtr_port_put(ipc);
+ 			goto err;
+@@ -1300,6 +1412,8 @@
+ 	if (rc)
+ 		goto err_sock;
+ 
++	qrtr_ws = wakeup_source_register(NULL, "qrtr");
++
+ 	return 0;
+ 
+ err_sock:
+@@ -1312,6 +1426,7 @@
+ 
+ static void __exit qrtr_proto_fini(void)
+ {
++	wakeup_source_unregister(qrtr_ws);
+ 	qrtr_ns_remove();
+ 	sock_unregister(qrtr_family.family);
+ 	proto_unregister(&qrtr_proto);

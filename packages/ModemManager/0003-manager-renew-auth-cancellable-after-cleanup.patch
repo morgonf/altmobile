@@ -1,0 +1,19 @@
+diff --git a/src/mm-base-manager.c b/src/mm-base-manager.c
+index 84c450e..12b1daf 100644
+--- a/src/mm-base-manager.c
++++ b/src/mm-base-manager.c
+@@ -1172,8 +1172,13 @@ mm_base_manager_cleanup (MMBaseManager             *self,
+     g_return_if_fail (self != NULL);
+     g_return_if_fail (MM_IS_BASE_MANAGER (self));
+ 
+-    /* Cancel all ongoing auth requests */
++    /* Cancel all ongoing auth requests. The manager lives on after a quick
++     * (terse/low power) suspend, so start the next requests with a fresh
++     * cancellable: the cancelled one failed every later authorized call
++     * (SetLogging, ScanDevices...) with "Operation was cancelled". */
+     g_cancellable_cancel (self->priv->authp_cancellable);
++    g_object_unref (self->priv->authp_cancellable);
++    self->priv->authp_cancellable = g_cancellable_new ();
+ 
+     disable = has_cleanup_flag (flags, MM_BASE_MANAGER_CLEANUP_DISABLE);
+     low_power = has_cleanup_flag (flags, MM_BASE_MANAGER_CLEANUP_LOW_POWER);
