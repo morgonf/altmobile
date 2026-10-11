@@ -1,0 +1,122 @@
+diff -ruN a/src/style.css b/src/style.css
+--- a/src/style.css	2026-10-11 09:21:07.945794697 -0400
++++ b/src/style.css	2026-10-11 09:21:07.946794685 -0400
+@@ -28,3 +28,17 @@
+ .no-background {
+   background: none;
+ }
++
++/* Вкладки внизу окна «Вызовов» крупнее (в теме 0.75rem); кнопки делят
++   ширину поровну, поэтому подпись без своих полей, иначе «Панель набора»
++   обрезается */
++viewswitcherbar viewswitcher button.toggle {
++  min-height: 60px;
++}
++viewswitcherbar viewswitcher button.toggle > stack > box.narrow {
++  font-size: 14px;
++}
++viewswitcherbar viewswitcher button.toggle > stack > box.narrow > label {
++  padding-left: 0;
++  padding-right: 0;
++}
+diff -ruN a/src/ui/new-call-box.ui b/src/ui/new-call-box.ui
+--- a/src/ui/new-call-box.ui	2026-10-11 08:39:28.301968449 -0400
++++ b/src/ui/new-call-box.ui	2026-10-11 08:39:28.323968166 -0400
+@@ -8,8 +8,6 @@
+         <property name="child">
+           <object class="GtkBox" id="child">
+             <property name="hexpand">True</property>
+-            <property name="margin-start">24</property>
+-            <property name="margin-end">24</property>
+             <property name="margin_top">6</property>
+             <property name="orientation">vertical</property>
+             <child>
+@@ -33,6 +31,8 @@
+                       <object class="GtkEntry" id="address_entry">
+                         <property name="visible" bind-source="CallsNewCallBox" bind-property="numeric-input-only" bind-flags="sync-create|invert-boolean"/>
+                         <property name="xalign">0.5</property>
++                        <property name="margin-start">24</property>
++                        <property name="margin-end">24</property>
+                         <property name="placeholder-text" translatable="yes">Enter a VoIP address</property>
+                         <signal name="activate" handler="address_activate_cb" swapped="yes"/>
+                         <signal name="changed" handler="address_changed_cb" swapped="yes"/>
+@@ -51,6 +51,8 @@
+                       <object class="GtkListBox" id="result_list">
+                         <property name="visible" bind-source="CallsNewCallBox" bind-property="numeric-input-only" bind-flags="sync-create|invert-boolean"/>
+                         <property name="margin-top">16</property>
++                        <property name="margin-start">24</property>
++                        <property name="margin-end">24</property>
+                         <property name="selection-mode">none</property>
+                         <child>
+                           <object class="AdwActionRow" id="result">
+diff -ruN a/subprojects/libcall-ui/src/cui-dialpad.ui b/subprojects/libcall-ui/src/cui-dialpad.ui
+--- a/subprojects/libcall-ui/src/cui-dialpad.ui	2026-10-11 08:39:28.300968462 -0400
++++ b/subprojects/libcall-ui/src/cui-dialpad.ui	2026-10-11 08:39:28.323968166 -0400
+@@ -5,11 +5,11 @@
+   <template class="CuiDialpad" parent="AdwBin">
+     <child>
+       <object class="AdwClamp" id="clamp">
+-        <property name="maximum-size">300</property>
++        <property name="maximum-size">400</property>
+         <child>
+           <object class="GtkBox">
+-            <property name="margin-start">24</property>
+-            <property name="margin-end">24</property>
++            <property name="margin-start">16</property>
++            <property name="margin-end">16</property>
+             <property name="margin-top">16</property>
+             <property name="margin-bottom">16</property>
+             <property name="orientation">vertical</property>
+@@ -30,8 +30,8 @@
+                 <property name="halign">center</property>
+                 <property name="margin-top">18</property>
+                 <property name="margin-bottom">18</property>
+-                <property name="row-spacing">10</property>
+-                <property name="column-spacing">16</property>
++                <property name="row-spacing">14</property>
++                <property name="column-spacing">24</property>
+                 <property name="entry">keypad_entry</property>
+               </object>
+             </child>
+diff -ruN a/subprojects/libcall-ui/src/style.css b/subprojects/libcall-ui/src/style.css
+--- a/subprojects/libcall-ui/src/style.css	2026-10-11 08:39:28.300968462 -0400
++++ b/subprojects/libcall-ui/src/style.css	2026-10-11 08:39:28.323968166 -0400
+@@ -12,7 +12,9 @@
+ }
+ 
+ cui-keypad > grid > button {
+-  padding: 6px 16px;
++  min-width: 84px;
++  min-height: 84px;
++  padding: 0;
+ }
+ 
+ cui-dialpad      .dial-button {
+@@ -23,11 +25,25 @@
+   padding: 8px 12px;
+ }
+ 
+-cui-call-display .phone-number-entry,
+-cui-dialpad      .phone-number-entry {
++cui-call-display .phone-number-entry {
+   font-size: 24px;
+ }
+ 
++/* Поле номера в форме кнопок, цифры с небольшими промежутками */
++cui-dialpad      .phone-number-entry {
++  font-size: 26px;
++  letter-spacing: 1px;
++  min-height: 60px;
++  border-radius: 9999px;
++  padding: 0 12px;
++  outline-width: 2px;
++  outline-offset: -2px;
++}
++
++cui-dialpad      .phone-number-entry placeholder {
++  letter-spacing: 0;
++}
++
+ #cui_call_display_status {
+   font-feature-settings: "tnum";
+ }

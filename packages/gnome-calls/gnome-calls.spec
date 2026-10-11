@@ -12,7 +12,7 @@
 
 Name: gnome-%_name
 Version: %ver_major.0
-Release: alt1%beta.mobile1
+Release: alt1%beta.mobile3
 
 Summary: A phone dialer and call handler
 Group: Graphical desktop/GNOME
@@ -29,6 +29,7 @@ Source: %_name-%version%beta.tar
 %endif
 %{?_enable_snapshot:Source1: libcall-ui-%callui_ver.tar}
 Patch900: 0001-libcall-ui-translatable-yes-ru.patch
+Patch901: 0002-dialpad-phone-layout.patch
 
 %define glib_ver 2.76
 %define adw_ver 1.6
@@ -72,6 +73,7 @@ other systems like SIP in future.
 rm -rf subprojects/libcall-ui
 mv libcall-ui-%callui_ver subprojects/libcall-ui}
 %patch900 -p1
+%patch901 -p1
 
 %build
 %meson \
@@ -108,6 +110,15 @@ xvfb-run %__meson_test
 %doc NEWS README.md
 
 %changelog
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 50.0-alt1.mobile3
+- Bigger bottom view switcher (14 px labels, 60 px tall buttons), labels
+  without side padding so that "Панель набора" is not ellipsized.
+
+* Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 50.0-alt1.mobile2
+- Dial pad for a 360 px wide phone screen: no double side margins (the
+  pad drifted right when widened), clamp 400, bigger round keys with more
+  spacing, pill-shaped number entry with letter spacing.
+
 * Sun Oct 11 2026 morgonf <morgonf@altlinux.org> 50.0-alt1.mobile1
 - libcall-ui: mark strings translatable="yes" (xgettext ignores "True",
   so the dial pad and in-call buttons dropped out of the catalogs) and
