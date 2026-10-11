@@ -161,7 +161,9 @@ def main():
     # Карта, вставленная до запуска (загрузка, перезапуск службы)
     pending.set()
     while True:
-        p = subprocess.Popen(QMI + ["--uim-monitor-slot-status"],
+        # stdbuf: в канал qmicli пишет блоками, и события застревали в
+        # буфере (первая проверка 11.10.2026 ничего не поймала)
+        p = subprocess.Popen(["stdbuf", "-oL"] + QMI + ["--uim-monitor-slot-status"],
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         for line in p.stdout:
             if "Received slot status indication" in line:
