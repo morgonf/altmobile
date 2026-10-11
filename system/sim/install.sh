@@ -1,6 +1,9 @@
 #!/bin/sh
 # Установка служб SIM, от root, из каталога со скриптом
 cd "$(dirname "$0")"
+# Окно PIN (sim-unlock/main.qml) запускает qml-qt6, а он в пакете -devel;
+# без него вместо нашего окна было системное, и PIN не уходил (11.10.2026)
+apt-get install -y qt6-declarative-devel >/dev/null
 install -m 755 alt-sim-hotplug.sh alt-sim-pin-notify.py alt-sim-unlock /usr/local/bin/
 install -D -m 644 sim-unlock/main.qml /usr/share/alt-mobile/sim-unlock/main.qml
 install -m 644 50-alt-mobile-sim.rules /etc/polkit-1/rules.d/

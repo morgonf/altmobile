@@ -1,23 +1,27 @@
 #!/usr/bin/python3
 # Запертая SIM-карта: при первом обнаружении за сеанс сразу открывает окно
-# ввода PIN (alt-sim-unlock), а уведомление с кнопкой «Разблокировать»
-# висит, пока карта заперта, чтобы окно можно было открыть снова.
+# ввода PIN (alt-sim-unlock). Уведомление с кнопкой «Разблокировать» только
+# если окно закрыли («Позже»), а карта всё ещё заперта: чтобы было откуда
+# открыть его снова. Пока окно открыто, уведомления нет (11.10.2026, окно и
+# уведомление сразу выглядели лишним).
 # Модуль «Сотовая сеть» запертый модем не видит, поэтому своё окно.
 import signal
 import subprocess
+import time
 from gi.repository import Gio, GLib
 
 MM = "org.freedesktop.ModemManager1"
 LOCK_SIM_PIN, LOCK_SIM_PUK = 2, 4
 session = Gio.bus_get_sync(Gio.BusType.SESSION)
 system = Gio.bus_get_sync(Gio.BusType.SYSTEM)
-state = {"notif": 0, "shown": False}
+state = {"notif": 0, "shown": False, "opened": 0.0}
 # Окно запускается отдельной единицей systemd-run: не остаётся зомби и
 # перезапуск этой службы окно не закрывает.
 signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
 
 def open_window():
+    state["opened"] = time.monotonic()
     subprocess.Popen(["systemd-run", "--user", "--quiet", "--collect",
                       "/usr/local/bin/alt-sim-unlock"])
 
@@ -76,7 +80,11 @@ def tick():
         open_window()
     if not kind:
         state["shown"] = False
-    if kind and not state["notif"]:
+    # Окно открыто или только что запущено (ещё не появилось в pgrep):
+    # уведомление не нужно
+    if kind and (window_open() or time.monotonic() - state["opened"] < 15):
+        close()
+    elif kind and not state["notif"]:
         notify(kind)
     elif not kind and state["notif"]:
         close()
@@ -85,6 +93,18 @@ def tick():
 
 session.signal_subscribe(None, "org.freedesktop.Notifications", "ActionInvoked",
                          "/org/freedesktop/Notifications", None, 0, on_action)
+# Сигналы ModemManager (модем появился, сменил состояние): проверить сразу,
+# а не ждать опроса. Опрос раз в 10 секунд остаётся запасным. Раньше окно
+# появлялось через 30-45 секунд после вставки карты (11.10.2026).
+pending = {"id": 0}
+def soon(*_):
+    if not pending["id"]:
+        def run():
+            pending["id"] = 0
+            tick()
+            return False
+        pending["id"] = GLib.timeout_add(700, run)
+system.signal_subscribe(MM, None, None, None, None, 0, soon)
 tick()
 GLib.timeout_add_seconds(10, tick)
 GLib.MainLoop().run()

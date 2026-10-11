@@ -199,19 +199,35 @@ Kirigami.ApplicationWindow {
                         Layout.preferredWidth: Kirigami.Units.gridUnit * 4
                         Layout.preferredHeight: Kirigami.Units.gridUnit * 4
                         focusPolicy: Qt.NoFocus
-                        flat: !digit
+                        // «Готово» с набранным кодом залита цветом акцента
+                        flat: !digit && !highlighted
                         text: digit ? modelData : ""
                         font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.8
                         icon.name: modelData === "erase" ? "edit-clear"
                                  : modelData === "ok" ? "dialog-ok-apply" : ""
                         icon.width: Kirigami.Units.iconSizes.medium
                         icon.height: Kirigami.Units.iconSizes.medium
+                        // Значки темы тёмные, на тёмном фоне галочка пропадала
+                        // (11.10.2026): красим их цветом текста
+                        icon.color: highlighted ? Kirigami.Theme.highlightedTextColor
+                                  : enabled ? Kirigami.Theme.textColor
+                                  : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
+                                            Kirigami.Theme.textColor.b, 0.35)
                         enabled: !root.busy && (modelData === "ok" ? root.entryValid
                                                : modelData === "erase" ? root.entry.length > 0 : true)
                         highlighted: modelData === "ok" && root.entryValid
-                        onClicked: modelData === "erase" ? root.erase()
-                                 : modelData === "ok" ? root.submit()
-                                 : root.press(modelData)
+                        // Цифры и стирание срабатывают при касании, а не при
+                        // отпускании: страница Kirigami забирала касание при
+                        // малейшем сдвиге пальца, отклик был, а цифра терялась
+                        // (11.10.2026). «Готово» по отпусканию, чтобы не
+                        // отправить код случайным касанием.
+                        onPressed: if (modelData !== "ok") {
+                            if (modelData === "erase")
+                                root.erase();
+                            else
+                                root.press(modelData);
+                        }
+                        onClicked: if (modelData === "ok") root.submit()
                         onPressAndHold: if (modelData === "erase") root.entry = ""
                     }
                 }
