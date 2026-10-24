@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Джарвис
+Comment=Голосовой ассистент
+Exec=@BIN@/jarvis
+Icon=jarvis
+Categories=Utility;
+StartupNotify=true

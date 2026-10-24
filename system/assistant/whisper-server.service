@@ -1,0 +1,9 @@
+[Unit]
+Description=whisper-server (распознавание речи)
+
+[Service]
+ExecStart=/usr/bin/taskset -c 4-7 %h/llm/whisper.cpp/build/bin/whisper-server --host 127.0.0.1 --port 8178 -m %h/llm/whisper-models/ggml-base-q8_0.bin -l ru -t 4
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

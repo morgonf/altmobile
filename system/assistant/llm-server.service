@@ -1,0 +1,10 @@
+[Unit]
+Description=llama-server (локальные языковые модели)
+
+[Service]
+# Быстрые ядра 4-7: с медленными A55 генерация вдвое медленнее
+ExecStart=/usr/bin/taskset -c 4-7 %h/llm/llama.cpp/build-cpu/bin/llama-server --host 127.0.0.1 --port 8080 --models-dir %h/llm/models --models-max 1 -t 4 -c 4096 --reasoning off
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
