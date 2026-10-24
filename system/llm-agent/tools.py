@@ -12,28 +12,24 @@ import urllib.request
 LIMIT = 1500
 UA = "Mozilla/5.0 (X11; Linux aarch64; rv:140.0) Gecko/20100101 Firefox/140.0"
 
+# Описания короткие: модель читает их в каждом запросе заново
 SPECS = [
     {"type": "function", "function": {
-        "name": "shell",
-        "description": "Run a shell command on the phone (ALT Linux) and return its output.",
-        "parameters": {"type": "object", "properties": {
-            "command": {"type": "string", "description": "Command line for sh -c"}},
-            "required": ["command"]}}},
+        "name": "shell", "description": "Run a shell command on the phone.",
+        "parameters": {"type": "object", "properties": {"command": {"type": "string"}},
+                       "required": ["command"]}}},
     {"type": "function", "function": {
-        "name": "read_file",
-        "description": "Read a text file on the phone.",
-        "parameters": {"type": "object", "properties": {
-            "path": {"type": "string"}}, "required": ["path"]}}},
+        "name": "read_file", "description": "Read a file on the phone.",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string"}},
+                       "required": ["path"]}}},
     {"type": "function", "function": {
-        "name": "web_search",
-        "description": "Search the internet, returns titles, links and snippets.",
-        "parameters": {"type": "object", "properties": {
-            "query": {"type": "string"}}, "required": ["query"]}}},
+        "name": "web_search", "description": "Search the internet.",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}},
+                       "required": ["query"]}}},
     {"type": "function", "function": {
-        "name": "fetch_url",
-        "description": "Download a web page and return its text.",
-        "parameters": {"type": "object", "properties": {
-            "url": {"type": "string"}}, "required": ["url"]}}},
+        "name": "fetch_url", "description": "Get the text of a web page.",
+        "parameters": {"type": "object", "properties": {"url": {"type": "string"}},
+                       "required": ["url"]}}},
 ]
 
 

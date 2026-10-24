@@ -6,6 +6,7 @@
 число токенов и финальный ответ.
 """
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -13,8 +14,11 @@ import urllib.request
 import tools
 
 URL = "http://127.0.0.1:8080/v1/chat/completions"
-SYSTEM = ("You are an assistant on a OnePlus 6T phone running ALT Linux. Use the tools "
-          "to find real facts, do not guess. Answer the user in Russian, briefly.")
+SYSTEM = ("You are an assistant on a OnePlus 6T phone with ALT Linux. Use tools to get real "
+          "facts about the phone, never guess. Answer in Russian, 1-2 sentences.\n"
+          "Phone facts: storage free: df -h /; battery: /sys/class/power_supply/bq27411-0/"
+          "{capacity,status}; RAM: free -h; network: nmcli; Bluetooth: bluetoothctl; "
+          "packages: rpm -q; logs: journalctl.")
 
 TASKS = [
     ("Привет! Как дела?", None),
@@ -33,7 +37,7 @@ AFTER_TOOL = "<think>I have the tool result. Now I answer the user in Russian.</
 
 def call(model, messages, prefill):
     body = {"model": model, "messages": messages, "tools": tools.SPECS,
-            "max_tokens": 400, "temperature": 0.2}
+            "max_tokens": int(os.environ.get("MAX_TOKENS", 400)), "temperature": 0.2}
     if prefill:
         p = AFTER_TOOL if messages[-1]["role"] == "tool" else prefill
         body["messages"] = messages + [{"role": "assistant", "content": p}]
@@ -80,4 +84,6 @@ def run(model, prefill, max_steps=3):
 if __name__ == "__main__":
     model = sys.argv[1]
     prefill = sys.argv[2] if len(sys.argv) > 2 else ""
+    if len(sys.argv) > 3:
+        AFTER_TOOL = sys.argv[3]
     run(model, prefill)
