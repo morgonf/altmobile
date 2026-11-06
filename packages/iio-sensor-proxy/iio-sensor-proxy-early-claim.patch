@@ -1,0 +1,19 @@
+--- a/src/iio-sensor-proxy.c
++++ b/src/iio-sensor-proxy.c
+@@ -821,6 +821,16 @@
+ 		}
+ 
+ 		DEVICE_FOR_TYPE(i) = sensor_device;
++
++		/* ALT Mobile: the bus name is owned before the sensors are found,
++		 * and KWin claims the accelerometer as soon as the name appears.
++		 * A claim that came before the driver only records the client, so
++		 * start polling here, as the hotplug path does; otherwise the
++		 * sensor never runs and the orientation stays "undefined". */
++		if (g_hash_table_size (data->clients[i]) > 0) {
++			data->sensor_startup_dbus_event_delayed[i] = TRUE;
++			driver_set_polling (sensor_device, TRUE);
++		}
+ 	}
+ 
+ 	if (!any_sensors_left (data))

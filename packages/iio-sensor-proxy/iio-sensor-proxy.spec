@@ -11,7 +11,7 @@
 
 Name: iio-sensor-proxy
 Version: %ver_major.9
-Release: alt1.3
+Release: alt1.4
 
 Summary: IIO sensors to input device proxy
 Group: System/Kernel and hardware
@@ -26,6 +26,8 @@ Patch: %name-%version-alt1.patch
 Patch1: %name-ssc-compass-mag.patch
 # Has* всем клиентам, иначе KWin не видит акселерометр (автоповорот)
 Patch2: %name-has-broadcast.patch
+# Опрос датчика, запрошенного до его обнаружения (KWin при старте)
+Patch3: %name-early-claim.patch
 
 %define meson_ver 0.54
 %define glib_ver 2.76
@@ -72,6 +74,7 @@ Developer documentation for %name.
 %patch -p1
 %patch1 -p1
 %patch2 -p1
+%patch3 -p1
 
 %build
 %meson \
@@ -106,6 +109,13 @@ dbus-run-session %__meson_test -t 4
 
 
 %changelog
+* Fri Nov 06 2026 morgonf <morgonf@altlinux.org> 3.9-alt1.4
+- Start polling a sensor found at startup if a client claimed it
+  before it was discovered: KWin claims the accelerometer as soon as
+  the bus name appears, the claim only recorded the client, the SSC
+  accelerometer never ran and the orientation stayed "undefined"
+  (no auto-rotation, screen kept the saved rotation after boot)
+
 * Sun Oct 04 2026 morgonf <morgonf@altlinux.org> 3.9-alt1.3
 - Broadcast HasAccelerometer and the other Has* properties to every
   client: KWin watches them without claiming the sensor and kept the
